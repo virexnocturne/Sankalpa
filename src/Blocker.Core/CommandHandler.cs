@@ -10,16 +10,27 @@ namespace Blocker.Core;
 
 public static class CommandHandler
 {
-    public static Response Handle(Request? request, IBlockStore store)
+    public static Response Handle(Request? request, IBlockStore store, IClientIdentity? clientIdentity = null)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Command))
         {
             return Response.Fail("Empty or invalid request.");
         }
 
+        string cmd = request.Command.ToUpperInvariant();
+
+        if (clientIdentity == null || !clientIdentity.IsAuthenticated)
+        {
+            if (cmd == "PING")
+            {
+                return HandlePing();
+            }
+
+            return Response.Fail("Unauthorized: Authentication required.");
+        }
         try
         {
-            return request.Command.ToUpperInvariant() switch
+            return cmd switch
             {
                 "PING" => HandlePing(),
                 "LISTPROFILES" => HandleListProfiles(store),
@@ -30,14 +41,14 @@ public static class CommandHandler
                 "DISABLEPROFILE" => HandleDisableProfile(request, store),
                 "GETUNLOCKCHALLENGE" or "UNLOCKCHALLENGE" => HandleGetUnlockChallenge(request, store),
                 "STARTSESSION" => HandleStartSession(request, store),
-                "STOPSESSION" => HandleStopSession(request, store),
+                "STOPSESSION" => HandleStopSession(request, store, clientIdentity),
                 "GETSTATUS" => HandleGetStatus(store),
                 "HOSTSSTATUS" => HandleHostsStatus(store),
-                "CLEANHOSTS" => HandleCleanHosts(store),
+                "CLEANHOSTS" => HandleCleanHosts(store, clientIdentity),
                 "GETEVENTS" => HandleGetEvents(request, store),
                 "GETACTIVEWEBRULES" => HandleGetActiveWebRules(store),
                 "EXTHEARTBEAT" => HandleExtHeartbeat(request, store),
-                "EMERGENCYUNLOCK" => HandleEmergencyUnlock(store),
+                "EMERGENCYUNLOCK" => HandleEmergencyUnlock(store, clientIdentity),
                 "GETDNSCONFIG" => HandleGetDnsConfig(store),
                 "SAVEDNSCONFIG" => HandleSaveDnsConfig(request, store),
                 "LOCKDNS" => HandleLockDns(request, store),
@@ -861,7 +872,7 @@ public static class CommandHandler
         return Response.Success($"Session started: Profile='{profile.Name}', Duration={totalSeconds}s, Locked={locked}");
     }
 
-    private static Response HandleStopSession(Request request, IBlockStore store)
+    private static Response HandleStopSession(Request request, IBlockStore store, IClientIdentity clientIdentity)
     {
         bool emergency = store.IsEmergencyUnlockPresent();
         if (emergency)
@@ -883,7 +894,9 @@ public static class CommandHandler
             return Response.Success("No active session to stop.");
         }
 
-        if (activeSession.Locked)
+        bool isElevated = clientIdentity.IsAdministrator || clientIdentity.IsLocalSystem;
+
+        if (activeSession.Locked && !isElevated)
         {
             var (canStop, remaining, reason) = BlockSessionLogic.EvaluateStopRequest(activeSession, DateTime.UtcNow, false);
             if (!canStop)
@@ -893,7 +906,7 @@ public static class CommandHandler
         }
 
         var profile = store.GetProfileById(activeSession.ProfileId);
-        if (profile != null)
+        if (profile != null && !isElevated)
         {
             var unlockError = VerifyUnlock(profile, request, activeSession);
             if (unlockError != null)
@@ -1013,7 +1026,7 @@ public static class CommandHandler
         return Response.Success(JsonSerializer.Serialize(status));
     }
 
-    private static Response HandleCleanHosts(IBlockStore store)
+    private static Response HandleCleanHosts(IBlockStore store, IClientIdentity clientIdentity)
     {
         bool emergency = store.IsEmergencyUnlockPresent();
         var session = store.GetActiveSession();
@@ -1032,7 +1045,9 @@ public static class CommandHandler
                 : Response.Fail("Failed to clean hosts file.");
         }
 
-        if (session != null && session.Locked)
+        bool isElevated = clientIdentity.IsAdministrator || clientIdentity.IsLocalSystem;
+
+        if (session != null && session.Locked && !isElevated)
         {
             TimeSpan remaining = BlockSessionLogic.GetRemainingTime(session, DateTime.UtcNow);
             return Response.Fail($"Refused: Cannot clean hosts while a LOCKED session is active. Remaining time: {UiLogic.FormatCountdown(remaining)}.");
@@ -1040,11 +1055,14 @@ public static class CommandHandler
 
         var allProfiles = store.ListProfiles();
         DateTime localNow = DateTime.Now;
-        foreach (var p in allProfiles)
+        if (!isElevated)
         {
-            if (p.Enabled && ProfileStateLogic.IsProfileLockedNow(p, session, localNow))
+            foreach (var p in allProfiles)
             {
-                return Response.Fail($"Refused: Cannot clean hosts while active profile '{p.Name}' is locked.");
+                if (p.Enabled && ProfileStateLogic.IsProfileLockedNow(p, session, localNow))
+                {
+                    return Response.Fail($"Refused: Cannot clean hosts while active profile '{p.Name}' is locked.");
+                }
             }
         }
 
@@ -1256,8 +1274,17 @@ public static class CommandHandler
         return HandleGetActiveWebRules(store);
     }
 
-    private static Response HandleEmergencyUnlock(IBlockStore store)
+    private static Response HandleEmergencyUnlock(IBlockStore store, IClientIdentity clientIdentity)
     {
+        bool isElevated = clientIdentity.IsAdministrator || clientIdentity.IsLocalSystem;
+        if (!isElevated)
+        {
+            if (!store.IsEmergencyUnlockPresent())
+            {
+                return Response.Fail("Unauthorized: EMERGENCYUNLOCK requires elevated administrator privileges or an emergency recovery file.");
+            }
+        }
+
         SecurityHardener.UnlockCurrentProcess(out _);
         SecurityHardener.UnlockService(out _);
         store.EndActiveSession();

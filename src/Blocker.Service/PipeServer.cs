@@ -132,6 +132,57 @@ public class PipeServer : BackgroundService
         await stream.FlushAsync(cancellationToken);
     }
 
+    public static IClientIdentity ExtractClientIdentity(NamedPipeServerStream stream, ILogger? logger = null)
+    {
+        try
+        {
+            IClientIdentity identity = ClientIdentity.Anonymous;
+            stream.RunAsClient(() =>
+            {
+                try
+                {
+                    using var winId = WindowsIdentity.GetCurrent();
+                    if (winId == null || !winId.IsAuthenticated)
+                    {
+                        identity = ClientIdentity.Anonymous;
+                        return;
+                    }
+
+                    string name = winId.Name;
+                    string sid = winId.User?.Value ?? string.Empty;
+                    bool isSystem = winId.IsSystem;
+                    var principal = new WindowsPrincipal(winId);
+                    bool isAdmin = principal.IsInRole(WindowsBuiltInRole.Administrator);
+
+                    if (isSystem)
+                    {
+                        identity = ClientIdentity.CreateLocalSystem(name, sid);
+                    }
+                    else if (isAdmin)
+                    {
+                        identity = ClientIdentity.Administrator(name, sid);
+                    }
+                    else
+                    {
+                        identity = ClientIdentity.StandardUser(name, sid);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Error reading WindowsIdentity during named pipe impersonation.");
+                    identity = ClientIdentity.Anonymous;
+                }
+            });
+
+            return identity;
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Failed to impersonate named pipe client to extract identity.");
+            return ClientIdentity.Anonymous;
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger?.LogInformation("Named pipe server listening on '{PipeName}' with concurrent listeners...", _pipeName);
@@ -223,7 +274,8 @@ public class PipeServer : BackgroundService
                 Response response;
                 try
                 {
-                    response = CommandHandler.Handle(request, _store);
+                    IClientIdentity clientIdentity = ExtractClientIdentity(clientStream, _logger);
+                    response = CommandHandler.Handle(request, _store, clientIdentity);
                 }
                 catch (Exception ex)
                 {

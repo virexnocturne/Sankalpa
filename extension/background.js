@@ -64,7 +64,7 @@ export const ready = (typeof chrome !== 'undefined' && chrome.storage?.local)
         if (data.activeProfiles) activeProfiles = data.activeProfiles;
         if (data.allProfiles) allProfiles = data.allProfiles;
         if (data.rulesVersion !== undefined) rulesVersion = data.rulesVersion;
-        if (data.lastResponseTime) lastResponseTime = data.lastResponseTime;
+        if (data.lastResponseTime !== undefined) lastResponseTime = data.lastResponseTime;
         if (data.extensionTheme) currentTheme = data.extensionTheme;
         domainCache.invalidate();
         resolve();
@@ -291,9 +291,13 @@ export function onHostMessage(msg) {
     }
   }
 
-  // Requirement 2: Only an ok:true reply that carries rules may refresh lastResponseTime
+  // Requirement 2: Only an ok:true reply that carries rules and is not cached may refresh lastResponseTime
   if (msg && msg.ok === true && msg.rulesVersion !== undefined) {
-    lastResponseTime = getTime();
+    const wasStale = isStale();
+    const isFresh = !msg.cached;
+    if (isFresh) {
+      lastResponseTime = getTime();
+    }
 
     const newVersion = msg.rulesVersion;
     const newProfiles = msg.activeProfiles || [];
@@ -317,8 +321,16 @@ export function onHostMessage(msg) {
 
       // Re-check all open tabs in all windows
       recheckAllTabs();
-    } else if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    } else if (isFresh && typeof chrome !== 'undefined' && chrome.storage?.local) {
       chrome.storage.local.set({ allProfiles, lastResponseTime });
+    } else if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.set({ allProfiles });
+    }
+
+    // If rulesVersion didn't change, but we recovered from staleness, recheck tabs to resume blocking
+    if (newVersion === rulesVersion && wasStale && !isStale()) {
+      domainCache.invalidate();
+      recheckAllTabs();
     }
 
     if (typeof chrome !== 'undefined' && chrome.action?.setBadgeText) {

@@ -10,28 +10,25 @@ if (args.Length > 0 && args[0] == "--benchmark")
 }
 
 const string MutexName = @"Global\BlockerServiceSingletonMutex";
-bool hasHandle = false;
-Mutex? mutex = null;
+
+var mutexManager = new ServiceMutexManager(
+    MutexName,
+    logWarning: msg => Console.Error.WriteLine($"[WARN] {msg}"),
+    logError: msg => Console.Error.WriteLine($"[ERROR] {msg}"));
 
 try
 {
-    try
+    var acquisition = mutexManager.TryAcquire();
+    if (!acquisition.IsAcquired)
     {
-        mutex = new Mutex(true, MutexName, out bool createdNew);
-        hasHandle = createdNew;
-    }
-    catch (AbandonedMutexException)
-    {
-        hasHandle = true;
-    }
-    catch
-    {
-        hasHandle = true;
-    }
-
-    if (!hasHandle)
-    {
-        Console.WriteLine("Another instance of Blocker Service is already running. Exiting.");
+        if (acquisition.Status == MutexAcquisitionStatus.AlreadyRunning)
+        {
+            Console.WriteLine("Another instance of Blocker Service is already running. Exiting.");
+        }
+        else
+        {
+            Console.Error.WriteLine($"Blocker Service cannot start: {acquisition.Message}");
+        }
         return 1;
     }
 
@@ -42,6 +39,7 @@ try
         })
         .ConfigureServices(services =>
         {
+            services.AddSingleton<ISingletonMutex>(mutexManager);
             services.AddSingleton<BlockerDatabase>();
             services.AddSingleton<IBlockStore>(sp => sp.GetRequiredService<BlockerDatabase>());
             services.AddHostedService<Worker>();
@@ -54,12 +52,5 @@ try
 }
 finally
 {
-    if (mutex != null)
-    {
-        if (hasHandle)
-        {
-            try { mutex.ReleaseMutex(); } catch { }
-        }
-        mutex.Dispose();
-    }
+    mutexManager.Dispose();
 }

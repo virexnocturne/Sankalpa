@@ -35,6 +35,8 @@
   - [4. Tamper-Proof Lock Protections](#4-tamper-proof-lock-protections)
   - [5. Companion Browser Extension](#5-companion-browser-extension)
 - [Privacy Guarantee](#-privacy-guarantee)
+- [Security Architecture & Hardening](#-security-architecture--hardening)
+- [Isolated Simulation Test Suite](#-isolated-simulation-test-suite)
 - [Command Line Interface (CLI)](#-command-line-interface-cli)
 - [Building from Source](#-building-from-source)
 
@@ -181,6 +183,48 @@ The Sankalpa extension communicates directly with the local service to provide i
 - **Your Data Remains Yours**: All profiles, rules, and local statistics are stored exclusively on your hard drive in `%LocalAppData%\Sankalpa\data\`.
 
 Review our complete [Privacy Policy](packaging/browser-extension/PRIVACY_POLICY.md).
+
+---
+
+## 🛡️ Security Architecture & Hardening
+
+Sankalpa incorporates defense-in-depth protections designed to ensure focus blocks cannot be tampered with or accidentally bypassed:
+
+1. **Named Pipe Client Authentication & Emergency Unlock Authorization**:
+   - The named pipe server (`\\.\pipe\BlockerControl`) extracts the caller's Windows token via impersonation (`stream.RunAsClient(...)`).
+   - Default-deny policy: unauthenticated callers are rejected from all commands except `PING`.
+   - `EMERGENCYUNLOCK` is strictly restricted to elevated Administrators and `LocalSystem`, or legitimate standard users who possess an administrative emergency recovery token (`EMERGENCY_UNLOCK`) in the protected installation directory.
+   - Read the complete audit and matrix in [Command Authorization Documentation](docs/COMMAND_AUTHORIZATION.md).
+2. **Heartbeat Replay & Stale Cache Mitigation**:
+   - The native messaging bridge (`Blocker.NativeHost.exe`) explicitly flags cached payloads with `"cached": true` and `"serviceConnected": false` when the background service is unavailable.
+   - The browser extension only refreshes heartbeat timestamps on fresh live payloads.
+   - During extended service outages, the extension's intended 10-minute fail-open timeout triggers reliably, preventing permanent lockouts while immediately resuming enforcement upon service reconnection.
+3. **Robust Singleton Mutex Failure Handling**:
+   - Service singleton mutex management correctly handles `AbandonedMutexException` (recognizing thread ownership), prevents duplicate instances from launching upon unexpected OS exceptions, and releases the handle only when acquired.
+4. **Verified Service Lockdown & DACL Enforcement**:
+   - Eliminates fragile shell wrappers in favor of direct `sc.exe` execution with timeout detection and exit-code validation.
+   - Post-execution security descriptor query (`sc.exe sdshow`) verifies that the lockdown SDDL is actively applied before setting `IsServiceLockedDown`.
+5. **Continuous Security Auditing**:
+   - Comprehensive matrix covering all 24 exposed IPC commands with caller privilege classification and lock enforcement rules.
+
+---
+
+## 🧪 Isolated Simulation Test Suite
+
+Sankalpa includes a reproducible, zero-impact simulation environment that exercises all security fixes, IPC authorization rules, mutex contention, and extension fail-open timeouts without modifying host DNS, Windows services, or system hosts files:
+
+```powershell
+# 1. Setup the isolated test environment
+.\tests\Simulation\setup.ps1
+
+# 2. Run the full security regression, simulation, and extension suites
+.\tests\Simulation\run-tests.ps1
+
+# 3. Clean up disposable simulation fixtures
+.\tests\Simulation\cleanup.ps1
+```
+
+For full details on the 12 simulation scenarios and mocking strategy, see the [Simulation Environment Documentation](tests/Simulation/README.md).
 
 ---
 

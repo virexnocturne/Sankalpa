@@ -118,6 +118,12 @@ public class ActiveWebRulesResponse
 
     [JsonPropertyName("extensionTheme")]
     public string? ExtensionTheme { get; set; }
+
+    [JsonPropertyName("cached")]
+    public bool Cached { get; set; } = false;
+
+    [JsonPropertyName("serviceConnected")]
+    public bool ServiceConnected { get; set; } = true;
 }
 
 public class FlexibleRulesVersionConverter : JsonConverter<string>

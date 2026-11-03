@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "rulesVersion": 42,
+  "activeProfiles": [
+    {
+      "name": "Focus",
+      "blockAllWebsites": false,
+      "webRules": [
+        {
+          "pattern": "example.com",
+          "allow": false
+        },
+        {
+          "pattern": "example.com/allowed",
+          "allow": true
+        }
+      ],
+      "activeUntil": "2026-10-29T18:00:00Z"
+    }
+  ]
+}

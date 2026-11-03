@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Blocker.Core;
 
 namespace Blocker.NativeHost;
@@ -74,7 +75,7 @@ public static class Program
             using var stdin = Console.OpenStandardInput();
             using var stdout = Console.OpenStandardOutput();
             var pipeClient = new PipeClient(timeoutMs: 800);
-            string lastCachedPayload = "{\"ok\":true,\"rulesVersion\":1,\"activeProfiles\":[],\"allProfiles\":[]}";
+            string lastCachedPayload = "{\"ok\":true,\"rulesVersion\":1,\"activeProfiles\":[],\"allProfiles\":[],\"cached\":true,\"serviceConnected\":false}";
 
             while (true)
             {
@@ -271,28 +272,29 @@ public static class Program
                 }
 
                 string replyPayload;
+                bool isCached;
                 if (pipeResult.Connected && pipeResult.Response != null && pipeResult.Response.Ok && !string.IsNullOrEmpty(pipeResult.Response.Data))
                 {
                     replyPayload = pipeResult.Response.Data;
                     lastCachedPayload = replyPayload;
+                    isCached = false;
                 }
                 else
                 {
                     replyPayload = lastCachedPayload;
+                    isCached = true;
                 }
 
-                // Inject extension theme setting from ui-settings.json
+                // Inject extension theme setting from ui-settings.json and cached/serviceConnected status
+                string? theme = null;
                 try
                 {
                     var uiSettings = UiSettingsStore.Load();
-                    string theme = UiSettingsStore.NormalizeTheme(uiSettings.Theme);
-                    string trimmed = replyPayload.Trim();
-                    if (trimmed.EndsWith("}"))
-                    {
-                        replyPayload = trimmed.Substring(0, trimmed.Length - 1) + $",\"extensionTheme\":\"{theme}\"}}";
-                    }
+                    theme = UiSettingsStore.NormalizeTheme(uiSettings.Theme);
                 }
                 catch { }
+
+                replyPayload = FormatHeartbeatReply(replyPayload, isCached, theme);
 
                 try
                 {
@@ -533,6 +535,45 @@ public static class Program
         {
             Log($"[NativeHost] ShowFallbackNotification error: {ex.Message}");
         }
+    }
+
+    public static string FormatHeartbeatReply(string basePayload, bool isCached, string? extensionTheme = null)
+    {
+        try
+        {
+            if (JsonNode.Parse(basePayload) is JsonObject obj)
+            {
+                obj["cached"] = isCached;
+                obj["serviceConnected"] = !isCached;
+                if (!string.IsNullOrEmpty(extensionTheme))
+                {
+                    obj["extensionTheme"] = extensionTheme;
+                }
+                return obj.ToJsonString();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Error formatting heartbeat JSON via JsonNode: {ex.Message}");
+        }
+
+        // Fallback simple injection if JSON node parsing fails
+        try
+        {
+            string trimmed = basePayload.Trim();
+            if (trimmed.EndsWith("}"))
+            {
+                string extra = $",\"cached\":{(isCached ? "true" : "false")},\"serviceConnected\":{(isCached ? "false" : "true")}";
+                if (!string.IsNullOrEmpty(extensionTheme))
+                {
+                    extra += $",\"extensionTheme\":\"{extensionTheme}\"";
+                }
+                return trimmed.Substring(0, trimmed.Length - 1) + extra + "}";
+            }
+        }
+        catch { }
+
+        return basePayload;
     }
 
     private static void Log(string message)
