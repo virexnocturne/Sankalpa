@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>Sankalpa</AssemblyName>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+    <Resource Include="Assets\logo.png" />
+    <Resource Include="Assets\logo-32.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Blocker.Core\Blocker.Core.csproj" />
+  </ItemGroup>
+
+  <Target Name="CopyNativeHost" AfterTargets="Build">
+    <Copy SourceFiles="..\Blocker.NativeHost\bin\$(Configuration)\net8.0-windows10.0.19041.0\Blocker.NativeHost.exe"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true"
+          ContinueOnError="true" />
+    <Copy SourceFiles="..\Blocker.NativeHost\bin\$(Configuration)\net8.0-windows\Blocker.NativeHost.exe"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true"
+          ContinueOnError="true" />
+  </Target>
+
+</Project>

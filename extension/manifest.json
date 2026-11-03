@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Sankalpa Blocker",
+  "version": "1.0.0",
+  "description": "Companion extension for Sankalpa desktop app",
+  "permissions": [
+    "nativeMessaging",
+    "webNavigation",
+    "tabs",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sankalpa-blocker@local",
+      "strict_min_version": "109.0"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "32": "icon32.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icon16.png",
+      "32": "icon32.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    },
+    "default_popup": "popup.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["blocked.html", "blocked.css", "blocked.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA705R9mHzFc97ClHR0rnFIUGbbzUOp/qnxJTWLmiC4pfiP7T8YNLUScmJxCcCtRpWDVT2EI02JV6KCH4s7k6HPguzP0g873i7N7vBdtir2m0RBaJ1TWEKbQ3PIQLkqRhqDEfNH/vP1fjNXm+8exZ6UCj+P9p1b2VKsa9eG/AnYOJHT1HTr4R9JmHPQaVoA8ZipqlFSZvWnaPnRWXconQHpYSqGc7kHRXin6ET6JCAUGKj5MOeX+jVbQDLVjEPkHFHHOvQWUXKAnlXL+ceZBLxkME/5FFUkzXJ8QgcZ52yNkS0toFHZXBO6UWSVkgZ27+Kj91pVYNkMpIpUIWVya2fuQIDAQAB"
+}

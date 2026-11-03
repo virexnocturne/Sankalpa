@@ -1,0 +1,25 @@
+# Build artifacts & compilation caches
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+.vscode/
+
+# Intermediate publish directories
+dist/app/
+dist/service/
+dist/cli/
+
+# Test output & run logs
+test-output/
+screenshots/
+*.log
+tests/manual/*-test-result.txt
+
+# SQLite temporary journal files
+*.db-shm
+*.db-wal
+
+# Extension secrets
+extension/.keys/

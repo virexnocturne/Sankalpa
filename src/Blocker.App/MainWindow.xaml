@@ -1,0 +1,1281 @@
+<Window x:Class="Blocker.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Blocker.App"
+        mc:Ignorable="d"
+        Title="Sankalpa"
+        Icon="Assets/app.ico"
+        Height="720" Width="860"
+        MinHeight="600" MinWidth="680"
+        WindowState="Maximized"
+        Background="{DynamicResource BgDarkBrush}"
+        Foreground="{DynamicResource TextLightBrush}"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <local:InverseBooleanToVisibilityConverter x:Key="InvBoolToVis" />
+        <local:StringNotEmptyToVisibilityConverter x:Key="StringNotEmptyToVis" />
+        <local:NullToVisibilityConverter x:Key="NullToVis" />
+        <local:InverseNullToVisibilityConverter x:Key="InvNullToVis" />
+
+        <!-- Top Navigation Tab Button Style -->
+        <Style x:Key="TopNavTabButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="14,10,14,8" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Summary Badge Button Style -->
+        <Style x:Key="SummaryBadgeButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.8" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Opacity" Value="0.6" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Flat Lock Label Button Style -->
+        <Style x:Key="FlatLockLabelButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border Background="Transparent">
+                            <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Left" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Background="{DynamicResource BgDarkBrush}">
+        <Grid.RowDefinitions>
+            <!-- 0: Warning Banners -->
+            <RowDefinition Height="Auto" />
+            <!-- 1: Top Navigation Tab Bar -->
+            <RowDefinition Height="Auto" />
+            <!-- 2: Main Body -->
+            <RowDefinition Height="*" />
+            <!-- 3: Status Bar -->
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ROW 0: WARNING BANNERS -->
+        <StackPanel Grid.Row="0">
+            <Border Background="#261C0E" BorderBrush="#452C0D" BorderThickness="0,0,0,1" Padding="20,8"
+                    Visibility="{Binding IsServiceConnected, Converter={StaticResource InvBoolToVis}}">
+                <Grid MaxWidth="920">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Background service is not running. Blocks will not be enforced."
+                               FontWeight="SemiBold" FontSize="12" Foreground="#FDE68A" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="Retry connection" Command="{Binding RetryConnectionCommand}"
+                            Background="#3E240D" Foreground="#FDE68A" Padding="12,4" FontSize="11" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <Border Background="#261C0E" BorderBrush="#452C0D" BorderThickness="0,0,0,1" Padding="20,6"
+                    Visibility="{Binding ShowWebsiteWarningBanner, Converter={StaticResource BoolToVis}}">
+                <Grid MaxWidth="920">
+                    <TextBlock Text="{Binding WebsiteWarningBannerText}"
+                               FontWeight="SemiBold" FontSize="11" Foreground="#FDE68A" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <ItemsControl ItemsSource="{Binding WarningBanners}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="#261C0E" BorderBrush="#452C0D" BorderThickness="0,0,0,1" Padding="20,6">
+                            <Grid MaxWidth="920">
+                                <TextBlock Text="{Binding}" FontWeight="SemiBold" FontSize="11" Foreground="#FDE68A"
+                                           VerticalAlignment="Center" TextWrapping="Wrap" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+
+        <!-- ROW 1: TOP BAR -->
+        <Border Grid.Row="1" Background="{DynamicResource SurfacePillBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
+                BorderThickness="0,0,0,1" Padding="16,0">
+            <Grid MaxWidth="920">
+                <Grid.ColumnDefinitions>
+                    <!-- Tabs -->
+                    <ColumnDefinition Width="*" />
+                    <!-- Right utility buttons -->
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Navigation Tabs -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <!-- Tab 1: Website & App Blocks -->
+                    <Button Command="{Binding BackToBlocksCommand}" Margin="0,0,4,0">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource TopNavTabButtonStyle}">
+                                <Setter Property="Background" Value="{DynamicResource BgDarkBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                                <Setter Property="BorderThickness" Value="0,0,0,2" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="BorderBrush" Value="Transparent" />
+                                        <Setter Property="BorderThickness" Value="0" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Path Data="{StaticResource IconShield}" Stretch="Uniform" Width="13" Height="13" Margin="0,0,8,0" VerticalAlignment="Center">
+                                <Path.Style>
+                                    <Style TargetType="Path">
+                                        <Setter Property="Fill" Value="{DynamicResource TextLightBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
+                                                <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Path.Style>
+                            </Path>
+                            <TextBlock Text="Website &amp; App Blocks" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextLightBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Tab 2: Browser Extension (Popup Dialog) -->
+                    <Button Command="{Binding OpenExtensionDialogCommand}" Style="{StaticResource TopNavTabButtonStyle}"
+                            Margin="0,0,4,0" Visibility="{Binding ShowExtensionTab, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Path Data="{StaticResource IconPuzzle}" Fill="{DynamicResource TextMutedBrush}"
+                                  Stretch="Uniform" Width="13" Height="13" Margin="0,0,8,0" VerticalAlignment="Center" />
+                            <TextBlock Text="Browser Extension" FontWeight="SemiBold" FontSize="13"
+                                       Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Tab 3: Settings (In-Window View) -->
+                    <Button Command="{Binding OpenSettingsCommand}" Margin="0,0,4,0"
+                            Visibility="{Binding ShowSettingsTab, Converter={StaticResource BoolToVis}}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource TopNavTabButtonStyle}">
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="BorderBrush" Value="Transparent" />
+                                <Setter Property="BorderThickness" Value="0" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource BgDarkBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                                        <Setter Property="BorderThickness" Value="0,0,0,2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Path Data="{StaticResource IconSettings}" Stretch="Uniform" Width="13" Height="13" Margin="0,0,8,0" VerticalAlignment="Center">
+                                <Path.Style>
+                                    <Style TargetType="Path">
+                                        <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
+                                                <Setter Property="Fill" Value="{DynamicResource TextLightBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Path.Style>
+                            </Path>
+                            <TextBlock Text="Settings" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource TextLightBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- Right Utility Icons (Theme Switch & Settings) -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Design Theme Switcher Button -->
+                    <Button Command="{Binding SwitchDesignThemeCommand}"
+                            ToolTip="{Binding DesignThemeButtonText}"
+                            Style="{StaticResource SecondaryButton}"
+                            Padding="10,5" Margin="0,0,8,0" VerticalAlignment="Center"
+                            Cursor="Hand"
+                            Visibility="{Binding ShowDesignThemePill, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding DesignThemeBadgeText}" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="#FFFFFF" VerticalAlignment="Center" />
+                    </Button>
+
+                    <!-- Quick Day/Night Theme Toggle Button -->
+                    <Button Command="{Binding ToggleDayNightCommand}" Style="{StaticResource IconButton}"
+                            ToolTip="Toggle Light/Dark Theme" Width="30" Height="30" Margin="0,0,4,0"
+                            Visibility="{Binding ShowQuickThemeToggle, Converter={StaticResource BoolToVis}}">
+                        <Path Stretch="Uniform" Width="15" Height="15" VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <Path.Style>
+                                <Style TargetType="Path">
+                                    <Setter Property="Data" Value="{StaticResource IconSun}" />
+                                    <Setter Property="Fill" Value="{DynamicResource WarningAmberBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsDarkMode}" Value="True">
+                                            <Setter Property="Data" Value="{StaticResource IconMoon}" />
+                                            <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Path.Style>
+                        </Path>
+                    </Button>
+
+                    <Button Command="{Binding ToggleSettingsCommand}" Style="{StaticResource IconButton}"
+                            ToolTip="Settings" Width="30" Height="30"
+                            Visibility="{Binding ShowSettingsGear, Converter={StaticResource BoolToVis}}">
+                        <Path Data="{StaticResource IconSettings}" Stretch="Uniform" Width="15" Height="15"
+                              VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <Path.Style>
+                                <Style TargetType="Path">
+                                    <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
+                                            <Setter Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Path.Style>
+                        </Path>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ROW 2: MAIN BODY (Blocks View or In-Window Settings View) -->
+        <Grid Grid.Row="2" Background="{DynamicResource BgDarkBrush}">
+            <!-- 1. BLOCKS VIEW -->
+            <ScrollViewer Visibility="{Binding IsSettingsViewActive, Converter={StaticResource InvBoolToVis}}"
+                          Background="{DynamicResource BgDarkBrush}" VerticalScrollBarVisibility="Auto">
+                <StackPanel MaxWidth="920" Margin="20,20,20,16">
+                    <!-- Title Header Row -->
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="Website &amp; App Blocks" FontSize="20" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextLightBrush}" VerticalAlignment="Center" />
+
+                        <!-- Primary Header Add Button -->
+                        <Button Grid.Column="1" Command="{Binding NewBlockCommand}"
+                                Content="+ New block"
+                                Foreground="#FFFFFF"
+                                Padding="14,6" FontSize="12" FontWeight="SemiBold"
+                                VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- Feedback Toast -->
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource SuccessGreenBrush}"
+                               FontSize="12" FontWeight="SemiBold" Margin="0,0,0,10"
+                               Visibility="{Binding StatusMessage, Converter={StaticResource StringNotEmptyToVis}}" />
+                    <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource DangerRedBrush}"
+                               FontSize="12" FontWeight="SemiBold" Margin="0,0,0,10"
+                               Visibility="{Binding ErrorMessage, Converter={StaticResource StringNotEmptyToVis}}" />
+
+                    <!-- Cards List -->
+                    <ItemsControl ItemsSource="{Binding Profiles}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource BgCardBrush}"
+                                        BorderThickness="1"
+                                        BorderBrush="{DynamicResource BorderDarkBrush}"
+                                        CornerRadius="8"
+                                        Padding="{Binding CardPadding}" Margin="{Binding CardMargin}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <!-- Line 1: Name and Toggle -->
+                                            <RowDefinition Height="Auto" />
+                                            <!-- Line 1b: Active Session Pill (if running) -->
+                                            <RowDefinition Height="Auto" />
+                                            <!-- Line 2: Horizontal Metadata Columns -->
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Line 1: Name + Switch -->
+                                        <Grid Grid.Row="0" Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Profile Name (Double-click to inline edit) -->
+                                            <Grid Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
+                                                <!-- View Mode: Double-click to rename -->
+                                                <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextLightBrush}" VerticalAlignment="Center"
+                                                           Cursor="Hand" ToolTip="Double-click to rename block"
+                                                           Visibility="{Binding IsEditingName, Converter={StaticResource InvBoolToVis}}"
+                                                           MouseLeftButtonDown="ProfileName_MouseLeftButtonDown">
+                                                    <TextBlock.InputBindings>
+                                                        <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding BeginEditNameCommand}" />
+                                                    </TextBlock.InputBindings>
+                                                </TextBlock>
+
+                                                <!-- Edit Mode: Inline TextBox -->
+                                                <TextBox x:Name="InlineNameTextBox"
+                                                         Text="{Binding EditingName, UpdateSourceTrigger=PropertyChanged}"
+                                                         FontSize="14" FontWeight="SemiBold"
+                                                         Foreground="{DynamicResource TextLightBrush}"
+                                                         Background="{DynamicResource SurfacePillBrush}"
+                                                         BorderBrush="{DynamicResource AccentBlueBrush}"
+                                                         BorderThickness="1"
+                                                         Padding="6,3"
+                                                         VerticalAlignment="Center"
+                                                         Visibility="{Binding IsEditingName, Converter={StaticResource BoolToVis}}"
+                                                         IsVisibleChanged="InlineNameTextBox_IsVisibleChanged"
+                                                         KeyDown="InlineNameTextBox_KeyDown"
+                                                         LostFocus="InlineNameTextBox_LostFocus" />
+                                            </Grid>
+
+                                            <!-- Toggle Switch with On/Off Label -->
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <CheckBox IsChecked="{Binding IsToggleChecked, Mode=OneWay}"
+                                                          IsEnabled="{Binding CanToggle}"
+                                                          Click="ToggleSwitch_Click"
+                                                          Style="{StaticResource ToggleSwitchStyle}"
+                                                          ToolTip="Toggle block on/off"
+                                                          VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding OnOffText}" Width="26" FontSize="12" FontWeight="Medium"
+                                                           Foreground="{DynamicResource TextDimBrush}" Margin="8,0,0,0"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Line 1b: Live Active Focus Session (if running) -->
+                                        <Border Grid.Row="1" CornerRadius="5" Padding="10,4" Margin="0,0,0,8"
+                                                Background="{DynamicResource SurfacePillBrush}"
+                                                BorderBrush="{DynamicResource AccentBlueBrush}" BorderThickness="1"
+                                                HorizontalAlignment="Left"
+                                                Visibility="{Binding IsSessionRunning, Converter={StaticResource BoolToVis}}">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Path Data="{StaticResource IconClock}" Fill="{DynamicResource AccentBlueBrush}"
+                                                      Stretch="Uniform" Width="12" Height="12" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="Active session: " FontSize="12" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextLightBrush}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding SessionRemainingFormatted}" FontSize="12" FontWeight="Bold"
+                                                           Foreground="{DynamicResource AccentBlueBrush}" VerticalAlignment="Center" />
+                                                <TextBlock Text=" remaining" FontSize="12"
+                                                           Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Line 2: Proportional Metadata Columns & Actions -->
+                                        <Grid Grid.Row="2" Margin="0,4,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <!-- Col 0: Schedule / Frequency -->
+                                                <ColumnDefinition Width="1.5*" />
+                                                <!-- Col 1: Apps & Sites Summary -->
+                                                <ColumnDefinition Width="1.5*" />
+                                                <!-- Col 2: Lock Status -->
+                                                <ColumnDefinition Width="1.1*" />
+                                                <!-- Col 3: Action Buttons -->
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Col 0: Schedule status (Click opens Schedule tab) -->
+                                            <Button Grid.Column="0"
+                                                    Command="{Binding DataContext.OpenScheduleTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource FlatLockLabelButtonStyle}"
+                                                    ToolTip="Click to edit schedule">
+                                                <TextBlock Text="{Binding ScheduleColText}" FontSize="12"
+                                                           Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
+                                            </Button>
+
+                                            <!-- Col 1: Apps & Sites Flat Text Buttons -->
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <!-- Apps button -->
+                                                <Button Command="{Binding DataContext.OpenAppsTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource FlatLockLabelButtonStyle}"
+                                                        Margin="0,0,12,0"
+                                                        ToolTip="Click to edit applications">
+                                                    <TextBlock Text="{Binding AppsBadgeText}" FontSize="12"
+                                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
+                                                </Button>
+
+                                                <!-- Sites button -->
+                                                <Button Command="{Binding DataContext.OpenSitesTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource FlatLockLabelButtonStyle}"
+                                                        Margin="0,0,12,0"
+                                                        ToolTip="Click to edit websites">
+                                                    <TextBlock Text="{Binding SitesBadgeText}" FontSize="12"
+                                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
+                                                </Button>
+
+                                                <!-- Exceptions button (if any) -->
+                                                <Button Command="{Binding DataContext.OpenSitesTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource FlatLockLabelButtonStyle}"
+                                                        Visibility="{Binding HasExceptions, Converter={StaticResource BoolToVis}}"
+                                                        ToolTip="Click to edit website exceptions">
+                                                    <TextBlock Text="{Binding ExceptionsBadgeText}" FontSize="12"
+                                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
+                                                </Button>
+                                            </StackPanel>
+
+                                            <!-- Col 2: Lock Status (Click opens Lock Protection tab, constrained to text width) -->
+                                            <Button Grid.Column="2" HorizontalAlignment="Left"
+                                                    Command="{Binding DataContext.OpenLockTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource FlatLockLabelButtonStyle}"
+                                                    ToolTip="Click to open Lock Protection">
+                                                <TextBlock Text="{Binding LockColText}" FontSize="12"
+                                                           Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
+                                            </Button>
+
+                                            <!-- Col 3: Actions (Stop, Edit, Delete) -->
+                                            <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                <!-- Stop button (when session active) -->
+                                                <Button Content="Stop"
+                                                        Command="{Binding DataContext.StopSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        Style="{StaticResource DangerButton}"
+                                                        Padding="12,3" FontSize="11" Margin="0,0,6,0"
+                                                        Visibility="{Binding IsSessionRunning, Converter={StaticResource BoolToVis}}" />
+
+                                                <!-- Edit button -->
+                                                <Button Content="Edit"
+                                                        Command="{Binding DataContext.EditBlockCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding CanEdit}"
+                                                        Style="{StaticResource CardActionButton}" Margin="0,0,6,0" />
+
+                                                <!-- Delete button -->
+                                                <Button Command="{Binding DataContext.DeleteBlockCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource IconButton}" Width="26" Height="26" Padding="6"
+                                                        ToolTip="Delete block" VerticalAlignment="Center">
+                                                    <Path Data="{StaticResource IconTrash}" Fill="{DynamicResource TextDimBrush}"
+                                                          Stretch="Uniform" Width="11" Height="11" />
+                                                </Button>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- 2. IN-WINDOW SETTINGS VIEW -->
+            <ScrollViewer Visibility="{Binding IsSettingsViewActive, Converter={StaticResource BoolToVis}}"
+                          Background="{DynamicResource BgDarkBrush}" VerticalScrollBarVisibility="Auto">
+                <StackPanel MaxWidth="920" Margin="20,20,20,24">
+                    <!-- Settings Header Row -->
+                    <Grid Margin="0,0,0,22">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,4" />
+                            <TextBlock Text="Personalize theme appearance, interface density, and time display format."
+                                       FontSize="12" Foreground="{DynamicResource TextMutedBrush}" />
+                        </StackPanel>
+
+                        <Button Grid.Column="1" Command="{Binding BackToBlocksCommand}"
+                                Style="{StaticResource SecondaryButton}"
+                                Padding="14,6" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="←" FontWeight="Bold" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="#FFFFFF" />
+                                <TextBlock Text="Back to Blocks" VerticalAlignment="Center" Foreground="#FFFFFF" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <!-- CATEGORY 1: PERSONALISATION -->
+                    <TextBlock Text="PERSONALISATION" FontWeight="Bold" FontSize="11"
+                               Foreground="{DynamicResource TextMutedBrush}" Margin="2,0,0,10" />
+
+                    <!-- Design Theme Switcher -->
+                    <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,14">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Design Theme" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Switch between the Obsidian aesthetic and the original Classic look."
+                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
+                                </StackPanel>
+
+                                <Button Grid.Column="1" Content="{Binding DesignThemeButtonText}"
+                                        Command="{Binding SwitchDesignThemeCommand}"
+                                        Style="{StaticResource PrimaryButton}"
+                                        Padding="18,8" FontSize="12" FontWeight="SemiBold"
+                                        VerticalAlignment="Center" />
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Content="✨ Obsidian" IsChecked="{Binding IsDesignObsidian}"
+                                             Margin="0,0,24,0" GroupName="DesignThemeGroup" />
+                                <RadioButton Content="🏛️ Classic (Original Look)" IsChecked="{Binding IsDesignClassic}"
+                                             GroupName="DesignThemeGroup" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Browser Extension Theme Switcher -->
+                    <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,14">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,14">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Browser Extension Theme" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Personalize the appearance theme for the Sankalpa browser extension popup."
+                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <WrapPanel Orientation="Horizontal">
+                                <RadioButton Content="🌙 Current theme (Slate)" IsChecked="{Binding IsExtensionThemeCurrent, Mode=TwoWay}"
+                                             Margin="0,0,24,6" GroupName="ExtensionThemeGroup" FontWeight="SemiBold" />
+                                <RadioButton Content="⬛ Deep black (True black)" IsChecked="{Binding IsExtensionThemeDeepBlack, Mode=TwoWay}"
+                                             Margin="0,0,24,6" GroupName="ExtensionThemeGroup" FontWeight="SemiBold" />
+                                <RadioButton Content="⬜ Minimal white (Clean light)" IsChecked="{Binding IsExtensionThemeMinimalWhite, Mode=TwoWay}"
+                                             GroupName="ExtensionThemeGroup" FontWeight="SemiBold" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,22">
+                        <StackPanel>
+                            <!-- Theme Mode -->
+                            <Grid Margin="0,0,0,18">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                                    <TextBlock Text="Theme Mode" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Choose between restful dark graphite and crisp, high-contrast light canvas."
+                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
+                                </StackPanel>
+
+                                <Grid Grid.Row="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="220" />
+                                        <ColumnDefinition Width="16" />
+                                        <ColumnDefinition Width="220" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <RadioButton Grid.Column="0" GroupName="SettingsThemeGroup"
+                                                 IsChecked="{Binding IsThemeDark, Mode=TwoWay}">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Path Data="{StaticResource IconMoon}" Fill="{DynamicResource TextLightBrush}"
+                                                  Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="Dark (Zinc/Slate)" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <RadioButton Grid.Column="2" GroupName="SettingsThemeGroup"
+                                                 IsChecked="{Binding IsThemeLight, Mode=TwoWay}">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Path Data="{StaticResource IconSun}" Fill="{DynamicResource WarningAmberBrush}"
+                                                  Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="Light (Crisp)" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                </Grid>
+                            </Grid>
+
+                            <!-- Divider -->
+                            <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,0,0,18" />
+
+                            <!-- Accent Color -->
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                                    <TextBlock Text="Accent Color" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Highlight color for primary buttons, switches, and active indicators."
+                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
+                                </StackPanel>
+
+                                <WrapPanel Grid.Row="1" Orientation="Horizontal">
+                                    <!-- Emerald -->
+                                    <RadioButton GroupName="SettingsAccentGroup" IsChecked="{Binding IsAccentEmerald, Mode=TwoWay}"
+                                                 Margin="0,0,24,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Width="16" Height="16" CornerRadius="8" Background="#229B62" Margin="0,0,8,0" />
+                                            <TextBlock Text="Emerald" FontWeight="Medium" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <!-- Indigo -->
+                                    <RadioButton GroupName="SettingsAccentGroup" IsChecked="{Binding IsAccentIndigo, Mode=TwoWay}"
+                                                 Margin="0,0,24,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Width="16" Height="16" CornerRadius="8" Background="#4F46E5" Margin="0,0,8,0" />
+                                            <TextBlock Text="Indigo" FontWeight="Medium" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <!-- Violet -->
+                                    <RadioButton GroupName="SettingsAccentGroup" IsChecked="{Binding IsAccentViolet, Mode=TwoWay}"
+                                                 Margin="0,0,24,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Width="16" Height="16" CornerRadius="8" Background="#7C3AED" Margin="0,0,8,0" />
+                                            <TextBlock Text="Violet" FontWeight="Medium" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <!-- Amber -->
+                                    <RadioButton GroupName="SettingsAccentGroup" IsChecked="{Binding IsAccentAmber, Mode=TwoWay}"
+                                                 Margin="0,0,24,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Width="16" Height="16" CornerRadius="8" Background="#D97706" Margin="0,0,8,0" />
+                                            <TextBlock Text="Amber" FontWeight="Medium" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <!-- Rose -->
+                                    <RadioButton GroupName="SettingsAccentGroup" IsChecked="{Binding IsAccentRose, Mode=TwoWay}"
+                                                 Margin="0,0,24,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Width="16" Height="16" CornerRadius="8" Background="#E11D48" Margin="0,0,8,0" />
+                                            <TextBlock Text="Rose" FontWeight="Medium" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <!-- Slate -->
+                                    <RadioButton GroupName="SettingsAccentGroup" IsChecked="{Binding IsAccentSlate, Mode=TwoWay}"
+                                                 Margin="0,0,24,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Width="16" Height="16" CornerRadius="8" Background="#475569" Margin="0,0,8,0" />
+                                            <TextBlock Text="Slate" FontWeight="Medium" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                </WrapPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- CATEGORY 2: INTERFACE -->
+                    <TextBlock Text="INTERFACE" FontWeight="Bold" FontSize="11"
+                               Foreground="{DynamicResource TextMutedBrush}" Margin="2,0,0,10" />
+
+                    <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,24">
+                        <StackPanel>
+                            <!-- Card Density -->
+                            <Grid Margin="0,0,0,18">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                                    <TextBlock Text="Card Density" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Adjust spacing and vertical height of block cards on your dashboard."
+                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
+                                </StackPanel>
+
+                                <Grid Grid.Row="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="220" />
+                                        <ColumnDefinition Width="16" />
+                                        <ColumnDefinition Width="220" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <RadioButton Grid.Column="0" GroupName="SettingsDensityGroup"
+                                                 IsChecked="{Binding IsDensityComfortable, Mode=TwoWay}"
+                                                 Content="Comfortable (Spacious)" FontWeight="SemiBold" />
+
+                                    <RadioButton Grid.Column="2" GroupName="SettingsDensityGroup"
+                                                 IsChecked="{Binding IsDensityCompact, Mode=TwoWay}"
+                                                 Content="Compact (High density)" FontWeight="SemiBold" />
+                                </Grid>
+                            </Grid>
+
+                            <!-- Divider -->
+                            <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,0,0,18" />
+
+                            <!-- Time Format -->
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                                    <TextBlock Text="Time Display Format" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Choose how times are formatted across schedules, countdowns, and active block windows."
+                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
+                                </StackPanel>
+
+                                <Grid Grid.Row="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="220" />
+                                        <ColumnDefinition Width="16" />
+                                        <ColumnDefinition Width="220" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <RadioButton Grid.Column="0" GroupName="SettingsTimeGroup"
+                                                 IsChecked="{Binding IsTimeFormat12h, Mode=TwoWay}">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="12-Hour" FontWeight="SemiBold" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="(e.g. 2:30 PM)" Foreground="{DynamicResource TextDimBrush}" FontSize="12" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <RadioButton Grid.Column="2" GroupName="SettingsTimeGroup"
+                                                 IsChecked="{Binding IsTimeFormat24h, Mode=TwoWay}">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="24-Hour" FontWeight="SemiBold" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="(e.g. 14:30)" Foreground="{DynamicResource TextDimBrush}" FontSize="12" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                </Grid>
+                            </Grid>
+
+                            <!-- Divider -->
+                            <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,18,0,18" />
+
+                            <!-- Navigation & Header Customization -->
+                            <StackPanel>
+                                <TextBlock Text="Navigation &amp; Header Layout" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
+                                <TextBlock Text="Customize top navigation tabs and header controls to your workflow."
+                                           FontSize="12" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,12" />
+
+                                <!-- Option 1: Hide Browser Extension Tab -->
+                                <CheckBox IsChecked="{Binding HideExtensionTab, Mode=TwoWay}"
+                                          Margin="0,0,0,12" VerticalAlignment="Center">
+                                    <StackPanel Margin="6,0,0,0">
+                                        <TextBlock Text="Hide Browser Extension Tab" FontWeight="SemiBold" FontSize="13"
+                                                   Foreground="{DynamicResource TextLightBrush}" />
+                                        <TextBlock Text="Removes the 'Browser Extension' button from the top navigation bar."
+                                                   FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                                    </StackPanel>
+                                </CheckBox>
+
+                                <!-- Option 2: Minimise Settings to Gear Icon -->
+                                <CheckBox IsChecked="{Binding MinimiseSettingsToGear, Mode=TwoWay}"
+                                          Margin="0,0,0,12" VerticalAlignment="Center">
+                                    <StackPanel Margin="6,0,0,0">
+                                        <TextBlock Text="Minimise Settings Menu to Gear Icon" FontWeight="SemiBold" FontSize="13"
+                                                   Foreground="{DynamicResource TextLightBrush}" />
+                                        <TextBlock Text="Hides the main Settings tab and displays a compact gear icon in the top right instead."
+                                                   FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                                    </StackPanel>
+                                </CheckBox>
+
+                                <!-- Option 3: Hide Design Theme Switcher Button -->
+                                <CheckBox IsChecked="{Binding HideDesignThemePill, Mode=TwoWay}"
+                                          Margin="0,0,0,12" VerticalAlignment="Center">
+                                    <StackPanel Margin="6,0,0,0">
+                                        <TextBlock Text="Hide Design Theme Switcher Button" FontWeight="SemiBold" FontSize="13"
+                                                   Foreground="{DynamicResource TextLightBrush}" />
+                                        <TextBlock Text="Removes the 'Classic' / 'Obsidian' theme switch button from the top navigation bar."
+                                                   FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                                    </StackPanel>
+                                </CheckBox>
+
+                                <!-- Option 4: Hide Quick Day/Night Toggle Button -->
+                                <CheckBox IsChecked="{Binding HideQuickThemeToggle, Mode=TwoWay}"
+                                          VerticalAlignment="Center">
+                                    <StackPanel Margin="6,0,0,0">
+                                        <TextBlock Text="Hide Quick Dark/Light Mode Button" FontWeight="SemiBold" FontSize="13"
+                                                   Foreground="{DynamicResource TextLightBrush}" />
+                                        <TextBlock Text="Removes the sun/moon day-night toggle icon from the top navigation bar."
+                                                   FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                                    </StackPanel>
+                                </CheckBox>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- CATEGORY 3: SECURE DNS SHIELD & LOCK -->
+                    <TextBlock Text="DNS SHIELD &amp; CONTENT FILTER" FontWeight="Bold" FontSize="11"
+                               Foreground="{DynamicResource TextMutedBrush}" Margin="2,0,0,10" />
+
+                    <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,24">
+                        <StackPanel>
+                            <!-- Header with Toggle and Lock Indicator -->
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,4">
+                                        <Path Data="{StaticResource IconShield}" Fill="{DynamicResource AccentPrimaryBrush}"
+                                              Width="14" Height="14" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="Secure DNS Protection" FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextLightBrush}" VerticalAlignment="Center" />
+
+                                        <!-- Locked Indicator Badge -->
+                                        <Border CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                Background="{DynamicResource SurfaceHighlightBrush}"
+                                                BorderBrush="{DynamicResource WarningAmberBrush}" BorderThickness="1"
+                                                Visibility="{Binding IsDnsLocked, Converter={StaticResource BoolToVis}}">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="🔒 Locked" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource WarningAmberBrush}" />
+                                                <TextBlock Text="{Binding DnsLockRemainingFormatted, StringFormat=' ({0})'}" FontSize="11"
+                                                           Foreground="{DynamicResource TextLightBrush}" Margin="4,0,0,0"
+                                                           Visibility="{Binding DnsLockRemainingFormatted, Converter={StaticResource StringNotEmptyToVis}}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="Route Windows network traffic through filtered DNS servers to enforce adult/malware protection at the OS level."
+                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+
+                                <!-- On/Off Toggle -->
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <CheckBox x:Name="DnsToggleSwitch"
+                                              IsChecked="{Binding IsDnsEnabled, Mode=OneWay}"
+                                              Click="DnsToggleSwitch_Click"
+                                              IsEnabled="{Binding CanEditDns}"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              ToolTip="Toggle DNS Protection"
+                                              VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Divider -->
+                            <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,0,0,16" />
+
+                            <!-- Presets Selection -->
+                            <StackPanel Margin="0,0,0,16" IsEnabled="{Binding CanEditDns}">
+                                <TextBlock Text="Resolver Preset" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,8" />
+
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Cloudflare Family -->
+                                    <RadioButton Grid.Row="0" Grid.Column="0" GroupName="DnsPresetGroup" Margin="0,0,8,10"
+                                                 IsChecked="{Binding IsPresetCloudflare, Mode=TwoWay}">
+                                        <StackPanel>
+                                            <TextBlock Text="Cloudflare Family" FontWeight="SemiBold" Foreground="{DynamicResource TextLightBrush}" />
+                                            <TextBlock Text="1.1.1.3 (Malware &amp; Adult filter)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <!-- CleanBrowsing -->
+                                    <RadioButton Grid.Row="0" Grid.Column="1" GroupName="DnsPresetGroup" Margin="0,0,0,10"
+                                                 IsChecked="{Binding IsPresetCleanBrowsing, Mode=TwoWay}">
+                                        <StackPanel>
+                                            <TextBlock Text="CleanBrowsing Family" FontWeight="SemiBold" Foreground="{DynamicResource TextLightBrush}" />
+                                            <TextBlock Text="185.228.168.168 (Strict Family filter)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <!-- AdGuard Family -->
+                                    <RadioButton Grid.Row="1" Grid.Column="0" GroupName="DnsPresetGroup" Margin="0,0,8,6"
+                                                 IsChecked="{Binding IsPresetAdGuard, Mode=TwoWay}">
+                                        <StackPanel>
+                                            <TextBlock Text="AdGuard Family" FontWeight="SemiBold" Foreground="{DynamicResource TextLightBrush}" />
+                                            <TextBlock Text="94.140.14.15 (AdBlock + Adult filter)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <!-- Quad9 -->
+                                    <RadioButton Grid.Row="1" Grid.Column="1" GroupName="DnsPresetGroup" Margin="0,0,0,6"
+                                                 IsChecked="{Binding IsPresetQuad9, Mode=TwoWay}">
+                                        <StackPanel>
+                                            <TextBlock Text="Quad9 Threat Protection" FontWeight="SemiBold" Foreground="{DynamicResource TextLightBrush}" />
+                                            <TextBlock Text="9.9.9.9 (Malware &amp; Phishing filter)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                </Grid>
+
+                                <!-- Custom Preset Option -->
+                                <RadioButton GroupName="DnsPresetGroup" Margin="0,8,0,0"
+                                             IsChecked="{Binding IsPresetCustom, Mode=TwoWay}">
+                                    <TextBlock Text="Custom DNS Resolvers" FontWeight="SemiBold" Foreground="{DynamicResource TextLightBrush}" />
+                                </RadioButton>
+                            </StackPanel>
+
+                            <!-- Custom DNS Inputs (visible when Custom is selected) -->
+                            <Border Background="{DynamicResource SurfacePillBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,16"
+                                    Visibility="{Binding IsCustomDns, Converter={StaticResource BoolToVis}}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="Primary DNS (IPv4)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,4" />
+                                        <TextBox Text="{Binding PrimaryDns, UpdateSourceTrigger=PropertyChanged}"
+                                                 IsEnabled="{Binding CanEditDns}" Height="32" Padding="8,4"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Disabled" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Secondary DNS (Optional)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,4" />
+                                        <TextBox Text="{Binding SecondaryDns, UpdateSourceTrigger=PropertyChanged}"
+                                                 IsEnabled="{Binding CanEditDns}" Height="32" Padding="8,4"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Disabled" />
+                                    </StackPanel>
+
+                                    <Button Grid.Column="4" Content="Apply DNS"
+                                            Command="{Binding SaveDnsSettingsCommand}"
+                                            IsEnabled="{Binding CanEditDns}"
+                                            Style="{StaticResource SecondaryButton}"
+                                            VerticalAlignment="Bottom" Height="32" Padding="14,0" />
+                                </Grid>
+                            </Border>
+
+                            <!-- Divider -->
+                            <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,0,0,16" />
+
+                            <!-- Lock Controls -->
+                            <StackPanel>
+                                <!-- UNLOCKED STATE: Configuration for Locking -->
+                                <StackPanel Visibility="{Binding IsDnsLocked, Converter={StaticResource InvBoolToVis}}">
+                                    <TextBlock Text="Enforce &amp; Lock DNS" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,4" />
+                                    <TextBlock Text="Permanently lock DNS protection for a set duration or with a typing challenge. During a permanent lock, settings cannot be disabled or bypassed until time expires."
+                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,12" TextWrapping="Wrap" />
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                        <RadioButton Content="Permanent Duration Lock" GroupName="DnsLockModeGroup"
+                                                     IsChecked="{Binding IsDnsLockTimer, Mode=TwoWay}"
+                                                     FontWeight="SemiBold" Margin="0,0,24,0" />
+                                        <RadioButton Content="64-Char Typing Challenge" GroupName="DnsLockModeGroup"
+                                                     IsChecked="{Binding IsDnsLockChallenge, Mode=TwoWay}"
+                                                     FontWeight="SemiBold" />
+                                    </StackPanel>
+
+                                    <!-- Duration Selector if Timer Lock -->
+                                    <StackPanel Visibility="{Binding IsDnsLockTimer, Converter={StaticResource BoolToVis}}" Margin="0,0,0,12">
+                                        <TextBlock Text="Quick Presets" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,6" />
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button Grid.Column="0" Content="1 hour" Style="{StaticResource SecondaryButton}"
+                                                    Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="1h"
+                                                    Padding="0,5" FontSize="11" />
+                                            <Button Grid.Column="2" Content="4 hours" Style="{StaticResource SecondaryButton}"
+                                                    Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="4h"
+                                                    Padding="0,5" FontSize="11" />
+                                            <Button Grid.Column="4" Content="1 day" Style="{StaticResource SecondaryButton}"
+                                                    Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="1d"
+                                                    Padding="0,5" FontSize="11" />
+                                            <Button Grid.Column="6" Content="3 days" Style="{StaticResource SecondaryButton}"
+                                                    Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="3d"
+                                                    Padding="0,5" FontSize="11" />
+                                        </Grid>
+                                        <Grid Margin="0,0,0,12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button Grid.Column="0" Content="1 week" Style="{StaticResource SecondaryButton}"
+                                                    Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="1w"
+                                                    Padding="0,5" FontSize="11" />
+                                            <Button Grid.Column="2" Content="1 month" Style="{StaticResource SecondaryButton}"
+                                                    Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="1m"
+                                                    Padding="0,5" FontSize="11" />
+                                            <Button Grid.Column="4" Content="3 months" Style="{StaticResource SecondaryButton}"
+                                                    Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="3m"
+                                                    Padding="0,5" FontSize="11" />
+                                            <Button Grid.Column="6" Content="1 year" Style="{StaticResource SecondaryButton}"
+                                                    Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="1y"
+                                                    Padding="0,5" FontSize="11" />
+                                        </Grid>
+
+                                        <TextBlock Text="Custom Duration" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,6" />
+                                        <Grid Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="8" />
+                                                <ColumnDefinition Width="140" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Text="{Binding DnsCustomDurationInput, UpdateSourceTrigger=PropertyChanged}"
+                                                     Height="32" VerticalContentAlignment="Center"
+                                                     Padding="10,4" FontSize="12"
+                                                     ScrollViewer.VerticalScrollBarVisibility="Disabled" />
+                                            <ComboBox Grid.Column="2" SelectedIndex="{Binding DnsCustomDurationUnitIndex, Mode=TwoWay}"
+                                                      Height="32" FontSize="12">
+                                                <ComboBoxItem Content="Minutes" />
+                                                <ComboBoxItem Content="Hours" />
+                                                <ComboBoxItem Content="Days" />
+                                                <ComboBoxItem Content="Weeks" />
+                                                <ComboBoxItem Content="Months (30d)" />
+                                                <ComboBoxItem Content="Years (365d)" />
+                                            </ComboBox>
+                                        </Grid>
+
+                                        <TextBlock Text="🔒 Permanent locks cannot be cancelled or bypassed early under any circumstances until the timer completes."
+                                                   FontSize="11" Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,4" />
+                                    </StackPanel>
+
+                                    <!-- Challenge info if Challenge Lock -->
+                                    <TextBlock Text="💡 When locked via typing challenge, unlocking requires typing a randomized 64-character string without errors."
+                                               FontSize="11" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,12" TextWrapping="Wrap"
+                                               Visibility="{Binding IsDnsLockChallenge, Converter={StaticResource BoolToVis}}" />
+
+                                    <!-- UNLOCKED STATE ACTION BUTTON -->
+                                    <Button Content="🔒 Permanently Lock DNS"
+                                            Command="{Binding LockDnsCommand}"
+                                            Style="{StaticResource PrimaryButton}"
+                                            HorizontalAlignment="Right" Padding="20,8" Margin="0,4,0,0" />
+                                </StackPanel>
+
+                                <!-- LOCKED STATE: Status and Unlock Button -->
+                                <Grid Visibility="{Binding IsDnsLocked, Converter={StaticResource BoolToVis}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <TextBlock Text="🔒 DNS Protection is Permanently Locked" FontSize="13" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource WarningAmberBrush}" VerticalAlignment="Center" />
+                                            <Border CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                    Background="{DynamicResource SurfaceHighlightBrush}"
+                                                    BorderBrush="{DynamicResource WarningAmberBrush}" BorderThickness="1"
+                                                    Visibility="{Binding DnsLockRemainingFormatted, Converter={StaticResource StringNotEmptyToVis}}">
+                                                <TextBlock Text="{Binding DnsLockRemainingFormatted}" FontSize="11" FontWeight="Bold"
+                                                           Foreground="{DynamicResource TextLightBrush}" />
+                                            </Border>
+                                        </StackPanel>
+
+                                        <TextBlock Text="{Binding DnsLockedUntilLocalFormatted, StringFormat='Locked until: {0}'}"
+                                                   FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AccentPrimaryBrush}"
+                                                   Margin="0,0,0,4"
+                                                   Visibility="{Binding DnsLockedUntilLocalFormatted, Converter={StaticResource StringNotEmptyToVis}}" />
+
+                                        <TextBlock Text="DNS servers cannot be changed, disabled, or bypassed. The service background watchdog actively restores these settings if modified. Early unlock is not permitted."
+                                                   FontSize="12" Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <Button Grid.Column="1" Content="Unlock DNS"
+                                            Command="{Binding UnlockDnsCommand}"
+                                            Style="{StaticResource SecondaryButton}"
+                                            VerticalAlignment="Center" Padding="18,8" />
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- DNS Status Feedback Message -->
+                            <TextBlock Text="{Binding DnsMessage}" FontSize="12" Foreground="{DynamicResource AccentPrimaryBrush}"
+                                       Margin="0,10,0,0" TextWrapping="Wrap"
+                                       Visibility="{Binding DnsMessage, Converter={StaticResource StringNotEmptyToVis}}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ROW 3: SLIM STATUS BAR (Calm, Unified Typography) -->
+        <Border Grid.Row="3" Background="{DynamicResource SurfacePillBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
+                BorderThickness="0,1,0,0" Padding="20,7">
+            <Grid MaxWidth="920">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Service Status -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="7" Height="7" Margin="0,0,6,0">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{DynamicResource SuccessGreenBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsServiceConnected}" Value="False">
+                                        <Setter Property="Fill" Value="{DynamicResource DangerRedBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Text="Service: " FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                    <TextBlock FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextLightBrush}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="Running" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsServiceConnected}" Value="False">
+                                        <Setter Property="Text" Value="Stopped" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- Admin Rights -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Admin Rights: " FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                    <TextBlock FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextLightBrush}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="Elevated" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsServiceElevated}" Value="False">
+                                        <Setter Property="Text" Value="Standard" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- Website Blocking -->
+                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="7" Height="7" Margin="0,0,6,0">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{DynamicResource TextDimBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsWebsitesBlocking}" Value="True">
+                                        <Setter Property="Fill" Value="{DynamicResource SuccessGreenBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding HostsStatusDisplay}" Value="Websites: error">
+                                        <Setter Property="Fill" Value="{DynamicResource DangerRedBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Text="{Binding HostsStatusDisplay}" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextLightBrush}" />
+                </StackPanel>
+
+                <!-- Extension Status -->
+                <StackPanel Grid.Column="6" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="7" Height="7" Margin="0,0,6,0">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{DynamicResource TextDimBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsExtensionConnected}" Value="True">
+                                        <Setter Property="Fill" Value="{DynamicResource SuccessGreenBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ExtensionStatusDisplay}" Value="Extension: error">
+                                        <Setter Property="Fill" Value="{DynamicResource DangerRedBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Text="{Binding ExtensionStatusDisplay}" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextLightBrush}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

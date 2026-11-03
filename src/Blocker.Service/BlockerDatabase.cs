@@ -1,0 +1,884 @@
+using System.Globalization;
+using System.Text.Json;
+using Blocker.Core;
+using Microsoft.Data.Sqlite;
+
+namespace Blocker.Service;
+
+public class BlockerDatabase : IBlockStore
+{
+    private readonly string _connectionString;
+    private readonly string _dbPath;
+    private readonly HostsFileManager _hostsManager;
+
+    private readonly object _cacheLock = new();
+    private List<Profile>? _cachedProfiles;
+    private DnsConfig? _cachedDnsConfig;
+    private BlockSession? _cachedActiveSession;
+    private bool _hasLoadedActiveSession;
+
+    public void InvalidateCache()
+    {
+        lock (_cacheLock)
+        {
+            _cachedProfiles = null;
+            _cachedDnsConfig = null;
+            _cachedActiveSession = null;
+            _hasLoadedActiveSession = false;
+        }
+    }
+
+    public bool ServiceElevated { get; set; } = true;
+    public bool HostsBlockingOk { get; set; } = true;
+    public HostsState HostsState { get; set; } = HostsState.Idle;
+    public int HostsDomainCount { get; set; }
+    public string? HostsLastError { get; set; }
+    public HostsFileManager HostsManager => _hostsManager;
+
+    public BlockerDatabase(string? customDbPath = null, HostsFileManager? customHostsManager = null)
+    {
+        _hostsManager = customHostsManager ?? new HostsFileManager();
+
+        if (string.IsNullOrEmpty(customDbPath))
+        {
+            string dataDir;
+            try
+            {
+                dataDir = Path.Combine(AppContext.BaseDirectory, "data");
+                if (!Directory.Exists(dataDir))
+                {
+                    Directory.CreateDirectory(dataDir);
+                }
+            }
+            catch
+            {
+                string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                dataDir = Path.Combine(localApp, "Sankalpa", "data");
+                Directory.CreateDirectory(dataDir);
+            }
+            _dbPath = Path.Combine(dataDir, "blocker.db");
+        }
+        else
+        {
+            _dbPath = customDbPath;
+        }
+
+        _connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = _dbPath,
+            Mode = SqliteOpenMode.ReadWriteCreate
+        }.ToString();
+
+        Initialize();
+    }
+
+    private void Initialize()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "PRAGMA journal_mode=WAL;";
+            cmd.ExecuteNonQuery();
+        }
+
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS Profiles (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                BlockedProcessesJson TEXT NOT NULL,
+                BlockedDomainsJson TEXT NOT NULL DEFAULT '[]',
+                Enabled INTEGER NOT NULL DEFAULT 0,
+                ScheduleJson TEXT NOT NULL DEFAULT '[]',
+                LockMode INTEGER NOT NULL DEFAULT 0,
+                PasswordSalt TEXT NULL,
+                PasswordHash TEXT NULL,
+                WebRulesJson TEXT NOT NULL DEFAULT '[]',
+                BlockAllWebsites INTEGER NOT NULL DEFAULT 0,
+                SystemWide INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS BlockSessions (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ProfileId INTEGER NOT NULL,
+                StartUtc TEXT NOT NULL,
+                DurationSeconds INTEGER NOT NULL,
+                Locked INTEGER NOT NULL,
+                EndedUtc TEXT NULL,
+                FOREIGN KEY(ProfileId) REFERENCES Profiles(Id)
+            );
+
+            CREATE TABLE IF NOT EXISTS DnsSettings (
+                Id INTEGER PRIMARY KEY CHECK (Id = 1),
+                Enabled INTEGER NOT NULL DEFAULT 0,
+                PresetName TEXT NOT NULL DEFAULT 'Cloudflare Family',
+                PrimaryDns TEXT NOT NULL DEFAULT '1.1.1.3',
+                SecondaryDns TEXT NOT NULL DEFAULT '1.0.0.3',
+                PrimaryIpv6 TEXT NOT NULL DEFAULT '2606:4700:4700::1113',
+                SecondaryIpv6 TEXT NOT NULL DEFAULT '2606:4700:4700::1003',
+                Locked INTEGER NOT NULL DEFAULT 0,
+                LockType TEXT NOT NULL DEFAULT 'Challenge',
+                LockDurationSeconds INTEGER NOT NULL DEFAULT 3600,
+                LockedUntilUtc TEXT NULL,
+                UnlockChallenge TEXT NULL,
+                ScheduleJson TEXT NOT NULL DEFAULT '[]'
+            );
+
+            INSERT OR IGNORE INTO DnsSettings (Id) VALUES (1);
+            """;
+            cmd.ExecuteNonQuery();
+        }
+
+        // Schema migration via PRAGMA table_info & PRAGMA user_version
+        EnsureColumnsExist(connection);
+
+        // Seed "Default" profile if missing
+        EnsureDefaultProfile(connection);
+    }
+
+    private void EnsureColumnsExist(SqliteConnection connection)
+    {
+        var existingCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "PRAGMA table_info(Profiles);";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                existingCols.Add(reader.GetString(1));
+            }
+        }
+
+        var requiredCols = new Dictionary<string, string>
+        {
+            ["BlockedDomainsJson"] = "TEXT NOT NULL DEFAULT '[]'",
+            ["Enabled"] = "INTEGER NOT NULL DEFAULT 0",
+            ["ScheduleJson"] = "TEXT NOT NULL DEFAULT '[]'",
+            ["LockMode"] = "INTEGER NOT NULL DEFAULT 0",
+            ["PasswordSalt"] = "TEXT NULL",
+            ["PasswordHash"] = "TEXT NULL",
+            ["WebRulesJson"] = "TEXT NOT NULL DEFAULT '[]'",
+            ["BlockAllWebsites"] = "INTEGER NOT NULL DEFAULT 0",
+            ["SystemWide"] = "INTEGER NOT NULL DEFAULT 0",
+            ["AllowanceJson"] = "TEXT NOT NULL DEFAULT '{}'"
+        };
+
+        foreach (var (colName, colDef) in requiredCols)
+        {
+            if (!existingCols.Contains(colName))
+            {
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = $"ALTER TABLE Profiles ADD COLUMN {colName} {colDef};";
+                alterCmd.ExecuteNonQuery();
+            }
+        }
+
+        // Ensure IPv6 columns in DnsSettings
+        var existingDnsCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var dnsColsCmd = connection.CreateCommand())
+        {
+            dnsColsCmd.CommandText = "PRAGMA table_info(DnsSettings);";
+            using var r = dnsColsCmd.ExecuteReader();
+            while (r.Read())
+            {
+                existingDnsCols.Add(r.GetString(1));
+            }
+        }
+
+        try
+        {
+            if (!existingDnsCols.Contains("PrimaryIpv6"))
+            {
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE DnsSettings ADD COLUMN PrimaryIpv6 TEXT NOT NULL DEFAULT '2606:4700:4700::1113';";
+                alterCmd.ExecuteNonQuery();
+            }
+        }
+        catch { }
+
+        try
+        {
+            if (!existingDnsCols.Contains("SecondaryIpv6"))
+            {
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE DnsSettings ADD COLUMN SecondaryIpv6 TEXT NOT NULL DEFAULT '2606:4700:4700::1003';";
+                alterCmd.ExecuteNonQuery();
+            }
+        }
+        catch { }
+
+        int currentVersion = 0;
+        using (var verCheckCmd = connection.CreateCommand())
+        {
+            verCheckCmd.CommandText = "PRAGMA user_version;";
+            currentVersion = Convert.ToInt32(verCheckCmd.ExecuteScalar() ?? 0);
+        }
+
+        if (currentVersion < 3)
+        {
+            // Migrate existing BlockedDomainsJson into WebRulesJson and derive BlockedDomains
+            using (var selectCmd = connection.CreateCommand())
+            {
+                selectCmd.CommandText = "SELECT Id, BlockedDomainsJson, WebRulesJson FROM Profiles;";
+                var updates = new List<(int id, string webRulesJson, string derivedDomainsJson)>();
+                using (var reader = selectCmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int id = reader.GetInt32(0);
+                        string domJson = reader.GetString(1);
+                        string rulesJson = reader.GetString(2);
+
+                        if ((rulesJson == "[]" || string.IsNullOrWhiteSpace(rulesJson)) && domJson != "[]")
+                        {
+                            var oldDomains = JsonSerializer.Deserialize<List<string>>(domJson) ?? new List<string>();
+                            var webRules = oldDomains.Select(d => new WebRule { Pattern = d, Allow = false }).ToList();
+                            var derived = WebRuleMatcher.DeriveBlockedDomains(webRules, blockAllWebsites: false);
+                            updates.Add((id, JsonSerializer.Serialize(webRules), JsonSerializer.Serialize(derived)));
+                        }
+                    }
+                }
+
+                foreach (var (id, webRulesJson, derivedDomainsJson) in updates)
+                {
+                    using var updateCmd = connection.CreateCommand();
+                    updateCmd.CommandText = "UPDATE Profiles SET WebRulesJson = @rules, BlockedDomainsJson = @doms WHERE Id = @id;";
+                    updateCmd.Parameters.AddWithValue("@rules", webRulesJson);
+                    updateCmd.Parameters.AddWithValue("@doms", derivedDomainsJson);
+                    updateCmd.Parameters.AddWithValue("@id", id);
+                    updateCmd.ExecuteNonQuery();
+                }
+            }
+
+            using (var verCmd = connection.CreateCommand())
+            {
+                verCmd.CommandText = "PRAGMA user_version = 3;";
+                verCmd.ExecuteNonQuery();
+            }
+        }
+
+        if (currentVersion < 4)
+        {
+            using (var updateCmd = connection.CreateCommand())
+            {
+                updateCmd.CommandText = "UPDATE Profiles SET SystemWide = 0 WHERE SystemWide IS NULL;";
+                updateCmd.ExecuteNonQuery();
+            }
+
+            using (var verCmd = connection.CreateCommand())
+            {
+                verCmd.CommandText = "PRAGMA user_version = 4;";
+                verCmd.ExecuteNonQuery();
+            }
+        }
+    }
+
+    private void EnsureDefaultProfile(SqliteConnection connection)
+    {
+        using var checkCmd = connection.CreateCommand();
+        checkCmd.CommandText = "SELECT COUNT(*) FROM Profiles;";
+        long count = (long)(checkCmd.ExecuteScalar() ?? 0L);
+
+        if (count == 0)
+        {
+            List<string> processes = ["notepad.exe"];
+            string configPath = Path.Combine(AppContext.BaseDirectory, "config.json");
+            if (File.Exists(configPath))
+            {
+                try
+                {
+                    string json = File.ReadAllText(configPath);
+                    if (BlockConfigParser.TryParse(json, out var config, out _))
+                    {
+                        processes = config!.BlockedProcesses;
+                    }
+                }
+                catch { }
+            }
+
+            using var insertCmd = connection.CreateCommand();
+            insertCmd.CommandText = """
+            INSERT INTO Profiles (Name, BlockedProcessesJson, BlockedDomainsJson, SystemWide)
+            VALUES (@name, @procJson, @domJson, 0);
+            """;
+            insertCmd.Parameters.AddWithValue("@name", "Default");
+            insertCmd.Parameters.AddWithValue("@procJson", JsonSerializer.Serialize(processes));
+            insertCmd.Parameters.AddWithValue("@domJson", JsonSerializer.Serialize(new List<string>()));
+            insertCmd.ExecuteNonQuery();
+        }
+    }
+
+    private static Profile MapProfile(SqliteDataReader reader)
+    {
+        return new Profile
+        {
+            Id = reader.GetInt32(0),
+            Name = reader.GetString(1),
+            BlockedProcesses = JsonSerializer.Deserialize<List<string>>(reader.GetString(2)) ?? new List<string>(),
+            BlockedDomains = JsonSerializer.Deserialize<List<string>>(reader.GetString(3)) ?? new List<string>(),
+            Enabled = reader.GetInt32(4) != 0,
+            Schedule = JsonSerializer.Deserialize<List<ScheduleRule>>(reader.GetString(5)) ?? new List<ScheduleRule>(),
+            LockMode = (LockMode)reader.GetInt32(6),
+            PasswordSalt = reader.IsDBNull(7) ? null : reader.GetString(7),
+            PasswordHash = reader.IsDBNull(8) ? null : reader.GetString(8),
+            WebRules = JsonSerializer.Deserialize<List<WebRule>>(reader.GetString(9)) ?? new List<WebRule>(),
+            BlockAllWebsites = reader.GetInt32(10) != 0,
+            SystemWide = reader.GetInt32(11) != 0,
+            Allowance = reader.FieldCount > 12 && !reader.IsDBNull(12)
+                ? JsonSerializer.Deserialize<AllowanceConfig>(reader.GetString(12)) ?? new AllowanceConfig()
+                : new AllowanceConfig()
+        };
+    }
+
+    public Profile? GetProfileByName(string name)
+    {
+        var list = ListProfiles();
+        return list.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public Profile? GetProfileById(int id)
+    {
+        var list = ListProfiles();
+        return list.FirstOrDefault(p => p.Id == id);
+    }
+
+    public List<Profile> ListProfiles()
+    {
+        lock (_cacheLock)
+        {
+            if (_cachedProfiles != null)
+            {
+                return new List<Profile>(_cachedProfiles);
+            }
+        }
+
+        var list = LoadProfilesFromDb();
+        lock (_cacheLock)
+        {
+            _cachedProfiles = list;
+            return new List<Profile>(_cachedProfiles);
+        }
+    }
+
+    private List<Profile> LoadProfilesFromDb()
+    {
+        var list = new List<Profile>();
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT Id, Name, BlockedProcessesJson, BlockedDomainsJson, Enabled, ScheduleJson, LockMode, PasswordSalt, PasswordHash, WebRulesJson, BlockAllWebsites, SystemWide, AllowanceJson FROM Profiles ORDER BY Id ASC;";
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(MapProfile(reader));
+        }
+
+        return list;
+    }
+
+    public Profile SaveProfile(Profile profile)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        // BlockedDomains is derived on save from WebRules
+        profile.BlockedDomains = WebRuleMatcher.DeriveBlockedDomains(profile.WebRules, profile.BlockAllWebsites);
+
+        string procJson = JsonSerializer.Serialize(profile.BlockedProcesses);
+        string domJson = JsonSerializer.Serialize(profile.BlockedDomains);
+        string rulesJson = JsonSerializer.Serialize(profile.WebRules ?? new List<WebRule>());
+        string schedJson = JsonSerializer.Serialize(profile.Schedule ?? new List<ScheduleRule>());
+        string allowanceJson = JsonSerializer.Serialize(profile.Allowance ?? new AllowanceConfig());
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+        INSERT INTO Profiles (Name, BlockedProcessesJson, BlockedDomainsJson, Enabled, ScheduleJson, LockMode, PasswordSalt, PasswordHash, WebRulesJson, BlockAllWebsites, SystemWide, AllowanceJson)
+        VALUES (@name, @procJson, @domJson, @enabled, @schedJson, @lockMode, @salt, @hash, @rulesJson, @blockAll, @systemWide, @allowanceJson)
+        ON CONFLICT(Name) DO UPDATE SET 
+            BlockedProcessesJson = excluded.BlockedProcessesJson,
+            BlockedDomainsJson = excluded.BlockedDomainsJson,
+            Enabled = excluded.Enabled,
+            ScheduleJson = excluded.ScheduleJson,
+            LockMode = excluded.LockMode,
+            PasswordSalt = excluded.PasswordSalt,
+            PasswordHash = excluded.PasswordHash,
+            WebRulesJson = excluded.WebRulesJson,
+            BlockAllWebsites = excluded.BlockAllWebsites,
+            SystemWide = excluded.SystemWide,
+            AllowanceJson = excluded.AllowanceJson;
+        """;
+        cmd.Parameters.AddWithValue("@name", profile.Name);
+        cmd.Parameters.AddWithValue("@procJson", procJson);
+        cmd.Parameters.AddWithValue("@domJson", domJson);
+        cmd.Parameters.AddWithValue("@enabled", profile.Enabled ? 1 : 0);
+        cmd.Parameters.AddWithValue("@schedJson", schedJson);
+        cmd.Parameters.AddWithValue("@lockMode", (int)profile.LockMode);
+        cmd.Parameters.AddWithValue("@salt", (object?)profile.PasswordSalt ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@hash", (object?)profile.PasswordHash ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@rulesJson", rulesJson);
+        cmd.Parameters.AddWithValue("@blockAll", profile.BlockAllWebsites ? 1 : 0);
+        cmd.Parameters.AddWithValue("@systemWide", profile.SystemWide ? 1 : 0);
+        cmd.Parameters.AddWithValue("@allowanceJson", allowanceJson);
+        cmd.ExecuteNonQuery();
+
+        lock (_cacheLock)
+        {
+            _cachedProfiles = null;
+        }
+
+        return GetProfileByName(profile.Name)!;
+    }
+
+    public bool RenameProfile(int id, string newName)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE Profiles SET Name = @name WHERE Id = @id;";
+        cmd.Parameters.AddWithValue("@name", newName);
+        cmd.Parameters.AddWithValue("@id", id);
+        int rows = cmd.ExecuteNonQuery();
+
+        lock (_cacheLock)
+        {
+            _cachedProfiles = null;
+        }
+
+        return rows > 0;
+    }
+
+    public Profile SaveProfile(string name, List<string> blockedProcesses, List<string> blockedDomains)
+    {
+        var existing = GetProfileByName(name);
+        var profile = existing ?? new Profile { Name = name };
+        profile.BlockedProcesses = blockedProcesses;
+        profile.BlockedDomains = blockedDomains;
+        if (profile.WebRules.Count == 0 && blockedDomains.Count > 0)
+        {
+            profile.WebRules = blockedDomains.Select(d => new WebRule { Pattern = d, Allow = false }).ToList();
+        }
+        return SaveProfile(profile);
+    }
+
+    public void DisableAllProfiles()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE Profiles SET Enabled = 0;";
+        cmd.ExecuteNonQuery();
+
+        lock (_cacheLock)
+        {
+            _cachedProfiles = null;
+        }
+    }
+
+    public bool DeleteProfileByName(string name)
+    {
+        var profile = GetProfileByName(name);
+        if (profile == null) return false;
+        return DeleteProfile(profile.Id);
+    }
+
+    public bool DeleteProfile(int id)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = "DELETE FROM BlockSessions WHERE ProfileId = @id;";
+                cmd.Parameters.AddWithValue("@id", id);
+                cmd.ExecuteNonQuery();
+            }
+
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = "DELETE FROM Profiles WHERE Id = @id;";
+                cmd.Parameters.AddWithValue("@id", id);
+                bool deleted = cmd.ExecuteNonQuery() > 0;
+                transaction.Commit();
+
+                lock (_cacheLock)
+                {
+                    _cachedProfiles = null;
+                    _cachedActiveSession = null;
+                    _hasLoadedActiveSession = false;
+                }
+
+                return deleted;
+            }
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    public BlockSession? GetActiveSession() => GetActiveSession(includeUnendedExpired: false);
+
+    public BlockSession? GetActiveSession(bool includeUnendedExpired)
+    {
+        lock (_cacheLock)
+        {
+            if (_hasLoadedActiveSession)
+            {
+                if (_cachedActiveSession != null)
+                {
+                    if (_cachedActiveSession.IsActive(DateTime.UtcNow))
+                    {
+                        return _cachedActiveSession;
+                    }
+                    if (includeUnendedExpired && _cachedActiveSession.EndedUtc == null)
+                    {
+                        return _cachedActiveSession;
+                    }
+                    _cachedActiveSession = null;
+                }
+                if (!includeUnendedExpired)
+                {
+                    return null;
+                }
+            }
+        }
+
+        var session = LoadUnendedSessionFromDb();
+        lock (_cacheLock)
+        {
+            _cachedActiveSession = session;
+            _hasLoadedActiveSession = true;
+
+            if (session != null && (includeUnendedExpired || session.IsActive(DateTime.UtcNow)))
+            {
+                return session;
+            }
+            return null;
+        }
+    }
+
+    public BlockSession? GetActiveOrUnendedSession() => GetActiveSession(includeUnendedExpired: true);
+
+    private BlockSession? LoadActiveSessionFromDb()
+    {
+        var session = LoadUnendedSessionFromDb();
+        if (session != null && session.IsActive(DateTime.UtcNow))
+        {
+            return session;
+        }
+
+        return null;
+    }
+
+    private BlockSession? LoadUnendedSessionFromDb()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+        SELECT Id, ProfileId, StartUtc, DurationSeconds, Locked, EndedUtc
+        FROM BlockSessions
+        WHERE EndedUtc IS NULL
+        ORDER BY Id DESC
+        LIMIT 1;
+        """;
+
+        using var reader = cmd.ExecuteReader();
+        if (reader.Read())
+        {
+            return new BlockSession
+            {
+                Id = reader.GetInt32(0),
+                ProfileId = reader.GetInt32(1),
+                StartUtc = DateTime.Parse(reader.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                DurationSeconds = reader.GetInt64(3),
+                Locked = reader.GetInt32(4) != 0,
+                EndedUtc = reader.IsDBNull(5) ? null : DateTime.Parse(reader.GetString(5), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+            };
+        }
+
+        return null;
+    }
+
+    public BlockSession? GetSessionById(int id)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT Id, ProfileId, StartUtc, DurationSeconds, Locked, EndedUtc FROM BlockSessions WHERE Id = @id;";
+        cmd.Parameters.AddWithValue("@id", id);
+
+        using var reader = cmd.ExecuteReader();
+        if (reader.Read())
+        {
+            return new BlockSession
+            {
+                Id = reader.GetInt32(0),
+                ProfileId = reader.GetInt32(1),
+                StartUtc = DateTime.Parse(reader.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                DurationSeconds = reader.GetInt64(3),
+                Locked = reader.GetInt32(4) != 0,
+                EndedUtc = reader.IsDBNull(5) ? null : DateTime.Parse(reader.GetString(5), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+            };
+        }
+
+        return null;
+    }
+
+    public BlockSession StartSession(int profileId, long durationSeconds, bool locked)
+    {
+        lock (_cacheLock)
+        {
+            var existingSession = GetActiveSession();
+            if (existingSession != null && existingSession.Locked && existingSession.IsActive(DateTime.UtcNow))
+            {
+                throw new InvalidOperationException("Cannot start session: a locked session is currently active.");
+            }
+
+            EndActiveSessionInternal();
+
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            DateTime nowUtc = DateTime.UtcNow;
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+            INSERT INTO BlockSessions (ProfileId, StartUtc, DurationSeconds, Locked, EndedUtc)
+            VALUES (@profileId, @startUtc, @durationSeconds, @locked, NULL);
+            SELECT last_insert_rowid();
+            """;
+            cmd.Parameters.AddWithValue("@profileId", profileId);
+            cmd.Parameters.AddWithValue("@startUtc", nowUtc.ToString("O"));
+            cmd.Parameters.AddWithValue("@durationSeconds", durationSeconds);
+            cmd.Parameters.AddWithValue("@locked", locked ? 1 : 0);
+
+            long newId = (long)(cmd.ExecuteScalar() ?? 0L);
+
+            var session = new BlockSession
+            {
+                Id = (int)newId,
+                ProfileId = profileId,
+                StartUtc = nowUtc,
+                DurationSeconds = durationSeconds,
+                Locked = locked,
+                EndedUtc = null
+            };
+
+            _cachedActiveSession = session;
+            _hasLoadedActiveSession = true;
+
+            return session;
+        }
+    }
+
+    public void EndActiveSession()
+    {
+        lock (_cacheLock)
+        {
+            EndActiveSessionInternal();
+        }
+    }
+
+    private void EndActiveSessionInternal()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE BlockSessions SET EndedUtc = @endedUtc WHERE EndedUtc IS NULL;";
+        cmd.Parameters.AddWithValue("@endedUtc", DateTime.UtcNow.ToString("O"));
+        cmd.ExecuteNonQuery();
+
+        _cachedActiveSession = null;
+        _hasLoadedActiveSession = true;
+    }
+
+    public void EndSession(int sessionId)
+    {
+        lock (_cacheLock)
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "UPDATE BlockSessions SET EndedUtc = @endedUtc WHERE Id = @id AND EndedUtc IS NULL;";
+            cmd.Parameters.AddWithValue("@endedUtc", DateTime.UtcNow.ToString("O"));
+            cmd.Parameters.AddWithValue("@id", sessionId);
+            cmd.ExecuteNonQuery();
+
+            _cachedActiveSession = null;
+            _hasLoadedActiveSession = true;
+        }
+    }
+
+    public bool IsEmergencyUnlockPresent()
+    {
+        string emergencyFile1 = Path.Combine(AppContext.BaseDirectory, "EMERGENCY_UNLOCK");
+        string emergencyFile2 = Path.Combine(Directory.GetCurrentDirectory(), "EMERGENCY_UNLOCK");
+        return File.Exists(emergencyFile1) || File.Exists(emergencyFile2);
+    }
+
+    public void ConsumeEmergencyUnlock()
+    {
+        string emergencyFile1 = Path.Combine(AppContext.BaseDirectory, "EMERGENCY_UNLOCK");
+        string emergencyFile2 = Path.Combine(Directory.GetCurrentDirectory(), "EMERGENCY_UNLOCK");
+        if (File.Exists(emergencyFile1))
+        {
+            try { File.Delete(emergencyFile1); } catch { }
+        }
+        if (File.Exists(emergencyFile2))
+        {
+            try { File.Delete(emergencyFile2); } catch { }
+        }
+    }
+
+    public bool CleanHosts()
+    {
+        bool success = _hostsManager.RemoveBlock();
+        HostsState = _hostsManager.State;
+        HostsDomainCount = _hostsManager.CurrentDomainCount;
+        HostsBlockingOk = (_hostsManager.State != HostsState.Error);
+        HostsLastError = _hostsManager.LastError;
+        return success;
+    }
+
+    public List<string> GetCurrentHostsDomains()
+    {
+        return _hostsManager.GetBlockedDomainsInFile();
+    }
+
+    private readonly object _eventsLock = new();
+    private readonly List<BlockEvent> _eventRingBuffer = new(50);
+    private long _nextEventId = 1;
+
+    public void RecordBlockEvent(BlockEvent evt)
+    {
+        lock (_eventsLock)
+        {
+            evt.Id = _nextEventId++;
+            if (_eventRingBuffer.Count >= 50)
+            {
+                _eventRingBuffer.RemoveAt(0);
+            }
+            _eventRingBuffer.Add(evt);
+        }
+    }
+
+    public List<BlockEvent> GetBlockEvents(long sinceId)
+    {
+        lock (_eventsLock)
+        {
+            return _eventRingBuffer.Where(e => e.Id > sinceId).ToList();
+        }
+    }
+
+    public FallbackPlanner FallbackPlanner { get; } = new();
+    public FallbackPlanResult? LastFallbackPlan { get; set; }
+
+    public DnsConfig GetDnsConfig()
+    {
+        lock (_cacheLock)
+        {
+            if (_cachedDnsConfig != null)
+            {
+                return _cachedDnsConfig;
+            }
+        }
+
+        var config = LoadDnsConfigFromDb();
+        lock (_cacheLock)
+        {
+            _cachedDnsConfig = config;
+            return _cachedDnsConfig;
+        }
+    }
+
+    private DnsConfig LoadDnsConfigFromDb()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT Enabled, PresetName, PrimaryDns, SecondaryDns, Locked, LockType, LockDurationSeconds, LockedUntilUtc, UnlockChallenge, ScheduleJson, PrimaryIpv6, SecondaryIpv6 FROM DnsSettings WHERE Id = 1;";
+        using var reader = cmd.ExecuteReader();
+        if (reader.Read())
+        {
+            return new DnsConfig
+            {
+                Enabled = reader.GetInt32(0) == 1,
+                PresetName = reader.GetString(1),
+                PrimaryDns = reader.GetString(2),
+                SecondaryDns = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                Locked = reader.GetInt32(4) == 1,
+                LockType = reader.IsDBNull(5) ? "Challenge" : reader.GetString(5),
+                LockDurationSeconds = reader.GetInt64(6),
+                LockedUntilUtc = reader.IsDBNull(7) ? null : DateTime.Parse(reader.GetString(7), null, DateTimeStyles.RoundtripKind),
+                UnlockChallenge = reader.IsDBNull(8) ? null : reader.GetString(8),
+                ScheduleJson = reader.IsDBNull(9) ? "[]" : reader.GetString(9),
+                PrimaryIpv6 = reader.IsDBNull(10) ? "2606:4700:4700::1113" : reader.GetString(10),
+                SecondaryIpv6 = reader.IsDBNull(11) ? "2606:4700:4700::1003" : reader.GetString(11)
+            };
+        }
+
+        return new DnsConfig();
+    }
+
+    public void SaveDnsConfig(DnsConfig config)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+        INSERT INTO DnsSettings (Id, Enabled, PresetName, PrimaryDns, SecondaryDns, PrimaryIpv6, SecondaryIpv6, Locked, LockType, LockDurationSeconds, LockedUntilUtc, UnlockChallenge, ScheduleJson)
+        VALUES (1, $enabled, $preset, $primary, $secondary, $primaryIpv6, $secondaryIpv6, $locked, $lockType, $duration, $lockedUntil, $challenge, $schedule)
+        ON CONFLICT(Id) DO UPDATE SET
+            Enabled = excluded.Enabled,
+            PresetName = excluded.PresetName,
+            PrimaryDns = excluded.PrimaryDns,
+            SecondaryDns = excluded.SecondaryDns,
+            PrimaryIpv6 = excluded.PrimaryIpv6,
+            SecondaryIpv6 = excluded.SecondaryIpv6,
+            Locked = excluded.Locked,
+            LockType = excluded.LockType,
+            LockDurationSeconds = excluded.LockDurationSeconds,
+            LockedUntilUtc = excluded.LockedUntilUtc,
+            UnlockChallenge = excluded.UnlockChallenge,
+            ScheduleJson = excluded.ScheduleJson;
+        """;
+        cmd.Parameters.AddWithValue("$enabled", config.Enabled ? 1 : 0);
+        cmd.Parameters.AddWithValue("$preset", config.PresetName ?? "Cloudflare Family");
+        cmd.Parameters.AddWithValue("$primary", config.PrimaryDns ?? "1.1.1.3");
+        cmd.Parameters.AddWithValue("$secondary", config.SecondaryDns ?? string.Empty);
+        cmd.Parameters.AddWithValue("$primaryIpv6", config.PrimaryIpv6 ?? "2606:4700:4700::1113");
+        cmd.Parameters.AddWithValue("$secondaryIpv6", config.SecondaryIpv6 ?? string.Empty);
+        cmd.Parameters.AddWithValue("$locked", config.Locked ? 1 : 0);
+        cmd.Parameters.AddWithValue("$lockType", config.LockType ?? "Challenge");
+        cmd.Parameters.AddWithValue("$duration", config.LockDurationSeconds);
+        cmd.Parameters.AddWithValue("$lockedUntil", config.LockedUntilUtc.HasValue ? config.LockedUntilUtc.Value.ToString("o") : (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$challenge", config.UnlockChallenge ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$schedule", config.ScheduleJson ?? "[]");
+        cmd.ExecuteNonQuery();
+
+        lock (_cacheLock)
+        {
+            _cachedDnsConfig = config;
+        }
+    }
+}

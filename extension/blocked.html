@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sankalpa Blocker</title>
+  <link rel="stylesheet" href="blocked.css">
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div id="shield-icon" class="shield-icon">🛡️</div>
+      <h1 id="page-title">Site blocked by Blocker</h1>
+    </div>
+
+    <!-- Standard blocked details -->
+    <div id="standard-details" class="details">
+      <div class="row">
+        <span class="label">Blocked URL:</span>
+        <span id="blocked-url" class="value"></span>
+      </div>
+      <div class="row">
+        <span class="label">Matched Rule:</span>
+        <span id="matched-rule" class="value badge"></span>
+      </div>
+      <div class="row">
+        <span class="label">Profile:</span>
+        <span id="profile-name" class="value"></span>
+      </div>
+      <div id="until-row" class="row" style="display:none">
+        <span class="label">Active Until:</span>
+        <span id="active-until" class="value"></span>
+      </div>
+    </div>
+
+    <!-- Incognito setup required details -->
+    <div id="incognito-details" class="details" style="display:none">
+      <div class="row">
+        <span class="label">Action Required:</span>
+        <span class="value" style="color:#F59E0B; font-weight:600;">Enable 'Allow in InPrivate' (or Incognito)</span>
+      </div>
+      <div class="row">
+        <span class="label">Grace Timer:</span>
+        <span id="countdown-val" class="value" style="font-size:22px; font-weight:bold; color:#EF4444;">30 seconds remaining</span>
+      </div>
+      <div class="row">
+        <span class="label">Why this is required:</span>
+        <span class="value" style="font-size:13px; color:#A1A1AA; line-height:1.4;">
+          Sankalpa requires InPrivate access to prevent circumvention. Other websites are temporarily blocked during this 30-second setup window.
+        </span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="open-extensions-btn" class="btn-primary" type="button" style="display:none; margin-right:8px;">Open Extensions Page</button>
+      <button id="try-again-btn" class="btn-primary" type="button">Try again</button>
+    </div>
+  </div>
+
+  <script src="blocked.js"></script>
+</body>
+</html>

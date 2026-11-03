@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sankalpa Blocker</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body data-theme="current">
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="brand">
+        <img src="icon32.png" alt="Sankalpa Logo" class="brand-logo">
+        <div class="brand-text">
+          <h1>Sankalpa</h1>
+          <span class="subtitle">Focus &amp; Tamper Protection</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-open-app" class="header-icon-btn" title="Open Sankalpa Desktop App" aria-label="Open App">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        </button>
+        <button id="btn-theme-cycle" class="header-icon-btn" title="Switch Theme (Current / Deep Black / Minimal White)" aria-label="Switch Theme">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+          </svg>
+        </button>
+        <div id="service-status" class="status-pill status-disconnected">
+          <span class="status-dot"></span>
+          <span id="service-status-text">Connecting...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Current Tab Quick Block Banner -->
+    <div id="current-site-bar" class="site-bar" style="display: none;">
+      <div class="site-info">
+        <span class="site-globe">🌐</span>
+        <span id="current-domain-text" class="site-domain">example.com</span>
+      </div>
+      <button id="btn-block-current" class="btn-primary-action">Block this site</button>
+    </div>
+
+    <!-- Quick Add Input -->
+    <div class="quick-add-section">
+      <div class="quick-add-bar">
+        <input id="quick-add-input" type="text" placeholder="Add domain to block (e.g. reddit.com)..." autocomplete="off" spellcheck="false" />
+        <button id="btn-quick-add" class="btn-add-action">Add</button>
+      </div>
+      <div id="quick-add-status" class="status-inline-msg" style="display: none;"></div>
+    </div>
+
+    <!-- Block Picker Popover / Overlay -->
+    <div id="block-picker-dialog" class="picker-overlay" role="dialog" aria-modal="true" style="display: none;">
+      <div class="picker-card">
+        <div class="picker-header">
+          <span class="picker-title">Add to Block</span>
+          <button id="btn-picker-close" class="picker-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="picker-domain-banner">
+          <span class="picker-domain-label">Domain:</span>
+          <span id="picker-domain-preview" class="picker-domain-value">example.com</span>
+        </div>
+        <div class="picker-subtitle">Select which block to add this domain to:</div>
+        <div id="picker-blocks-list" class="picker-blocks-list">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Named Block Modal Dialog -->
+    <div id="create-block-dialog" class="picker-overlay" role="dialog" aria-modal="true" style="display: none;">
+      <div class="picker-card modal-card">
+        <div class="picker-header">
+          <span id="create-block-title" class="picker-title">Create New Block</span>
+          <button id="btn-create-modal-close" class="picker-close" aria-label="Close">&times;</button>
+        </div>
+        <div id="create-block-domain-hint" class="picker-domain-banner" style="display: none;">
+          <span class="picker-domain-label">Adding domain:</span>
+          <span id="create-block-domain-preview" class="picker-domain-value">example.com</span>
+        </div>
+        <div class="modal-form-group">
+          <label for="create-block-name-input" class="modal-input-label">Block Name</label>
+          <input id="create-block-name-input" type="text" class="modal-input" placeholder="e.g. Social, Focus, News..." autocomplete="off" spellcheck="false" maxlength="40" />
+          <div id="create-block-error" class="modal-error-msg" style="display: none;"></div>
+        </div>
+        <div class="modal-actions">
+          <button id="btn-create-cancel" class="btn-modal-secondary">Cancel</button>
+          <button id="btn-create-submit" class="btn-modal-primary">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Website Blocks Section (Active & Inactive) -->
+    <section class="section blocks-main-section">
+      <div class="section-header">
+        <div class="section-title-wrap">
+          <h2>Website Blocks</h2>
+          <span id="rule-count-badge" class="count-badge">0 rules</span>
+        </div>
+        <button id="btn-create-block" class="btn-create-block-header" title="Create a new block">+ New block</button>
+      </div>
+
+      <!-- Active Blocks Subsection -->
+      <div class="blocks-subsection">
+        <div class="subsection-header">
+          <div class="subsection-title">
+            <span class="status-indicator-dot active-dot"></span>
+            <span>Active Blocks</span>
+          </div>
+          <span id="active-count-badge" class="sub-badge active-sub-badge">0 active</span>
+        </div>
+        <div id="active-profiles-list" class="profiles-container">
+          <div class="empty-state">No website blocks currently active.</div>
+        </div>
+      </div>
+
+      <!-- Inactive Blocks Subsection -->
+      <div class="blocks-subsection">
+        <div class="subsection-header">
+          <div class="subsection-title">
+            <span class="status-indicator-dot inactive-dot"></span>
+            <span>Inactive Blocks</span>
+          </div>
+          <span id="inactive-count-badge" class="sub-badge inactive-sub-badge">0 inactive</span>
+        </div>
+        <div id="inactive-profiles-list" class="profiles-container">
+          <div class="empty-state">No inactive website blocks.</div>
+        </div>
+      </div>
+
+      <!-- Retain hidden profiles-list container for backward compatibility -->
+      <div id="profiles-list" style="display: none;"></div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="popup-footer">
+      <span id="version-label" class="version-text">Version 1.0.0</span>
+      <span id="last-sync-label" class="sync-text">Synced: Just now</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
