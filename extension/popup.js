@@ -166,7 +166,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             ${isLocked ? '<span class="picker-block-tag is-locked">🔒 Locked</span>' : ''}
           </div>
         `;
-        item.addEventListener('click', () => submitAdd(domain, p.id, p.name));
+        item.setAttribute('role', 'button');
+        item.tabIndex = 0;
+        const choose = () => submitAdd(domain, p.id, p.name);
+        item.addEventListener('click', choose);
+        item.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); }
+        });
         pickerBlocksList.appendChild(item);
       }
     }
@@ -175,13 +181,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const newItem = document.createElement('div');
     newItem.className = 'picker-block-item is-new';
     newItem.innerHTML = `<span>+ New block</span>`;
-    newItem.addEventListener('click', () => {
+    newItem.setAttribute('role', 'button');
+    newItem.tabIndex = 0;
+    const startNew = () => {
       closeBlockPicker();
       openCreateBlockModal(domain);
+    };
+    newItem.addEventListener('click', startNew);
+    newItem.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startNew(); }
     });
     pickerBlocksList.appendChild(newItem);
 
     blockPickerDialog.style.display = 'flex';
+    const firstItem = pickerBlocksList.querySelector('.picker-block-item');
+    if (firstItem) setTimeout(() => firstItem.focus(), 50);
   }
 
   function closeBlockPicker() {
@@ -189,6 +203,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   btnPickerClose?.addEventListener('click', closeBlockPicker);
+  // Clicking the dimmed backdrop (not the card) dismisses the picker
+  blockPickerDialog?.addEventListener('click', (e) => {
+    if (e.target === blockPickerDialog) closeBlockPicker();
+  });
 
   // 5. Create Named Block Modal Handling
   function openCreateBlockModal(domain = null) {
@@ -290,6 +308,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnCreateSubmit?.addEventListener('click', handleCreateBlockSubmit);
   btnCreateCancel?.addEventListener('click', closeCreateBlockModal);
   btnCreateModalClose?.addEventListener('click', closeCreateBlockModal);
+  createBlockDialog?.addEventListener('click', (e) => {
+    if (e.target === createBlockDialog) closeCreateBlockModal();
+  });
 
   createBlockNameInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -371,6 +392,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         }
       );
+    } else {
+      closeBlockPicker();
+      showQuickStatus('Service not available.', true);
     }
   }
 
@@ -567,9 +591,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function escapeHtml(str) {
-    const p = document.createElement('p');
-    p.textContent = str || '';
-    return p.innerHTML;
+    // Also escape quotes: results are interpolated into HTML attributes
+    // (title="...", data-until="..."), where a stray " would break out.
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function queryStatus() {
@@ -607,4 +636,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   queryStatus();
+  // get_status is served from the background cache, so polling is cheap.
+  // Without this the popup showed a frozen "Synced: Ns ago" and never
+  // noticed blocks starting/ending while it was open.
+  setInterval(queryStatus, 5000);
 });
