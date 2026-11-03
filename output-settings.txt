@@ -1,0 +1,23 @@
+Build: succeeded, 0 warnings, 0 errors.
+Tests: 574 passed, 0 failed (546 in Blocker.Core.Tests, 28 in MainUiEnhancementTests).
+
+Checklist:
+1. Apply theme tokens and font tokens to whole settings page, keeping layout and cards: DONE
+2. Theme: replace 3 theme groups with ONE group named "Theme" (options "Black", "White", "Grey"), remove "Switch to Classic Theme" button, applies live: DONE
+3. Keep Accent color, Card density, and Time display format (examples in Mono font), clean subtitle: DONE
+4. Replace typed arrows and icon glyphs with Lucide icons (arrow-left, shield, lock): DONE
+5. White box with "Settings" at top-right cause identified and removed: DONE (Cause: the top bar Settings gear button had ToolTip="Settings", which unstyled rendered as a default Windows white tooltip box when entering or hovering settings view; resolved by restyling all ToolTips with theme tokens and suppressing tooltip display while on the settings page)
+6. DNS section keeps structure in every state, resolver IPs use Mono font: DONE
+7. DNS locked state: wording updated to "DNS protection is locked", removed watchdog sentence, "Locked until" uses TimeFormatter with "Today, 3:40 PM" format, Warning tokens used, toggle disabled but readable: DONE
+8. "Unlock DNS" button behavior analyzed and state matched: DONE (In Blocker.Core CommandHandler, timer lock rejects early unlock while challenge lock allows early unlock via typing challenge; button is enabled for challenge lock and disabled but readable for timer lock)
+9. Duration lock / challenge group and quick presets keep layout, use foundation styles, readable when disabled: DONE
+10. Audit all strings against WORDING RULES: DONE
+
+Changed files:
+- src/Blocker.App/MainWindow.xaml
+- src/Blocker.App/MainViewModel.cs
+- tests/Blocker.Core.Tests/SettingsTests.cs
+
+Out of scope:
+- Block editor tabs and shell owned by Agents B and C.
+- Header and block cards list owned by Agent A.

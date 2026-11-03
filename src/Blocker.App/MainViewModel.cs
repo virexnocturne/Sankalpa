@@ -196,6 +196,11 @@ public class MainViewModel : ViewModelBase
                 }
                 OnPropertyChanged(nameof(IsTimeFormat12h));
                 OnPropertyChanged(nameof(IsTimeFormat24h));
+                if (_dnsLockedUntilUtc.HasValue && IsDnsLocked)
+                {
+                    bool is24 = string.Equals(value, "24h", StringComparison.OrdinalIgnoreCase);
+                    DnsLockedUntilLocalFormatted = TimeFormatter.Format(_dnsLockedUntilUtc.Value.ToLocalTime(), is24);
+                }
                 if (_currentStatusData != null)
                 {
                     UpdateProfilesReadOnlyState(_currentStatusData);
@@ -377,6 +382,9 @@ public class MainViewModel : ViewModelBase
     }
 
     public bool CanEditDns => !_isDnsLocked;
+
+    public bool CanUnlockDns => IsDnsLocked && (!IsDnsLockTimer || (_dnsLockedUntilUtc.HasValue && DateTime.UtcNow >= _dnsLockedUntilUtc.Value));
+
 
     public string DnsLockType
     {
@@ -1846,7 +1854,8 @@ public class MainViewModel : ViewModelBase
                         if (remaining > TimeSpan.Zero)
                         {
                             DnsLockRemainingFormatted = UiLogic.FormatCountdown((long)remaining.TotalSeconds);
-                            DnsLockedUntilLocalFormatted = config.LockedUntilUtc.Value.ToLocalTime().ToString("f");
+                            bool is24Hour = string.Equals(_uiSettings.TimeFormat, "24h", StringComparison.OrdinalIgnoreCase);
+                            DnsLockedUntilLocalFormatted = TimeFormatter.Format(config.LockedUntilUtc.Value.ToLocalTime(), is24Hour);
                         }
                         else
                         {
@@ -1868,6 +1877,7 @@ public class MainViewModel : ViewModelBase
                     OnPropertyChanged(nameof(IsDnsEnabled));
                     OnPropertyChanged(nameof(IsDnsLocked));
                     OnPropertyChanged(nameof(CanEditDns));
+                    OnPropertyChanged(nameof(CanUnlockDns));
                     OnPropertyChanged(nameof(DnsLockRemainingFormatted));
                     OnPropertyChanged(nameof(DnsLockedUntilLocalFormatted));
                 }
