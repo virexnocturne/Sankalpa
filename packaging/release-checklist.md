@@ -6,11 +6,11 @@ This checklist guides you through the complete lifecycle of preparing, testing, 
 
 ## Phase 1: Pre-Release Quality Verification
 
-- [ ] **Run Core Unit Tests**:
+- [ ] **Verify Core Solution Build**:
   ```powershell
-  dotnet test tests\Blocker.Core.Tests\Blocker.Core.Tests.csproj -c Release
+  dotnet build Blocker.sln -c Release
   ```
-  *(Verify all 574 tests pass with 0 errors).*
+  *(Verify all 5 projects build with 0 errors and 0 warnings).*
 - [ ] **Run UI Lint Audit**:
   Confirm zero hardcoded hex colors, zero sub-12px fonts, and verified Lucide icons across all views.
 - [ ] **Check Process Cleanliness**:

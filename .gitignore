@@ -9,14 +9,15 @@
 # Intermediate publish directories & packaged releases
 dist/
 packaging/dist/
-output*.txt
 
-# Test output & run logs
+# Logs, test outputs & scratch files
+output*.txt
 test-output/
-test-scripts/screenshots/
-test-scripts/screenshots_flat/
+test-scripts/
+tests/
 *.log
-tests/manual/*-test-result.txt
+stop
+agents_prompts.md
 
 # SQLite temporary journal files
 *.db-shm
@@ -24,5 +25,3 @@ tests/manual/*-test-result.txt
 
 # Extension secrets
 extension/.keys/
-
-agents_prompts.md

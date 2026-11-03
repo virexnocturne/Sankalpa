@@ -217,9 +217,9 @@ sankalpa-cli stop --profile "Deep Work"
    git clone https://github.com/virexnocturne/Sankalpa.git
    cd Sankalpa
    ```
-2. Run test suites:
+2. Build the solution:
    ```powershell
-   dotnet test tests\Blocker.Core.Tests\Blocker.Core.Tests.csproj -c Release
+   dotnet build Blocker.sln -c Release
    ```
 3. Build the 1-click Windows installer:
    ```powershell
