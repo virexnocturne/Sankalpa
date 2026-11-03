@@ -18,6 +18,13 @@
     <Resource Include="Assets\app.ico" />
     <Resource Include="Assets\logo.png" />
     <Resource Include="Assets\logo-32.png" />
+    <Resource Include="Fonts\*.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Licenses\*" Link="licenses\%(FileName)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

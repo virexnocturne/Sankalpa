@@ -1358,11 +1358,11 @@ public static class CommandHandler
         int rulesVersion = Math.Abs(BitConverter.ToInt32(hash, 0));
         if (rulesVersion == 0) rulesVersion = 1;
 
-        string theme = "Current";
+        string theme = "black";
         try
         {
             var uiSettings = UiSettingsStore.Load();
-            theme = UiSettingsStore.NormalizeTheme(uiSettings.ExtensionTheme);
+            theme = UiSettingsStore.NormalizeTheme(uiSettings.Theme);
         }
         catch { }
 

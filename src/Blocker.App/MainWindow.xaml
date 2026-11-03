@@ -197,100 +197,12 @@
                             </TextBlock>
                         </StackPanel>
                     </Button>
-
-                    <!-- Tab 2: Browser Extension (Popup Dialog) -->
-                    <Button Command="{Binding OpenExtensionDialogCommand}" Style="{StaticResource TopNavTabButtonStyle}"
-                            Margin="0,0,4,0" Visibility="{Binding ShowExtensionTab, Converter={StaticResource BoolToVis}}">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Path Data="{StaticResource IconPuzzle}" Fill="{DynamicResource TextMutedBrush}"
-                                  Stretch="Uniform" Width="13" Height="13" Margin="0,0,8,0" VerticalAlignment="Center" />
-                            <TextBlock Text="Browser Extension" FontWeight="SemiBold" FontSize="13"
-                                       Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-
-                    <!-- Tab 3: Settings (In-Window View) -->
-                    <Button Command="{Binding OpenSettingsCommand}" Margin="0,0,4,0"
-                            Visibility="{Binding ShowSettingsTab, Converter={StaticResource BoolToVis}}">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource TopNavTabButtonStyle}">
-                                <Setter Property="Background" Value="Transparent" />
-                                <Setter Property="BorderBrush" Value="Transparent" />
-                                <Setter Property="BorderThickness" Value="0" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
-                                        <Setter Property="Background" Value="{DynamicResource BgDarkBrush}" />
-                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
-                                        <Setter Property="BorderThickness" Value="0,0,0,2" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Path Data="{StaticResource IconSettings}" Stretch="Uniform" Width="13" Height="13" Margin="0,0,8,0" VerticalAlignment="Center">
-                                <Path.Style>
-                                    <Style TargetType="Path">
-                                        <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
-                                                <Setter Property="Fill" Value="{DynamicResource TextLightBrush}" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Path.Style>
-                            </Path>
-                            <TextBlock Text="Settings" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
-                                                <Setter Property="Foreground" Value="{DynamicResource TextLightBrush}" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </StackPanel>
-                    </Button>
                 </StackPanel>
 
-                <!-- Right Utility Icons (Theme Switch & Settings) -->
+                <!-- Right Utility Icons (Settings) -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <!-- Design Theme Switcher Button -->
-                    <Button Command="{Binding SwitchDesignThemeCommand}"
-                            ToolTip="{Binding DesignThemeButtonText}"
-                            Style="{StaticResource SecondaryButton}"
-                            Padding="10,5" Margin="0,0,8,0" VerticalAlignment="Center"
-                            Cursor="Hand"
-                            Visibility="{Binding ShowDesignThemePill, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{Binding DesignThemeBadgeText}" FontSize="12" FontWeight="SemiBold"
-                                   Foreground="#FFFFFF" VerticalAlignment="Center" />
-                    </Button>
-
-                    <!-- Quick Day/Night Theme Toggle Button -->
-                    <Button Command="{Binding ToggleDayNightCommand}" Style="{StaticResource IconButton}"
-                            ToolTip="Toggle Light/Dark Theme" Width="30" Height="30" Margin="0,0,4,0"
-                            Visibility="{Binding ShowQuickThemeToggle, Converter={StaticResource BoolToVis}}">
-                        <Path Stretch="Uniform" Width="15" Height="15" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <Path.Style>
-                                <Style TargetType="Path">
-                                    <Setter Property="Data" Value="{StaticResource IconSun}" />
-                                    <Setter Property="Fill" Value="{DynamicResource WarningAmberBrush}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsDarkMode}" Value="True">
-                                            <Setter Property="Data" Value="{StaticResource IconMoon}" />
-                                            <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Path.Style>
-                        </Path>
-                    </Button>
-
                     <Button Command="{Binding ToggleSettingsCommand}" Style="{StaticResource IconButton}"
-                            ToolTip="Settings" Width="30" Height="30"
-                            Visibility="{Binding ShowSettingsGear, Converter={StaticResource BoolToVis}}">
+                            ToolTip="Settings" Width="30" Height="30">
                         <Path Data="{StaticResource IconSettings}" Stretch="Uniform" Width="15" Height="15"
                               VerticalAlignment="Center" HorizontalAlignment="Center">
                             <Path.Style>
@@ -816,61 +728,6 @@
                                     </RadioButton>
                                 </Grid>
                             </Grid>
-
-                            <!-- Divider -->
-                            <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,18,0,18" />
-
-                            <!-- Navigation & Header Customization -->
-                            <StackPanel>
-                                <TextBlock Text="Navigation &amp; Header Layout" FontSize="14" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
-                                <TextBlock Text="Customize top navigation tabs and header controls to your workflow."
-                                           FontSize="12" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,12" />
-
-                                <!-- Option 1: Hide Browser Extension Tab -->
-                                <CheckBox IsChecked="{Binding HideExtensionTab, Mode=TwoWay}"
-                                          Margin="0,0,0,12" VerticalAlignment="Center">
-                                    <StackPanel Margin="6,0,0,0">
-                                        <TextBlock Text="Hide Browser Extension Tab" FontWeight="SemiBold" FontSize="13"
-                                                   Foreground="{DynamicResource TextLightBrush}" />
-                                        <TextBlock Text="Removes the 'Browser Extension' button from the top navigation bar."
-                                                   FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
-                                    </StackPanel>
-                                </CheckBox>
-
-                                <!-- Option 2: Minimise Settings to Gear Icon -->
-                                <CheckBox IsChecked="{Binding MinimiseSettingsToGear, Mode=TwoWay}"
-                                          Margin="0,0,0,12" VerticalAlignment="Center">
-                                    <StackPanel Margin="6,0,0,0">
-                                        <TextBlock Text="Minimise Settings Menu to Gear Icon" FontWeight="SemiBold" FontSize="13"
-                                                   Foreground="{DynamicResource TextLightBrush}" />
-                                        <TextBlock Text="Hides the main Settings tab and displays a compact gear icon in the top right instead."
-                                                   FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
-                                    </StackPanel>
-                                </CheckBox>
-
-                                <!-- Option 3: Hide Design Theme Switcher Button -->
-                                <CheckBox IsChecked="{Binding HideDesignThemePill, Mode=TwoWay}"
-                                          Margin="0,0,0,12" VerticalAlignment="Center">
-                                    <StackPanel Margin="6,0,0,0">
-                                        <TextBlock Text="Hide Design Theme Switcher Button" FontWeight="SemiBold" FontSize="13"
-                                                   Foreground="{DynamicResource TextLightBrush}" />
-                                        <TextBlock Text="Removes the 'Classic' / 'Obsidian' theme switch button from the top navigation bar."
-                                                   FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
-                                    </StackPanel>
-                                </CheckBox>
-
-                                <!-- Option 4: Hide Quick Day/Night Toggle Button -->
-                                <CheckBox IsChecked="{Binding HideQuickThemeToggle, Mode=TwoWay}"
-                                          VerticalAlignment="Center">
-                                    <StackPanel Margin="6,0,0,0">
-                                        <TextBlock Text="Hide Quick Dark/Light Mode Button" FontWeight="SemiBold" FontSize="13"
-                                                   Foreground="{DynamicResource TextLightBrush}" />
-                                        <TextBlock Text="Removes the sun/moon day-night toggle icon from the top navigation bar."
-                                                   FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
-                                    </StackPanel>
-                                </CheckBox>
-                            </StackPanel>
                         </StackPanel>
                     </Border>
 

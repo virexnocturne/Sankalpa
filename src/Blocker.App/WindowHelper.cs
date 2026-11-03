@@ -13,6 +13,31 @@ public static class WindowHelper
     [DllImport("dwmapi.dll", PreserveSig = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
+    public static readonly DependencyProperty UseThemeTitleBarProperty =
+        DependencyProperty.RegisterAttached(
+            "UseThemeTitleBar",
+            typeof(bool),
+            typeof(WindowHelper),
+            new PropertyMetadata(false, OnUseThemeTitleBarChanged));
+
+    public static bool GetUseThemeTitleBar(DependencyObject obj)
+    {
+        return (bool)obj.GetValue(UseThemeTitleBarProperty);
+    }
+
+    public static void SetUseThemeTitleBar(DependencyObject obj, bool value)
+    {
+        obj.SetValue(UseThemeTitleBarProperty, value);
+    }
+
+    private static void OnUseThemeTitleBarChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is Window window && (bool)e.NewValue)
+        {
+            UpdateTitleBarTheme(window, ThemeManager.IsDark);
+        }
+    }
+
     public static void EnableDarkMode(Window window)
     {
         UpdateTitleBarTheme(window, ThemeManager.IsDark);

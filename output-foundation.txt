@@ -1,0 +1,56 @@
+Sankalpa Consistency Pass: Agent 0 (foundation) Report
+
+BUILD AND TEST COUNTS
+- Build: 0 errors, 0 warnings
+- Tests: 555 passed, 0 failed, 0 skipped (Blocker.Core.Tests: 528 passed; MainUiEnhancementTests: 27 passed)
+
+CHECKLIST
+1. THREE THEMES: DONE (Created Theme.Black.xaml, Theme.White.xaml, Theme.Grey.xaml with identical 70 keys. Replaced ThemeMode/DesignTheme/ExtensionTheme with single Theme setting ["black", "white", "grey", default "black"]. Migrated settings and updated extension sync).
+2. TYPOGRAPHY: DONE (Official static TTFs embedded: IBM Plex Sans [400, 500, 600], IBM Plex Mono [400, 500], Familjen Grotesk [600]. OFL licenses bundled. Tokens: FontTitle, FontBody, FontMono. Extracted sizes 11->12, 12, 13, 14, 15, 16, 18, 19, 20).
+3. ICONS: DONE (Icons.xaml created with 18 stroke-based Lucide icons on 24x24 grid: shield, settings, lock, lock-open, trash, plus, x, check, clock, layout-grid, ban, timer, play, hourglass, chevron-down, arrow-left, info, folder-open, plus base Icon style and legacy compatibility keys).
+4. SHARED CONTROL STYLES: DONE (Controls.xaml created with Button variants, ToggleSwitch with distinct ON/OFF and disabled states, SegmentedTabButton, RadioButton, CheckBox, TextBox, ComboBox, ScrollBar, ToolTip, ContextMenu, CardBorder, Lock/Error Banners, Window helper with DWM dark mode and themed border).
+5. REMOVALS FROM MAIN WINDOW: DONE (Removed Browser Extension tab, Settings navigation button, Obsidian/Classic segmented control, quick theme toggle button, and Settings Navigation & Header Customization section).
+6. CORE HELPERS: DONE (DurationFormatter with standard examples and countdown format, TimeFormatter supporting 12h/24h and Today format, UiLint test helper asserting tokens and rules).
+7. TESTS: DONE (Added FoundationTests.cs verifying identical theme keys, WCAG contrast >= 7:1 for TextPrimary, >= 4.5:1 for TextSecondary, >= 3:1 for TextDisabled, >= 3:1 accents, >= 4.5:1 TextOnAccent, settings migration, formatters, embedded font tokens, and UiLint checks).
+
+EXTRACTED DESIGN SYSTEM VALUES
+- Font Sizes: 12, 13, 14, 15, 16, 18, 19, 20 (all sizes < 12 elevated to 12)
+- Corner Radii: 3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 18
+- Spacings & Paddings: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24; ButtonPadding: 14,6; InputPadding: 10,6; CardPadding: 16
+
+CHANGED AND CREATED FILES
+- Created:
+  - licenses/IBM-Plex-OFL.txt
+  - licenses/Familjen-Grotesk-OFL.txt
+  - licenses/Lucide-ISC.txt
+  - src/Blocker.App/Licenses/ (OFL and ISC licenses copied to output)
+  - src/Blocker.App/Fonts/ (IBMPlexSans-Regular.ttf, IBMPlexSans-Medium.ttf, IBMPlexSans-SemiBold.ttf, IBMPlexMono-Regular.ttf, IBMPlexMono-Medium.ttf, FamiljenGrotesk-SemiBold.ttf)
+  - src/Blocker.App/Theme.Black.xaml
+  - src/Blocker.App/Theme.White.xaml
+  - src/Blocker.App/Theme.Grey.xaml
+  - src/Blocker.App/Typography.xaml
+  - src/Blocker.App/Icons.xaml
+  - src/Blocker.App/Controls.xaml
+  - src/Blocker.Core/Formatters.cs
+  - tests/Blocker.Core.Tests/FoundationTests.cs
+  - tests/Blocker.Core.Tests/UiLint.cs
+  - output-foundation.txt
+- Modified:
+  - src/Blocker.App/App.xaml
+  - src/Blocker.App/Blocker.App.csproj
+  - src/Blocker.App/MainViewModel.cs
+  - src/Blocker.App/MainWindow.xaml
+  - src/Blocker.App/ThemeManager.cs
+  - src/Blocker.App/WindowHelper.cs
+  - src/Blocker.Core/CommandHandler.cs
+  - src/Blocker.Core/UiSettingsStore.cs
+  - src/Blocker.NativeHost/Program.cs
+  - test-scripts/MainUiEnhancementTests.cs
+  - tests/Blocker.Core.Tests/CommandHandlerTests.cs
+  - tests/Blocker.Core.Tests/UiSettingsStoreTests.cs
+- Deleted:
+  - src/Blocker.App/DarkTheme.xaml
+  - src/Blocker.App/ObsidianTheme.xaml
+
+OUT OF SCOPE
+- Individual screen restyling and wording changes across dashboard, block editor, and settings tabs deferred to Agents A, B, C, D per plan.

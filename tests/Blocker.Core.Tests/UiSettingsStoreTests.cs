@@ -120,25 +120,64 @@ public class UiSettingsStoreTests
     }
 
     [Fact]
-    public void ExtensionTheme_DefaultsToCurrent()
+    public void Theme_DefaultsToBlack()
     {
         var settings = new UiSettings();
-        Assert.Equal("Current", settings.ExtensionTheme);
+        Assert.Equal("black", settings.Theme);
 
         var fromEmpty = UiSettingsStore.FromJson("{}");
-        Assert.Equal("Current", fromEmpty.ExtensionTheme);
+        Assert.Equal("black", fromEmpty.Theme);
     }
 
     [Theory]
-    [InlineData("Current")]
-    [InlineData("DeepBlack")]
-    [InlineData("MinimalWhite")]
-    public void RoundTrip_ExtensionTheme_Preserved(string theme)
+    [InlineData("black")]
+    [InlineData("white")]
+    [InlineData("grey")]
+    public void RoundTrip_Theme_Preserved(string theme)
     {
-        var settings = new UiSettings { ExtensionTheme = theme };
+        var settings = new UiSettings { Theme = theme };
         string json = UiSettingsStore.ToJson(settings);
         var restored = UiSettingsStore.FromJson(json);
-        Assert.Equal(theme, restored.ExtensionTheme);
+        Assert.Equal(theme, restored.Theme);
+    }
+
+    [Fact]
+    public void Migration_OldDarkOrClassic_BecomesBlack()
+    {
+        var fromDark = UiSettingsStore.FromJson("{\"ThemeMode\": \"Dark\"}");
+        Assert.Equal("black", fromDark.Theme);
+
+        var fromClassic = UiSettingsStore.FromJson("{\"DesignTheme\": \"Classic\"}");
+        Assert.Equal("black", fromClassic.Theme);
+
+        var fromObsidian = UiSettingsStore.FromJson("{\"DesignTheme\": \"Obsidian\"}");
+        Assert.Equal("black", fromObsidian.Theme);
+    }
+
+    [Fact]
+    public void Migration_OldLight_BecomesWhite()
+    {
+        var fromLight = UiSettingsStore.FromJson("{\"ThemeMode\": \"Light\"}");
+        Assert.Equal("white", fromLight.Theme);
+
+        var fromExtWhite = UiSettingsStore.FromJson("{\"ExtensionTheme\": \"MinimalWhite\"}");
+        Assert.Equal("white", fromExtWhite.Theme);
+    }
+
+    [Fact]
+    public void Migration_Missing_BecomesBlack()
+    {
+        var fromMissing = UiSettingsStore.FromJson("{\"CardDensity\": \"Compact\"}");
+        Assert.Equal("black", fromMissing.Theme);
+    }
+
+    [Fact]
+    public void Migration_UnknownKeysIgnored()
+    {
+        var jsonWithOldKeys = "{\"HideExtensionTab\": true, \"MinimiseSettingsToGear\": true, \"UnknownKey\": 12345}";
+        var parsed = UiSettingsStore.FromJson(jsonWithOldKeys);
+        Assert.NotNull(parsed);
+        Assert.Equal("black", parsed.Theme);
     }
 
     [Fact]

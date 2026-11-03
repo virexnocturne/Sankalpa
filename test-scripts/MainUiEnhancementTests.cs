@@ -467,11 +467,22 @@ public class MainUiEnhancementTests
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             try
             {
-                var resourceDict = new ResourceDictionary
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary
                 {
-                    Source = new Uri("pack://application:,,,/Sankalpa;component/DarkTheme.xaml", UriKind.Absolute)
-                };
-                app.Resources.MergedDictionaries.Add(resourceDict);
+                    Source = new Uri("pack://application:,,,/Sankalpa;component/Theme.Black.xaml", UriKind.Absolute)
+                });
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary
+                {
+                    Source = new Uri("pack://application:,,,/Sankalpa;component/Typography.xaml", UriKind.Absolute)
+                });
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary
+                {
+                    Source = new Uri("pack://application:,,,/Sankalpa;component/Icons.xaml", UriKind.Absolute)
+                });
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary
+                {
+                    Source = new Uri("pack://application:,,,/Sankalpa;component/Controls.xaml", UriKind.Absolute)
+                });
             }
             catch
             {

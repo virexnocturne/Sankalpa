@@ -1329,44 +1329,56 @@ public class CommandHandlerTests
         var store = new FakeBlockStore();
         store.SaveProfile(new Profile { Name = "ActiveBlock", Enabled = true, WebRules = new() { new WebRule { Pattern = "reddit.com", Allow = false } } });
 
-        // Save DeepBlack theme
+        // Save black theme
         var settings = UiSettingsStore.Load();
-        settings.ExtensionTheme = "DeepBlack";
+        settings.Theme = "black";
         UiSettingsStore.Save(settings);
 
         var resp1 = CommandHandler.Handle(new Request { Command = CommandNames.GetActiveWebRules }, store);
         Assert.True(resp1.Ok);
         var dto1 = JsonSerializer.Deserialize<ActiveWebRulesResponse>(resp1.Data!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         Assert.NotNull(dto1);
-        Assert.Equal("DeepBlack", dto1.ExtensionTheme);
+        Assert.Equal("black", dto1.ExtensionTheme);
 
-        // Save MinimalWhite theme
-        settings.ExtensionTheme = "MinimalWhite";
+        // Save white theme
+        settings.Theme = "white";
         UiSettingsStore.Save(settings);
 
         var resp2 = CommandHandler.Handle(new Request { Command = CommandNames.GetActiveWebRules }, store);
         Assert.True(resp2.Ok);
         var dto2 = JsonSerializer.Deserialize<ActiveWebRulesResponse>(resp2.Data!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         Assert.NotNull(dto2);
-        Assert.Equal("MinimalWhite", dto2.ExtensionTheme);
+        Assert.Equal("white", dto2.ExtensionTheme);
+
+        // Save grey theme
+        settings.Theme = "grey";
+        UiSettingsStore.Save(settings);
+
+        var resp3 = CommandHandler.Handle(new Request { Command = CommandNames.GetActiveWebRules }, store);
+        Assert.True(resp3.Ok);
+        var dto3 = JsonSerializer.Deserialize<ActiveWebRulesResponse>(resp3.Data!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(dto3);
+        Assert.Equal("grey", dto3.ExtensionTheme);
 
         // Clean up
-        settings.ExtensionTheme = "Current";
+        settings.Theme = "black";
         UiSettingsStore.Save(settings);
     }
 
     [Fact]
     public void ExtensionTheme_InvalidTheme_FallsBackToDefault()
     {
-        Assert.Equal("Current", UiSettingsStore.NormalizeTheme("NeonPink"));
-        Assert.Equal("Current", UiSettingsStore.NormalizeTheme(null));
-        Assert.Equal("Current", UiSettingsStore.NormalizeTheme(""));
-        Assert.Equal("Current", UiSettingsStore.NormalizeTheme("   "));
-        Assert.Equal("DeepBlack", UiSettingsStore.NormalizeTheme("DeepBlack"));
-        Assert.Equal("DeepBlack", UiSettingsStore.NormalizeTheme("deep-black"));
-        Assert.Equal("MinimalWhite", UiSettingsStore.NormalizeTheme("MinimalWhite"));
-        Assert.Equal("MinimalWhite", UiSettingsStore.NormalizeTheme("minimal-white"));
-        Assert.Equal("Current", UiSettingsStore.NormalizeTheme("current"));
+        Assert.Equal("black", UiSettingsStore.NormalizeTheme("NeonPink"));
+        Assert.Equal("black", UiSettingsStore.NormalizeTheme(null));
+        Assert.Equal("black", UiSettingsStore.NormalizeTheme(""));
+        Assert.Equal("black", UiSettingsStore.NormalizeTheme("   "));
+        Assert.Equal("black", UiSettingsStore.NormalizeTheme("black"));
+        Assert.Equal("black", UiSettingsStore.NormalizeTheme("DeepBlack"));
+        Assert.Equal("white", UiSettingsStore.NormalizeTheme("white"));
+        Assert.Equal("white", UiSettingsStore.NormalizeTheme("MinimalWhite"));
+        Assert.Equal("white", UiSettingsStore.NormalizeTheme("minimal-white"));
+        Assert.Equal("grey", UiSettingsStore.NormalizeTheme("grey"));
+        Assert.Equal("grey", UiSettingsStore.NormalizeTheme("gray"));
     }
 
     #endregion

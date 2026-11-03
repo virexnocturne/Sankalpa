@@ -285,7 +285,7 @@ public static class Program
                 try
                 {
                     var uiSettings = UiSettingsStore.Load();
-                    string theme = UiSettingsStore.NormalizeTheme(uiSettings.ExtensionTheme);
+                    string theme = UiSettingsStore.NormalizeTheme(uiSettings.Theme);
                     string trimmed = replyPayload.Trim();
                     if (trimmed.EndsWith("}"))
                     {

@@ -57,15 +57,10 @@ public class MainViewModel : ViewModelBase
 
     private readonly UiSettings _uiSettings;
     private bool _isSettingsViewActive;
-    private string _themeMode = "Dark";
+    private string _theme = "black";
     private string _accentColor = "Emerald";
     private string _cardDensity = "Comfortable";
     private string _timeFormat = "24h";
-    private string _designTheme = "Obsidian";
-    private bool _hideExtensionTab;
-    private bool _minimiseSettingsToGear;
-    private bool _hideDesignThemePill;
-    private bool _hideQuickThemeToggle;
 
     // Callbacks for opening dialogs and notifications
     public Action<ProfileViewModel?>? RequestOpenEditorDialog { get; set; }
@@ -99,25 +94,50 @@ public class MainViewModel : ViewModelBase
 
     public bool IsBlocksViewActive => !_isSettingsViewActive;
 
-    public string ThemeMode
+    public string Theme
     {
-        get => _themeMode;
+        get => _theme;
         set
         {
-            if (SetProperty(ref _themeMode, value))
+            if (SetProperty(ref _theme, value))
             {
-                _uiSettings.ThemeMode = value;
+                _uiSettings.Theme = value;
                 UiSettingsStore.Save(_uiSettings);
-                if (Enum.TryParse<AppThemeMode>(value, true, out var mode))
-                {
-                    ThemeManager.SetThemeMode(mode, _uiSettings);
-                }
-                OnPropertyChanged(nameof(IsThemeDark));
-                OnPropertyChanged(nameof(IsThemeLight));
+                ThemeManager.SetTheme(value, _uiSettings);
+                OnPropertyChanged(nameof(IsThemeBlack));
+                OnPropertyChanged(nameof(IsThemeWhite));
+                OnPropertyChanged(nameof(IsThemeGrey));
                 OnPropertyChanged(nameof(IsDarkMode));
             }
         }
     }
+
+    public bool IsThemeBlack
+    {
+        get => string.Equals(Theme, "black", StringComparison.OrdinalIgnoreCase);
+        set { if (value) Theme = "black"; }
+    }
+
+    public bool IsThemeWhite
+    {
+        get => string.Equals(Theme, "white", StringComparison.OrdinalIgnoreCase);
+        set { if (value) Theme = "white"; }
+    }
+
+    public bool IsThemeGrey
+    {
+        get => string.Equals(Theme, "grey", StringComparison.OrdinalIgnoreCase);
+        set { if (value) Theme = "grey"; }
+    }
+
+    public string ThemeMode
+    {
+        get => IsDarkMode ? "Dark" : "Light";
+        set => Theme = string.Equals(value, "Light", StringComparison.OrdinalIgnoreCase) ? "white" : "black";
+    }
+
+    public bool IsThemeDark => IsDarkMode;
+    public bool IsThemeLight => !IsDarkMode;
 
     public string AccentColor
     {
@@ -184,17 +204,6 @@ public class MainViewModel : ViewModelBase
         }
     }
 
-    public bool IsThemeDark
-    {
-        get => string.Equals(ThemeMode, "Dark", StringComparison.OrdinalIgnoreCase);
-        set { if (value) ThemeMode = "Dark"; }
-    }
-
-    public bool IsThemeLight
-    {
-        get => string.Equals(ThemeMode, "Light", StringComparison.OrdinalIgnoreCase);
-        set { if (value) ThemeMode = "Light"; }
-    }
 
     public bool IsAccentEmerald
     {
@@ -254,146 +263,6 @@ public class MainViewModel : ViewModelBase
     {
         get => !string.Equals(TimeFormat, "12h", StringComparison.OrdinalIgnoreCase);
         set { if (value) TimeFormat = "24h"; }
-    }
-
-    public string DesignTheme
-    {
-        get => _designTheme;
-        set
-        {
-            if (SetProperty(ref _designTheme, value))
-            {
-                _uiSettings.DesignTheme = value;
-                UiSettingsStore.Save(_uiSettings);
-                if (Enum.TryParse<DesignThemeType>(value, true, out var dt))
-                {
-                    ThemeManager.SetDesignTheme(dt, _uiSettings);
-                }
-                OnPropertyChanged(nameof(IsDesignObsidian));
-                OnPropertyChanged(nameof(IsDesignClassic));
-                OnPropertyChanged(nameof(DesignThemeButtonText));
-                OnPropertyChanged(nameof(DesignThemeBadgeText));
-            }
-        }
-    }
-
-    public bool IsDesignObsidian
-    {
-        get => string.Equals(DesignTheme, "Obsidian", StringComparison.OrdinalIgnoreCase);
-        set { if (value) DesignTheme = "Obsidian"; }
-    }
-
-    public bool IsDesignClassic
-    {
-        get => string.Equals(DesignTheme, "Classic", StringComparison.OrdinalIgnoreCase);
-        set { if (value) DesignTheme = "Classic"; }
-    }
-
-    public string DesignThemeButtonText =>
-        IsDesignObsidian ? "Switch to Classic Theme" : "Switch to Obsidian Theme";
-
-    public string DesignThemeBadgeText =>
-        IsDesignObsidian ? "✨ Obsidian" : "🏛️ Classic";
-
-    public bool HideExtensionTab
-    {
-        get => _hideExtensionTab;
-        set
-        {
-            if (SetProperty(ref _hideExtensionTab, value))
-            {
-                _uiSettings.HideExtensionTab = value;
-                UiSettingsStore.Save(_uiSettings);
-                OnPropertyChanged(nameof(ShowExtensionTab));
-            }
-        }
-    }
-
-    public bool ShowExtensionTab => !HideExtensionTab;
-
-    public bool MinimiseSettingsToGear
-    {
-        get => _minimiseSettingsToGear;
-        set
-        {
-            if (SetProperty(ref _minimiseSettingsToGear, value))
-            {
-                _uiSettings.MinimiseSettingsToGear = value;
-                UiSettingsStore.Save(_uiSettings);
-                OnPropertyChanged(nameof(ShowSettingsTab));
-                OnPropertyChanged(nameof(ShowSettingsGear));
-            }
-        }
-    }
-
-    public bool ShowSettingsTab => !MinimiseSettingsToGear;
-    public bool ShowSettingsGear => MinimiseSettingsToGear;
-
-    public bool HideDesignThemePill
-    {
-        get => _hideDesignThemePill;
-        set
-        {
-            if (SetProperty(ref _hideDesignThemePill, value))
-            {
-                _uiSettings.HideDesignThemePill = value;
-                UiSettingsStore.Save(_uiSettings);
-                OnPropertyChanged(nameof(ShowDesignThemePill));
-            }
-        }
-    }
-
-    public bool ShowDesignThemePill => !HideDesignThemePill;
-
-    public bool HideQuickThemeToggle
-    {
-        get => _hideQuickThemeToggle;
-        set
-        {
-            if (SetProperty(ref _hideQuickThemeToggle, value))
-            {
-                _uiSettings.HideQuickThemeToggle = value;
-                UiSettingsStore.Save(_uiSettings);
-                OnPropertyChanged(nameof(ShowQuickThemeToggle));
-            }
-        }
-    }
-
-    public bool ShowQuickThemeToggle => !HideQuickThemeToggle;
-
-    public string ExtensionTheme
-    {
-        get => _uiSettings.ExtensionTheme ?? "Current";
-        set
-        {
-            if (_uiSettings.ExtensionTheme != value)
-            {
-                _uiSettings.ExtensionTheme = value;
-                UiSettingsStore.Save(_uiSettings);
-                OnPropertyChanged(nameof(ExtensionTheme));
-                OnPropertyChanged(nameof(IsExtensionThemeCurrent));
-                OnPropertyChanged(nameof(IsExtensionThemeDeepBlack));
-                OnPropertyChanged(nameof(IsExtensionThemeMinimalWhite));
-            }
-        }
-    }
-
-    public bool IsExtensionThemeCurrent
-    {
-        get => string.Equals(ExtensionTheme, "Current", StringComparison.OrdinalIgnoreCase);
-        set { if (value) ExtensionTheme = "Current"; }
-    }
-
-    public bool IsExtensionThemeDeepBlack
-    {
-        get => string.Equals(ExtensionTheme, "DeepBlack", StringComparison.OrdinalIgnoreCase);
-        set { if (value) ExtensionTheme = "DeepBlack"; }
-    }
-
-    public bool IsExtensionThemeMinimalWhite
-    {
-        get => string.Equals(ExtensionTheme, "MinimalWhite", StringComparison.OrdinalIgnoreCase);
-        set { if (value) ExtensionTheme = "MinimalWhite"; }
     }
 
     // DNS Protection State
@@ -729,15 +598,10 @@ public class MainViewModel : ViewModelBase
         ActiveChips = new ObservableCollection<ActiveBlockChipItem>();
 
         _uiSettings = UiSettingsStore.Load();
-        _themeMode = _uiSettings.ThemeMode;
+        _theme = _uiSettings.Theme;
         _accentColor = _uiSettings.AccentColor;
         _cardDensity = _uiSettings.CardDensity;
         _timeFormat = _uiSettings.TimeFormat;
-        _designTheme = _uiSettings.DesignTheme;
-        _hideExtensionTab = _uiSettings.HideExtensionTab;
-        _minimiseSettingsToGear = _uiSettings.MinimiseSettingsToGear;
-        _hideDesignThemePill = _uiSettings.HideDesignThemePill;
-        _hideQuickThemeToggle = _uiSettings.HideQuickThemeToggle;
 
         // Commands
         NewBlockCommand = new RelayCommand(() => RequestOpenEditorDialog?.Invoke(null));
@@ -833,21 +697,18 @@ public class MainViewModel : ViewModelBase
         });
         ToggleDayNightCommand = new RelayCommand(() =>
         {
-            ThemeMode = IsDarkMode ? "Light" : "Dark";
+            Theme = IsDarkMode ? "white" : "black";
         });
-        SwitchDesignThemeCommand = new RelayCommand(() =>
-        {
-            DesignTheme = IsDesignObsidian ? "Classic" : "Obsidian";
-        });
+        SwitchDesignThemeCommand = new RelayCommand(() => { });
         ThemeManager.ThemeChanged += () =>
         {
             OnPropertyChanged(nameof(IsDarkMode));
+            OnPropertyChanged(nameof(Theme));
+            OnPropertyChanged(nameof(IsThemeBlack));
+            OnPropertyChanged(nameof(IsThemeWhite));
+            OnPropertyChanged(nameof(IsThemeGrey));
             OnPropertyChanged(nameof(IsThemeDark));
             OnPropertyChanged(nameof(IsThemeLight));
-            OnPropertyChanged(nameof(IsDesignObsidian));
-            OnPropertyChanged(nameof(IsDesignClassic));
-            OnPropertyChanged(nameof(DesignThemeButtonText));
-            OnPropertyChanged(nameof(DesignThemeBadgeText));
         };
 
         SaveDnsSettingsCommand = new RelayCommand(async () => await SaveDnsConfigAsync());

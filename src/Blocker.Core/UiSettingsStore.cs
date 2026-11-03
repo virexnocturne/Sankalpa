@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Blocker.Core;
 
@@ -15,20 +16,18 @@ public class UiSettings
 {
     public Dictionary<string, SessionSettings> ProfileSettings { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public bool SuppressAlwaysActiveWarning { get; set; }
-    public string ThemeMode { get; set; } = "Dark";
+    public string Theme { get; set; } = "black";
     public string AccentColor { get; set; } = "Emerald";
     public string CardDensity { get; set; } = "Comfortable";
     public string TimeFormat { get; set; } = "24h";
-    public string DesignTheme { get; set; } = "Obsidian";
-    public bool HideExtensionTab { get; set; } = false;
-    public bool MinimiseSettingsToGear { get; set; } = false;
-    public bool HideDesignThemePill { get; set; } = false;
-    public bool HideQuickThemeToggle { get; set; } = false;
     public bool AreNotificationsEnabled { get; set; } = true;
     public bool ShowBrowserAlerts { get; set; } = true;
     public bool ShowAppAlerts { get; set; } = true;
     public bool ShowDnsAlerts { get; set; } = true;
-    public string ExtensionTheme { get; set; } = "Current";
+
+    // Backward compatibility helper properties for legacy extension sync callers if needed
+    [JsonIgnore]
+    public string ExtensionTheme => Theme;
 }
 
 public static class UiSettingsStore
@@ -52,17 +51,21 @@ public static class UiSettingsStore
 
     public static string NormalizeTheme(string? theme)
     {
-        if (string.Equals(theme, "DeepBlack", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(theme, "deep-black", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(theme))
         {
-            return "DeepBlack";
+            return "black";
         }
-        if (string.Equals(theme, "MinimalWhite", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(theme, "minimal-white", StringComparison.OrdinalIgnoreCase))
+
+        string trimmed = theme.Trim().ToLowerInvariant();
+        if (trimmed == "white" || trimmed == "light" || trimmed == "minimalwhite" || trimmed == "minimal-white")
         {
-            return "MinimalWhite";
+            return "white";
         }
-        return "Current";
+        if (trimmed == "grey" || trimmed == "gray")
+        {
+            return "grey";
+        }
+        return "black";
     }
 
     public static SessionSettings GetSettings(UiSettings? settings, string? profileId)
@@ -105,8 +108,10 @@ public static class UiSettingsStore
 
         try
         {
-            var parsed = JsonSerializer.Deserialize<UiSettings>(json, JsonOptions);
-            if (parsed == null) return new UiSettings();
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var parsed = JsonSerializer.Deserialize<UiSettings>(json, JsonOptions) ?? new UiSettings();
 
             if (parsed.ProfileSettings == null)
             {
@@ -117,12 +122,63 @@ public static class UiSettingsStore
                 parsed.ProfileSettings = new Dictionary<string, SessionSettings>(parsed.ProfileSettings, StringComparer.OrdinalIgnoreCase);
             }
 
-            if (string.IsNullOrWhiteSpace(parsed.ThemeMode)) parsed.ThemeMode = "Dark";
+            // Check if Theme is explicitly set in JSON
+            bool hasExplicitTheme = false;
+            foreach (var prop in root.EnumerateObject())
+            {
+                if (string.Equals(prop.Name, "Theme", StringComparison.OrdinalIgnoreCase))
+                {
+                    parsed.Theme = NormalizeTheme(prop.Value.GetString());
+                    hasExplicitTheme = true;
+                    break;
+                }
+            }
+
+            // If Theme was not explicitly set, migrate from legacy keys:
+            // Old "dark" or "Classic" becomes "black"; old "light" becomes "white"; missing becomes "black".
+            if (!hasExplicitTheme)
+            {
+                string? legacyThemeMode = null;
+                string? legacyDesignTheme = null;
+                string? legacyExtensionTheme = null;
+
+                foreach (var prop in root.EnumerateObject())
+                {
+                    if (string.Equals(prop.Name, "ThemeMode", StringComparison.OrdinalIgnoreCase))
+                    {
+                        legacyThemeMode = prop.Value.GetString();
+                    }
+                    else if (string.Equals(prop.Name, "DesignTheme", StringComparison.OrdinalIgnoreCase))
+                    {
+                        legacyDesignTheme = prop.Value.GetString();
+                    }
+                    else if (string.Equals(prop.Name, "ExtensionTheme", StringComparison.OrdinalIgnoreCase))
+                    {
+                        legacyExtensionTheme = prop.Value.GetString();
+                    }
+                }
+
+                if (string.Equals(legacyThemeMode, "Light", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(legacyExtensionTheme, "MinimalWhite", StringComparison.OrdinalIgnoreCase))
+                {
+                    parsed.Theme = "white";
+                }
+                else if (string.Equals(legacyThemeMode, "Dark", StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(legacyDesignTheme, "Classic", StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(legacyDesignTheme, "Obsidian", StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(legacyExtensionTheme, "DeepBlack", StringComparison.OrdinalIgnoreCase))
+                {
+                    parsed.Theme = "black";
+                }
+                else
+                {
+                    parsed.Theme = "black";
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(parsed.AccentColor)) parsed.AccentColor = "Emerald";
             if (string.IsNullOrWhiteSpace(parsed.CardDensity)) parsed.CardDensity = "Comfortable";
             if (string.IsNullOrWhiteSpace(parsed.TimeFormat)) parsed.TimeFormat = "24h";
-            if (string.IsNullOrWhiteSpace(parsed.DesignTheme)) parsed.DesignTheme = "Obsidian";
-            if (string.IsNullOrWhiteSpace(parsed.ExtensionTheme)) parsed.ExtensionTheme = "Current";
 
             return parsed;
         }
