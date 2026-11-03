@@ -13,7 +13,8 @@ output*.txt
 
 # Test output & run logs
 test-output/
-screenshots/
+test-scripts/screenshots/
+test-scripts/screenshots_flat/
 *.log
 tests/manual/*-test-result.txt
 
