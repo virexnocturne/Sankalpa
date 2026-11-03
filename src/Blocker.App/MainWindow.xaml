@@ -449,7 +449,7 @@
 
             <!-- 2. IN-WINDOW SETTINGS VIEW -->
             <ScrollViewer Visibility="{Binding IsSettingsViewActive, Converter={StaticResource BoolToVis}}"
-                          Background="{DynamicResource BgDarkBrush}" VerticalScrollBarVisibility="Auto">
+                          Background="{DynamicResource Bg}" VerticalScrollBarVisibility="Auto">
                 <StackPanel MaxWidth="920" Margin="20,20,20,24">
                     <!-- Settings Header Row -->
                     <Grid Margin="0,0,0,22">
@@ -459,87 +459,32 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,4" />
+                            <TextBlock Text="Settings" FontFamily="{DynamicResource FontTitle}"
+                                       FontSize="{DynamicResource FontSizeHeading}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4" />
                             <TextBlock Text="Personalize theme appearance, interface density, and time display format."
-                                       FontSize="12" Foreground="{DynamicResource TextMutedBrush}" />
+                                       FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
                         </StackPanel>
 
                         <Button Grid.Column="1" Command="{Binding BackToBlocksCommand}"
                                 Style="{StaticResource SecondaryButton}"
-                                Padding="14,6" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center">
+                                Padding="14,6" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="←" FontWeight="Bold" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="#FFFFFF" />
-                                <TextBlock Text="Back to Blocks" VerticalAlignment="Center" Foreground="#FFFFFF" />
+                                <Path Style="{StaticResource Icon}" Data="{StaticResource IconArrowLeft}"
+                                      Stroke="{DynamicResource TextPrimary}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                <TextBlock Text="Back to Blocks" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}" />
                             </StackPanel>
                         </Button>
                     </Grid>
 
                     <!-- CATEGORY 1: PERSONALISATION -->
-                    <TextBlock Text="PERSONALISATION" FontWeight="Bold" FontSize="11"
-                               Foreground="{DynamicResource TextMutedBrush}" Margin="2,0,0,10" />
+                    <TextBlock Text="PERSONALISATION" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                               Foreground="{DynamicResource TextSecondary}" Margin="2,0,0,10" />
 
-                    <!-- Design Theme Switcher -->
-                    <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,14">
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="20" Margin="0,0,0,22">
                         <StackPanel>
-                            <Grid Margin="0,0,0,14">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Design Theme" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
-                                    <TextBlock Text="Switch between the Obsidian aesthetic and the original Classic look."
-                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
-                                </StackPanel>
-
-                                <Button Grid.Column="1" Content="{Binding DesignThemeButtonText}"
-                                        Command="{Binding SwitchDesignThemeCommand}"
-                                        Style="{StaticResource PrimaryButton}"
-                                        Padding="18,8" FontSize="12" FontWeight="SemiBold"
-                                        VerticalAlignment="Center" />
-                            </Grid>
-
-                            <StackPanel Orientation="Horizontal">
-                                <RadioButton Content="✨ Obsidian" IsChecked="{Binding IsDesignObsidian}"
-                                             Margin="0,0,24,0" GroupName="DesignThemeGroup" />
-                                <RadioButton Content="🏛️ Classic (Original Look)" IsChecked="{Binding IsDesignClassic}"
-                                             GroupName="DesignThemeGroup" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Browser Extension Theme Switcher -->
-                    <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,14">
-                        <StackPanel>
-                            <Grid Margin="0,0,0,14">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="Browser Extension Theme" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
-                                    <TextBlock Text="Personalize the appearance theme for the Sankalpa browser extension popup."
-                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
-                                </StackPanel>
-                            </Grid>
-
-                            <WrapPanel Orientation="Horizontal">
-                                <RadioButton Content="🌙 Current theme (Slate)" IsChecked="{Binding IsExtensionThemeCurrent, Mode=TwoWay}"
-                                             Margin="0,0,24,6" GroupName="ExtensionThemeGroup" FontWeight="SemiBold" />
-                                <RadioButton Content="⬛ Deep black (True black)" IsChecked="{Binding IsExtensionThemeDeepBlack, Mode=TwoWay}"
-                                             Margin="0,0,24,6" GroupName="ExtensionThemeGroup" FontWeight="SemiBold" />
-                                <RadioButton Content="⬜ Minimal white (Clean light)" IsChecked="{Binding IsExtensionThemeMinimalWhite, Mode=TwoWay}"
-                                             GroupName="ExtensionThemeGroup" FontWeight="SemiBold" />
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,22">
-                        <StackPanel>
-                            <!-- Theme Mode -->
+                            <!-- Theme Selection -->
                             <Grid Margin="0,0,0,18">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
@@ -547,41 +492,37 @@
                                 </Grid.RowDefinitions>
 
                                 <StackPanel Grid.Row="0" Margin="0,0,0,12">
-                                    <TextBlock Text="Theme Mode" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
-                                    <TextBlock Text="Choose between restful dark graphite and crisp, high-contrast light canvas."
-                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
+                                    <TextBlock Text="Theme" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Choose between Black, White, or Grey theme."
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
                                 </StackPanel>
 
                                 <Grid Grid.Row="1">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="220" />
+                                        <ColumnDefinition Width="180" />
                                         <ColumnDefinition Width="16" />
-                                        <ColumnDefinition Width="220" />
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="16" />
+                                        <ColumnDefinition Width="180" />
                                     </Grid.ColumnDefinitions>
 
                                     <RadioButton Grid.Column="0" GroupName="SettingsThemeGroup"
-                                                 IsChecked="{Binding IsThemeDark, Mode=TwoWay}">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Path Data="{StaticResource IconMoon}" Fill="{DynamicResource TextLightBrush}"
-                                                  Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center" />
-                                            <TextBlock Text="Dark (Zinc/Slate)" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </RadioButton>
+                                                 IsChecked="{Binding IsThemeBlack, Mode=TwoWay}"
+                                                 Content="Black" FontWeight="SemiBold" />
 
                                     <RadioButton Grid.Column="2" GroupName="SettingsThemeGroup"
-                                                 IsChecked="{Binding IsThemeLight, Mode=TwoWay}">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Path Data="{StaticResource IconSun}" Fill="{DynamicResource WarningAmberBrush}"
-                                                  Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center" />
-                                            <TextBlock Text="Light (Crisp)" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </RadioButton>
+                                                 IsChecked="{Binding IsThemeWhite, Mode=TwoWay}"
+                                                 Content="White" FontWeight="SemiBold" />
+
+                                    <RadioButton Grid.Column="4" GroupName="SettingsThemeGroup"
+                                                 IsChecked="{Binding IsThemeGrey, Mode=TwoWay}"
+                                                 Content="Grey" FontWeight="SemiBold" />
                                 </Grid>
                             </Grid>
 
                             <!-- Divider -->
-                            <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,0,0,18" />
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,18" />
 
                             <!-- Accent Color -->
                             <Grid>
@@ -591,10 +532,10 @@
                                 </Grid.RowDefinitions>
 
                                 <StackPanel Grid.Row="0" Margin="0,0,0,12">
-                                    <TextBlock Text="Accent Color" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Accent Color" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
                                     <TextBlock Text="Highlight color for primary buttons, switches, and active indicators."
-                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
                                 </StackPanel>
 
                                 <WrapPanel Grid.Row="1" Orientation="Horizontal">
@@ -657,11 +598,11 @@
                     </Border>
 
                     <!-- CATEGORY 2: INTERFACE -->
-                    <TextBlock Text="INTERFACE" FontWeight="Bold" FontSize="11"
-                               Foreground="{DynamicResource TextMutedBrush}" Margin="2,0,0,10" />
+                    <TextBlock Text="INTERFACE" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                               Foreground="{DynamicResource TextSecondary}" Margin="2,0,0,10" />
 
-                    <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,24">
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="20" Margin="0,0,0,24">
                         <StackPanel>
                             <!-- Card Density -->
                             <Grid Margin="0,0,0,18">
@@ -671,10 +612,10 @@
                                 </Grid.RowDefinitions>
 
                                 <StackPanel Grid.Row="0" Margin="0,0,0,12">
-                                    <TextBlock Text="Card Density" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Card Density" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
                                     <TextBlock Text="Adjust spacing and vertical height of block cards on your dashboard."
-                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
                                 </StackPanel>
 
                                 <Grid Grid.Row="1">
@@ -695,7 +636,7 @@
                             </Grid>
 
                             <!-- Divider -->
-                            <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,0,0,18" />
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,18" />
 
                             <!-- Time Format -->
                             <Grid>
@@ -705,10 +646,10 @@
                                 </Grid.RowDefinitions>
 
                                 <StackPanel Grid.Row="0" Margin="0,0,0,12">
-                                    <TextBlock Text="Time Display Format" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Time Display Format" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
                                     <TextBlock Text="Choose how times are formatted across schedules, countdowns, and active block windows."
-                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" />
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
                                 </StackPanel>
 
                                 <Grid Grid.Row="1">
@@ -722,7 +663,8 @@
                                                  IsChecked="{Binding IsTimeFormat12h, Mode=TwoWay}">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="12-Hour" FontWeight="SemiBold" Margin="0,0,6,0" VerticalAlignment="Center" />
-                                            <TextBlock Text="(e.g. 2:30 PM)" Foreground="{DynamicResource TextDimBrush}" FontSize="12" VerticalAlignment="Center" />
+                                            <TextBlock Text="(e.g. 2:30 PM)" FontFamily="{DynamicResource FontMono}"
+                                                       Foreground="{DynamicResource TextSecondary}" FontSize="{DynamicResource FontSize12}" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </RadioButton>
 
@@ -730,7 +672,8 @@
                                                  IsChecked="{Binding IsTimeFormat24h, Mode=TwoWay}">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="24-Hour" FontWeight="SemiBold" Margin="0,0,6,0" VerticalAlignment="Center" />
-                                            <TextBlock Text="(e.g. 14:30)" Foreground="{DynamicResource TextDimBrush}" FontSize="12" VerticalAlignment="Center" />
+                                            <TextBlock Text="(e.g. 14:30)" FontFamily="{DynamicResource FontMono}"
+                                                       Foreground="{DynamicResource TextSecondary}" FontSize="{DynamicResource FontSize12}" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </RadioButton>
                                 </Grid>
@@ -738,12 +681,12 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- CATEGORY 3: SECURE DNS SHIELD & LOCK -->
-                    <TextBlock Text="DNS SHIELD &amp; CONTENT FILTER" FontWeight="Bold" FontSize="11"
-                               Foreground="{DynamicResource TextMutedBrush}" Margin="2,0,0,10" />
+                    <!-- CATEGORY 3: SECURE DNS SHIELD & CONTENT FILTER -->
+                    <TextBlock Text="DNS SHIELD &amp; CONTENT FILTER" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                               Foreground="{DynamicResource TextSecondary}" Margin="2,0,0,10" />
 
-                    <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,24">
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="20" Margin="0,0,0,24">
                         <StackPanel>
                             <!-- Header with Toggle and Lock Indicator -->
                             <Grid Margin="0,0,0,16">
@@ -754,26 +697,30 @@
 
                                 <StackPanel Grid.Column="0">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,4">
-                                        <Path Data="{StaticResource IconShield}" Fill="{DynamicResource AccentPrimaryBrush}"
-                                              Width="14" Height="14" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center" />
-                                        <TextBlock Text="Secure DNS Protection" FontSize="14" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextLightBrush}" VerticalAlignment="Center" />
+                                        <Path Style="{StaticResource Icon}" Data="{StaticResource IconShield}"
+                                              Stroke="{DynamicResource Accent}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="Secure DNS Protection" FontFamily="{DynamicResource FontTitle}"
+                                                   FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
 
                                         <!-- Locked Indicator Badge -->
-                                        <Border CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center"
-                                                Background="{DynamicResource SurfaceHighlightBrush}"
-                                                BorderBrush="{DynamicResource WarningAmberBrush}" BorderThickness="1"
+                                        <Border CornerRadius="{DynamicResource RadiusButton}" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                Background="{DynamicResource SurfaceRaised}"
+                                                BorderBrush="{DynamicResource Warning}" BorderThickness="1"
                                                 Visibility="{Binding IsDnsLocked, Converter={StaticResource BoolToVis}}">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock Text="🔒 Locked" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource WarningAmberBrush}" />
-                                                <TextBlock Text="{Binding DnsLockRemainingFormatted, StringFormat=' ({0})'}" FontSize="11"
-                                                           Foreground="{DynamicResource TextLightBrush}" Margin="4,0,0,0"
+                                                <Path Style="{StaticResource Icon}" Data="{StaticResource IconLock}"
+                                                      Stroke="{DynamicResource Warning}" Width="12" Height="12" Margin="0,0,4,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="Locked" FontSize="{DynamicResource FontSize12}" FontWeight="Bold" Foreground="{DynamicResource Warning}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding DnsLockRemainingFormatted, StringFormat=' ({0})'}"
+                                                           FontFamily="{DynamicResource FontMono}" FontSize="{DynamicResource FontSize12}"
+                                                           Foreground="{DynamicResource TextPrimary}" Margin="4,0,0,0" VerticalAlignment="Center"
                                                            Visibility="{Binding DnsLockRemainingFormatted, Converter={StaticResource StringNotEmptyToVis}}" />
                                             </StackPanel>
                                         </Border>
                                     </StackPanel>
                                     <TextBlock Text="Route Windows network traffic through filtered DNS servers to enforce adult/malware protection at the OS level."
-                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" />
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
                                 </StackPanel>
 
                                 <!-- On/Off Toggle -->
@@ -789,12 +736,12 @@
                             </Grid>
 
                             <!-- Divider -->
-                            <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,0,0,16" />
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,16" />
 
                             <!-- Presets Selection -->
                             <StackPanel Margin="0,0,0,16" IsEnabled="{Binding CanEditDns}">
-                                <TextBlock Text="Resolver Preset" FontSize="13" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,8" />
+                                <TextBlock Text="Resolver Preset" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,8" />
 
                                 <Grid>
                                     <Grid.RowDefinitions>
@@ -810,8 +757,11 @@
                                     <RadioButton Grid.Row="0" Grid.Column="0" GroupName="DnsPresetGroup" Margin="0,0,8,10"
                                                  IsChecked="{Binding IsPresetCloudflare, Mode=TwoWay}">
                                         <StackPanel>
-                                            <TextBlock Text="Cloudflare Family" FontWeight="SemiBold" Foreground="{DynamicResource TextLightBrush}" />
-                                            <TextBlock Text="1.1.1.3 (Malware &amp; Adult filter)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                                            <TextBlock Text="Cloudflare Family" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
+                                            <TextBlock FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}">
+                                                <Run Text="1.1.1.3" FontFamily="{DynamicResource FontMono}" />
+                                                <Run Text=" (Malware &amp; Adult filter)" />
+                                            </TextBlock>
                                         </StackPanel>
                                     </RadioButton>
 
@@ -819,26 +769,23 @@
                                     <RadioButton Grid.Row="0" Grid.Column="1" GroupName="DnsPresetGroup" Margin="0,0,0,10"
                                                  IsChecked="{Binding IsPresetCleanBrowsing, Mode=TwoWay}">
                                         <StackPanel>
-                                            <TextBlock Text="CleanBrowsing Family" FontWeight="SemiBold" Foreground="{DynamicResource TextLightBrush}" />
-                                            <TextBlock Text="185.228.168.168 (Strict Family filter)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
-                                        </StackPanel>
-                                    </RadioButton>
-
-                                    <!-- AdGuard Family -->
-                                    <RadioButton Grid.Row="1" Grid.Column="0" GroupName="DnsPresetGroup" Margin="0,0,8,6"
-                                                 IsChecked="{Binding IsPresetAdGuard, Mode=TwoWay}">
-                                        <StackPanel>
-                                            <TextBlock Text="AdGuard Family" FontWeight="SemiBold" Foreground="{DynamicResource TextLightBrush}" />
-                                            <TextBlock Text="94.140.14.15 (AdBlock + Adult filter)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                                            <TextBlock Text="CleanBrowsing" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
+                                            <TextBlock FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}">
+                                                <Run Text="185.228.168.168" FontFamily="{DynamicResource FontMono}" />
+                                                <Run Text=" (Adult &amp; Malicious filter)" />
+                                            </TextBlock>
                                         </StackPanel>
                                     </RadioButton>
 
                                     <!-- Quad9 -->
-                                    <RadioButton Grid.Row="1" Grid.Column="1" GroupName="DnsPresetGroup" Margin="0,0,0,6"
+                                    <RadioButton Grid.Row="1" Grid.Column="0" GroupName="DnsPresetGroup" Margin="0,0,8,0"
                                                  IsChecked="{Binding IsPresetQuad9, Mode=TwoWay}">
                                         <StackPanel>
-                                            <TextBlock Text="Quad9 Threat Protection" FontWeight="SemiBold" Foreground="{DynamicResource TextLightBrush}" />
-                                            <TextBlock Text="9.9.9.9 (Malware &amp; Phishing filter)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
+                                            <TextBlock Text="Quad9" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
+                                            <TextBlock FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}">
+                                                <Run Text="9.9.9.9" FontFamily="{DynamicResource FontMono}" />
+                                                <Run Text=" (Malware &amp; Phishing filter)" />
+                                            </TextBlock>
                                         </StackPanel>
                                     </RadioButton>
                                 </Grid>
@@ -846,12 +793,13 @@
                                 <!-- Custom Preset Option -->
                                 <RadioButton GroupName="DnsPresetGroup" Margin="0,8,0,0"
                                              IsChecked="{Binding IsPresetCustom, Mode=TwoWay}">
-                                    <TextBlock Text="Custom DNS Resolvers" FontWeight="SemiBold" Foreground="{DynamicResource TextLightBrush}" />
+                                    <TextBlock Text="Custom DNS Resolvers" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
                                 </RadioButton>
                             </StackPanel>
 
                             <!-- Custom DNS Inputs (visible when Custom is selected) -->
-                            <Border Background="{DynamicResource SurfacePillBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,16"
+                            <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                    CornerRadius="{DynamicResource RadiusCard}" Padding="12" Margin="0,0,0,16"
                                     Visibility="{Binding IsCustomDns, Converter={StaticResource BoolToVis}}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -863,15 +811,17 @@
                                     </Grid.ColumnDefinitions>
 
                                     <StackPanel Grid.Column="0">
-                                        <TextBlock Text="Primary DNS (IPv4)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,4" />
+                                        <TextBlock Text="Primary DNS (IPv4)" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
                                         <TextBox Text="{Binding PrimaryDns, UpdateSourceTrigger=PropertyChanged}"
+                                                 FontFamily="{DynamicResource FontMono}"
                                                  IsEnabled="{Binding CanEditDns}" Height="32" Padding="8,4"
                                                  ScrollViewer.VerticalScrollBarVisibility="Disabled" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="2">
-                                        <TextBlock Text="Secondary DNS (Optional)" FontSize="11" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,4" />
+                                        <TextBlock Text="Secondary DNS (Optional)" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
                                         <TextBox Text="{Binding SecondaryDns, UpdateSourceTrigger=PropertyChanged}"
+                                                 FontFamily="{DynamicResource FontMono}"
                                                  IsEnabled="{Binding CanEditDns}" Height="32" Padding="8,4"
                                                  ScrollViewer.VerticalScrollBarVisibility="Disabled" />
                                     </StackPanel>
@@ -885,19 +835,19 @@
                             </Border>
 
                             <!-- Divider -->
-                            <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,0,0,16" />
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,16" />
 
                             <!-- Lock Controls -->
                             <StackPanel>
                                 <!-- UNLOCKED STATE: Configuration for Locking -->
                                 <StackPanel Visibility="{Binding IsDnsLocked, Converter={StaticResource InvBoolToVis}}">
-                                    <TextBlock Text="Enforce &amp; Lock DNS" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,4" />
-                                    <TextBlock Text="Permanently lock DNS protection for a set duration or with a typing challenge. During a permanent lock, settings cannot be disabled or bypassed until time expires."
-                                               FontSize="12" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,12" TextWrapping="Wrap" />
+                                    <TextBlock Text="Enforce &amp; Lock DNS" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4" />
+                                    <TextBlock Text="Lock DNS protection for a set duration or with a typing challenge. During a lock, settings cannot be disabled or bypassed until time expires."
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12" TextWrapping="Wrap" />
 
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                                        <RadioButton Content="Permanent Duration Lock" GroupName="DnsLockModeGroup"
+                                        <RadioButton Content="Duration Lock" GroupName="DnsLockModeGroup"
                                                      IsChecked="{Binding IsDnsLockTimer, Mode=TwoWay}"
                                                      FontWeight="SemiBold" Margin="0,0,24,0" />
                                         <RadioButton Content="64-Char Typing Challenge" GroupName="DnsLockModeGroup"
@@ -907,7 +857,7 @@
 
                                     <!-- Duration Selector if Timer Lock -->
                                     <StackPanel Visibility="{Binding IsDnsLockTimer, Converter={StaticResource BoolToVis}}" Margin="0,0,0,12">
-                                        <TextBlock Text="Quick Presets" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,6" />
+                                        <TextBlock Text="Quick Presets" FontWeight="SemiBold" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,6" />
                                         <Grid Margin="0,0,0,6">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
@@ -920,16 +870,16 @@
                                             </Grid.ColumnDefinitions>
                                             <Button Grid.Column="0" Content="1 hour" Style="{StaticResource SecondaryButton}"
                                                     Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="1h"
-                                                    Padding="0,5" FontSize="11" />
+                                                    Padding="0,5" FontSize="{DynamicResource FontSize12}" />
                                             <Button Grid.Column="2" Content="4 hours" Style="{StaticResource SecondaryButton}"
                                                     Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="4h"
-                                                    Padding="0,5" FontSize="11" />
+                                                    Padding="0,5" FontSize="{DynamicResource FontSize12}" />
                                             <Button Grid.Column="4" Content="1 day" Style="{StaticResource SecondaryButton}"
                                                     Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="1d"
-                                                    Padding="0,5" FontSize="11" />
+                                                    Padding="0,5" FontSize="{DynamicResource FontSize12}" />
                                             <Button Grid.Column="6" Content="3 days" Style="{StaticResource SecondaryButton}"
                                                     Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="3d"
-                                                    Padding="0,5" FontSize="11" />
+                                                    Padding="0,5" FontSize="{DynamicResource FontSize12}" />
                                         </Grid>
                                         <Grid Margin="0,0,0,12">
                                             <Grid.ColumnDefinitions>
@@ -943,54 +893,81 @@
                                             </Grid.ColumnDefinitions>
                                             <Button Grid.Column="0" Content="1 week" Style="{StaticResource SecondaryButton}"
                                                     Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="1w"
-                                                    Padding="0,5" FontSize="11" />
+                                                    Padding="0,5" FontSize="{DynamicResource FontSize12}" />
                                             <Button Grid.Column="2" Content="1 month" Style="{StaticResource SecondaryButton}"
                                                     Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="1m"
-                                                    Padding="0,5" FontSize="11" />
+                                                    Padding="0,5" FontSize="{DynamicResource FontSize12}" />
                                             <Button Grid.Column="4" Content="3 months" Style="{StaticResource SecondaryButton}"
                                                     Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="3m"
-                                                    Padding="0,5" FontSize="11" />
+                                                    Padding="0,5" FontSize="{DynamicResource FontSize12}" />
                                             <Button Grid.Column="6" Content="1 year" Style="{StaticResource SecondaryButton}"
                                                     Command="{Binding SetDnsPresetDurationCommand}" CommandParameter="1y"
-                                                    Padding="0,5" FontSize="11" />
+                                                    Padding="0,5" FontSize="{DynamicResource FontSize12}" />
                                         </Grid>
 
-                                        <TextBlock Text="Custom Duration" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,6" />
-                                        <Grid Margin="0,0,0,10">
+                                        <!-- Custom Duration Inputs -->
+                                        <TextBlock Text="Custom Duration" FontWeight="SemiBold" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,6" />
+                                        <Grid Margin="0,0,0,6">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="8" />
-                                                <ColumnDefinition Width="140" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="8" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="8" />
+                                                <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBox Text="{Binding DnsCustomDurationInput, UpdateSourceTrigger=PropertyChanged}"
-                                                     Height="32" VerticalContentAlignment="Center"
-                                                     Padding="10,4" FontSize="12"
-                                                     ScrollViewer.VerticalScrollBarVisibility="Disabled" />
-                                            <ComboBox Grid.Column="2" SelectedIndex="{Binding DnsCustomDurationUnitIndex, Mode=TwoWay}"
-                                                      Height="32" FontSize="12">
-                                                <ComboBoxItem Content="Minutes" />
-                                                <ComboBoxItem Content="Hours" />
-                                                <ComboBoxItem Content="Days" />
-                                                <ComboBoxItem Content="Weeks" />
-                                                <ComboBoxItem Content="Months (30d)" />
-                                                <ComboBoxItem Content="Years (365d)" />
-                                            </ComboBox>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="Days" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,2" />
+                                                <TextBox Text="{Binding DnsCustomDays, UpdateSourceTrigger=PropertyChanged}"
+                                                         FontFamily="{DynamicResource FontMono}"
+                                                         Style="{StaticResource NumericInputTextBox}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="Hours" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,2" />
+                                                <TextBox Text="{Binding DnsCustomHours, UpdateSourceTrigger=PropertyChanged}"
+                                                         FontFamily="{DynamicResource FontMono}"
+                                                         Style="{StaticResource NumericInputTextBox}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="4">
+                                                <TextBlock Text="Minutes" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,2" />
+                                                <TextBox Text="{Binding DnsCustomMinutes, UpdateSourceTrigger=PropertyChanged}"
+                                                         FontFamily="{DynamicResource FontMono}"
+                                                         Style="{StaticResource NumericInputTextBox}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="6">
+                                                <TextBlock Text="Seconds" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,2" />
+                                                <TextBox Text="{Binding DnsCustomSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                                         FontFamily="{DynamicResource FontMono}"
+                                                         Style="{StaticResource NumericInputTextBox}" />
+                                            </StackPanel>
                                         </Grid>
-
-                                        <TextBlock Text="🔒 Permanent locks cannot be cancelled or bypassed early under any circumstances until the timer completes."
-                                                   FontSize="11" Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,4" />
+                                        <TextBlock Text="{Binding DnsCustomDurationSummary}" FontSize="{DynamicResource FontSize12}"
+                                                   Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,4" />
                                     </StackPanel>
 
                                     <!-- Challenge info if Challenge Lock -->
-                                    <TextBlock Text="💡 When locked via typing challenge, unlocking requires typing a randomized 64-character string without errors."
-                                               FontSize="11" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,12" TextWrapping="Wrap"
-                                               Visibility="{Binding IsDnsLockChallenge, Converter={StaticResource BoolToVis}}" />
+                                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                            CornerRadius="{DynamicResource RadiusButton}" Padding="10,6" Margin="0,0,0,12"
+                                            Visibility="{Binding IsDnsLockChallenge, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Style="{StaticResource Icon}" Data="{StaticResource IconInfo}"
+                                                  Stroke="{DynamicResource TextSecondary}" Width="14" Height="14" Margin="0,2,6,0" VerticalAlignment="Top" />
+                                            <TextBlock Text="When locked via typing challenge, unlocking requires typing a randomized 64-character string without errors."
+                                                       FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
 
                                     <!-- UNLOCKED STATE ACTION BUTTON -->
-                                    <Button Content="🔒 Permanently Lock DNS"
-                                            Command="{Binding LockDnsCommand}"
+                                    <Button Command="{Binding LockDnsCommand}"
                                             Style="{StaticResource PrimaryButton}"
-                                            HorizontalAlignment="Right" Padding="20,8" Margin="0,4,0,0" />
+                                            HorizontalAlignment="Right" Padding="20,8" Margin="0,4,0,0">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Path Style="{StaticResource Icon}" Data="{StaticResource IconLock}"
+                                                  Stroke="{DynamicResource TextOnAccent}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="Lock DNS" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
                                 </StackPanel>
 
                                 <!-- LOCKED STATE: Status and Unlock Button -->
@@ -1002,35 +979,40 @@
 
                                     <StackPanel Grid.Column="0" Margin="0,0,16,0">
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                            <TextBlock Text="🔒 DNS Protection is Permanently Locked" FontSize="13" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource WarningAmberBrush}" VerticalAlignment="Center" />
-                                            <Border CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center"
-                                                    Background="{DynamicResource SurfaceHighlightBrush}"
-                                                    BorderBrush="{DynamicResource WarningAmberBrush}" BorderThickness="1"
+                                            <Path Style="{StaticResource Icon}" Data="{StaticResource IconLock}"
+                                                  Stroke="{DynamicResource Warning}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="DNS protection is locked" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Warning}" VerticalAlignment="Center" />
+                                            <Border CornerRadius="{DynamicResource RadiusButton}" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                    Background="{DynamicResource SurfaceRaised}"
+                                                    BorderBrush="{DynamicResource Warning}" BorderThickness="1"
                                                     Visibility="{Binding DnsLockRemainingFormatted, Converter={StaticResource StringNotEmptyToVis}}">
-                                                <TextBlock Text="{Binding DnsLockRemainingFormatted}" FontSize="11" FontWeight="Bold"
-                                                           Foreground="{DynamicResource TextLightBrush}" />
+                                                <TextBlock Text="{Binding DnsLockRemainingFormatted}" FontFamily="{DynamicResource FontMono}"
+                                                           FontSize="{DynamicResource FontSize12}" FontWeight="Bold"
+                                                           Foreground="{DynamicResource TextPrimary}" />
                                             </Border>
                                         </StackPanel>
 
                                         <TextBlock Text="{Binding DnsLockedUntilLocalFormatted, StringFormat='Locked until: {0}'}"
-                                                   FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AccentPrimaryBrush}"
+                                                   FontFamily="{DynamicResource FontMono}"
+                                                   FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" Foreground="{DynamicResource Accent}"
                                                    Margin="0,0,0,4"
                                                    Visibility="{Binding DnsLockedUntilLocalFormatted, Converter={StaticResource StringNotEmptyToVis}}" />
 
-                                        <TextBlock Text="DNS servers cannot be changed, disabled, or bypassed. The service background watchdog actively restores these settings if modified. Early unlock is not permitted."
-                                                   FontSize="12" Foreground="{DynamicResource TextDimBrush}" TextWrapping="Wrap" />
+                                        <TextBlock Text="DNS servers can't be changed or turned off until the timer ends. Changes are reverted automatically."
+                                                   FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
                                     </StackPanel>
 
                                     <Button Grid.Column="1" Content="Unlock DNS"
                                             Command="{Binding UnlockDnsCommand}"
+                                            IsEnabled="{Binding CanUnlockDns}"
                                             Style="{StaticResource SecondaryButton}"
                                             VerticalAlignment="Center" Padding="18,8" />
                                 </Grid>
                             </StackPanel>
 
                             <!-- DNS Status Feedback Message -->
-                            <TextBlock Text="{Binding DnsMessage}" FontSize="12" Foreground="{DynamicResource AccentPrimaryBrush}"
+                            <TextBlock Text="{Binding DnsMessage}" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource Accent}"
                                        Margin="0,10,0,0" TextWrapping="Wrap"
                                        Visibility="{Binding DnsMessage, Converter={StaticResource StringNotEmptyToVis}}" />
                         </StackPanel>
