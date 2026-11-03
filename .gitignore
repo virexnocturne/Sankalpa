@@ -23,3 +23,5 @@ tests/manual/*-test-result.txt
 
 # Extension secrets
 extension/.keys/
+
+agents_prompts.md

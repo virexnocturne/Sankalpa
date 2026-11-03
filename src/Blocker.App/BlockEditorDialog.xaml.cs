@@ -238,20 +238,25 @@ public partial class BlockEditorDialog : Window
 
         if (profile != null)
         {
-            DialogHeader.Text = _isLockedMode
-                ? $"Edit Block: {profile.Name} 🔒 (Additive Mode)"
-                : $"Edit Block: {profile.Name}";
+            DialogHeader.Text = $"Edit Block: {profile.Name}";
+            if (HeaderLockIcon != null)
+            {
+                HeaderLockIcon.Visibility = _isLockedMode ? Visibility.Visible : Visibility.Collapsed;
+            }
             NameInput.Text = profile.Name;
 
             if (_isLockedMode)
             {
-                LockedAdditiveBanner.Visibility = Visibility.Visible;
+                LockedBanner.Visibility = Visibility.Visible;
                 NameInput.IsEnabled = true;
                 ExceptionPatternInput.IsEnabled = false;
                 AddExceptionButton.IsEnabled = false;
                 ImportExceptionsButton.IsEnabled = false;
-                ExceptionPatternErrorTextBlock.Text = "🔒 Exceptions cannot be added while a block is locked.";
-                ExceptionPatternErrorTextBlock.Visibility = Visibility.Visible;
+                if (ExceptionLockedHintPanel != null)
+                {
+                    ExceptionLockedHintPanel.Visibility = Visibility.Visible;
+                }
+                ExceptionPatternErrorTextBlock.Visibility = Visibility.Collapsed;
                 rbUnlocked.IsEnabled = false;
                 rbTimedLock.IsEnabled = false;
                 rbLocked.IsEnabled = false;
@@ -379,7 +384,7 @@ public partial class BlockEditorDialog : Window
             if (isLockedInActiveSession || profile.LockedNow)
             {
                 DeleteButton.IsEnabled = false;
-                DeleteButton.ToolTip = "Cannot delete a profile while an active LOCKED session is using it.";
+                DeleteButton.ToolTip = "Can't delete while the block is locked.";
             }
         }
         else
