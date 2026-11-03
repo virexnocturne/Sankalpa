@@ -430,16 +430,24 @@
                     </Border>
 
                     <!-- TAB 3: SCHEDULE -->
-                    <Border x:Name="ScheduleSectionBorder" Background="{DynamicResource BgCardBrush}"
-                            BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1"
-                            CornerRadius="8" Padding="18" Margin="0,0,0,12" Visibility="Collapsed">
+                    <Border x:Name="ScheduleSectionBorder" Background="{DynamicResource Surface}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                            CornerRadius="{DynamicResource RadiusCard}" Padding="18" Margin="0,0,0,12" Visibility="Collapsed">
                         <StackPanel>
                             <!-- Complete Lock Schedule Notice -->
-                            <Border x:Name="CompleteLockScheduleNoticeBorder" Background="{DynamicResource SurfacePillBrush}"
-                                    BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="6"
-                                    Padding="12,8" Margin="0,0,0,12" Visibility="Collapsed">
-                                <TextBlock Text="Schedule is ignored while a complete lock is running."
-                                           FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource WarningAmberBrush}" />
+                            <Border x:Name="CompleteLockScheduleNoticeBorder" Style="{StaticResource LockBannerStyle}"
+                                    Margin="0,0,0,12" Visibility="Collapsed">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Path Grid.Column="0" Style="{StaticResource Icon}" Data="{StaticResource IconLock}"
+                                          Stroke="{DynamicResource Warning}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="Schedule is ignored while a complete lock is running."
+                                               FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Warning}" VerticalAlignment="Center" />
+                                </Grid>
                             </Border>
 
                             <StackPanel x:Name="ScheduleContentPanel">
@@ -451,28 +459,29 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="AUTOMATED SCHEDULE" FontWeight="Bold" FontSize="11"
-                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                    <TextBlock Text="AUTOMATED SCHEDULE" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                                               Foreground="{DynamicResource TextSecondary}" />
                                     <TextBlock Text="Automatically enables block enforcement during configured time windows."
-                                               FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0" />
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0" />
                                 </StackPanel>
-                                <Button Grid.Column="1" Content="Weekdays 08:00-17:00" Click="QuickFillWeekdays_Click"
-                                        Style="{StaticResource SecondaryButton}" Padding="12,5" FontSize="11" />
+                                <Button x:Name="QuickFillWeekdaysButton" Grid.Column="1" Content="Weekdays 08:00-17:00" Click="QuickFillWeekdays_Click"
+                                        Style="{StaticResource SecondaryButton}" Padding="12,5" FontSize="{DynamicResource FontSize12}"
+                                        FontFamily="{DynamicResource FontMono}" />
                                 <Button Grid.Column="3" Content="+ Add schedule row" Click="AddScheduleRow_Click"
-                                        Padding="14,5" FontSize="11" FontWeight="SemiBold" />
+                                        Padding="14,5" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
                             </Grid>
 
                             <!-- Empty schedule note -->
                             <TextBlock x:Name="NoScheduleTextBlock" Text="No schedule rules. When turned On, this profile is blocked 24/7 until turned Off."
-                                       FontSize="12" FontStyle="Italic" Foreground="{DynamicResource TextDimBrush}" Margin="4,8" />
+                                       FontSize="{DynamicResource FontSize12}" FontStyle="Italic" Foreground="{DynamicResource TextSecondary}" Margin="4,8" />
 
                             <!-- Schedule Rows List -->
                             <ItemsControl x:Name="ScheduleRowsControl">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="{DynamicResource SurfacePillBrush}"
-                                                BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1"
-                                                CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                                        <Border Background="{DynamicResource SurfaceRaised}"
+                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                CornerRadius="{DynamicResource RadiusButton}" Padding="10" Margin="0,0,0,8">
                                             <Grid>
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="Auto" />
@@ -502,24 +511,24 @@
 
                                                 <!-- Time Range -->
                                                 <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <TextBlock Text="From:" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"
-                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                    <TextBlock Text="From:" FontSize="{DynamicResource FontSize12}" VerticalAlignment="Center" Margin="0,0,6,0"
+                                                               Foreground="{DynamicResource TextSecondary}" />
                                                     <TextBox Text="{Binding FromText, UpdateSourceTrigger=PropertyChanged}"
-                                                             Style="{StaticResource TimePickerTextBox}" />
-                                                    <TextBlock Text="To:" FontSize="12" VerticalAlignment="Center" Margin="10,0,6,0"
-                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                             Style="{StaticResource TimePickerTextBox}" FontSize="{DynamicResource FontSize12}" />
+                                                    <TextBlock Text="To:" FontSize="{DynamicResource FontSize12}" VerticalAlignment="Center" Margin="10,0,6,0"
+                                                               Foreground="{DynamicResource TextSecondary}" />
                                                     <TextBox Text="{Binding ToText, UpdateSourceTrigger=PropertyChanged}"
-                                                             Style="{StaticResource TimePickerTextBox}" />
+                                                             Style="{StaticResource TimePickerTextBox}" FontSize="{DynamicResource FontSize12}" />
                                                 </StackPanel>
 
                                                 <!-- Remove Button -->
                                                 <Button Grid.Row="0" Grid.Column="4" Content="Remove" Click="RemoveScheduleRow_Click"
-                                                        Style="{StaticResource ListRemoveButton}" Padding="8,4" FontSize="11" VerticalAlignment="Center"
+                                                        Style="{StaticResource ListRemoveButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" VerticalAlignment="Center"
                                                         Visibility="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=RemoveButtonVisibility}" />
 
                                                 <!-- Row Error (if any) -->
                                                 <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5" Text="{Binding Error}"
-                                                           Foreground="{DynamicResource DangerRedBrush}" FontSize="11" Margin="2,6,0,0"
+                                                           Foreground="{DynamicResource Danger}" FontSize="{DynamicResource FontSize12}" Margin="2,6,0,0"
                                                            Visibility="{Binding Error, Converter={StaticResource StringNotEmptyToVis}}" />
                                             </Grid>
                                         </Border>
@@ -527,12 +536,12 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <TextBlock x:Name="ScheduleErrorTextBlock" Foreground="{DynamicResource DangerRedBrush}" FontSize="11"
+                            <TextBlock x:Name="ScheduleErrorTextBlock" Foreground="{DynamicResource Danger}" FontSize="{DynamicResource FontSize12}"
                                        Margin="0,4,0,0" Visibility="Collapsed" />
 
                             <!-- DAILY USAGE ALLOWANCE -->
-                            <Border Background="{DynamicResource SurfacePillBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
-                                    BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,16,0,0">
+                            <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="14" Margin="0,16,0,0">
                                 <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -540,10 +549,10 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0">
-                                            <TextBlock Text="DAILY USAGE ALLOWANCE" FontWeight="Bold" FontSize="11"
-                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                            <TextBlock Text="DAILY USAGE ALLOWANCE" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                                                       Foreground="{DynamicResource TextSecondary}" />
                                             <TextBlock Text="Allow a limited amount of access each day before the block locks down."
-                                                       FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0" />
+                                                       FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0" />
                                         </StackPanel>
                                         <CheckBox x:Name="AllowanceCheckBox" Grid.Column="1" VerticalAlignment="Center"
                                                   Content="Enable" FontWeight="SemiBold" Checked="AllowanceCheckBox_Changed" Unchecked="AllowanceCheckBox_Changed" />
@@ -558,29 +567,29 @@
                                                 <ColumnDefinition Width="12" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="Daily limit:" FontSize="12" VerticalAlignment="Center"
-                                                       Foreground="{DynamicResource TextLightBrush}" />
+                                            <TextBlock Text="Daily limit:" FontSize="{DynamicResource FontSize12}" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextPrimary}" />
                                             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                                 <TextBox x:Name="AllowanceMinutesInput" Text="30" Width="64"
-                                                         Style="{StaticResource NumericInputTextBox}" />
-                                                <TextBlock Text="min" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                                         Style="{StaticResource NumericInputTextBox}" FontSize="{DynamicResource FontSize12}" />
+                                                <TextBlock Text="min" FontSize="{DynamicResource FontSize12}" Margin="6,0,0,0" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondary}" />
                                             </StackPanel>
                                             <!-- Quick Presets -->
                                             <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right">
-                                                <Button Content="15m" Click="AllowanceQuick_Click" Tag="15" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="11" Margin="0,0,4,0" />
-                                                <Button Content="30m" Click="AllowanceQuick_Click" Tag="30" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="11" Margin="0,0,4,0" />
-                                                <Button Content="45m" Click="AllowanceQuick_Click" Tag="45" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="11" Margin="0,0,4,0" />
-                                                <Button Content="60m" Click="AllowanceQuick_Click" Tag="60" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="11" />
+                                                <Button Content="15m" Click="AllowanceQuick_Click" Tag="15" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" Margin="0,0,4,0" />
+                                                <Button Content="30m" Click="AllowanceQuick_Click" Tag="30" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" Margin="0,0,4,0" />
+                                                <Button Content="45m" Click="AllowanceQuick_Click" Tag="45" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" Margin="0,0,4,0" />
+                                                <Button Content="60m" Click="AllowanceQuick_Click" Tag="60" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" />
                                             </StackPanel>
                                         </Grid>
 
                                         <!-- Scope options -->
                                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                             <RadioButton x:Name="rbAllowanceInSchedule" GroupName="AllowanceScope" Content="During scheduled hours only"
-                                                         IsChecked="True" FontSize="11" Margin="0,0,16,0" Foreground="{DynamicResource TextLightBrush}" />
+                                                         IsChecked="True" FontSize="{DynamicResource FontSize12}" Margin="0,0,16,0" Foreground="{DynamicResource TextPrimary}" />
                                             <RadioButton x:Name="rbAllowance24x7" GroupName="AllowanceScope" Content="24/7 across entire day"
-                                                         FontSize="11" Foreground="{DynamicResource TextLightBrush}" />
+                                                         FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextPrimary}" />
                                         </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
@@ -590,47 +599,55 @@
                     </Border>
 
                     <!-- TAB 4: LOCK PROTECTION -->
-                    <Border x:Name="LockSectionBorder" Background="{DynamicResource BgCardBrush}"
-                            BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1"
-                            CornerRadius="8" Padding="18" Margin="0,0,0,12" Visibility="Collapsed">
+                    <Border x:Name="LockSectionBorder" Background="{DynamicResource Surface}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                            CornerRadius="{DynamicResource RadiusCard}" Padding="18" Margin="0,0,0,12" Visibility="Collapsed">
                         <StackPanel>
-                            <TextBlock Text="LOCK PROTECTION" FontWeight="Bold" FontSize="11"
-                                       Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,6" />
+                            <TextBlock Text="LOCK PROTECTION" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                                       Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,6" />
                             <TextBlock Text="Prevent stopping or disabling this block while it is active."
-                                       FontSize="12" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,14" />
+                                       FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,14" />
 
                             <StackPanel Margin="0,0,0,8">
                                 <RadioButton x:Name="rbUnlocked" GroupName="LockMode" Content="Unlocked (can modify or turn off at any time)"
                                              IsChecked="True" Checked="LockMode_Changed" Margin="0,0,0,10"
-                                             Foreground="{DynamicResource TextLightBrush}" />
+                                             FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimary}" />
 
                                 <!-- Timed Lock Option -->
                                 <RadioButton x:Name="rbTimedLock" GroupName="LockMode" Content="Complete Lock for a duration (Lock strictly for a set time)"
                                              Checked="LockMode_Changed" Margin="0,0,0,6"
-                                             Foreground="{DynamicResource TextLightBrush}" />
+                                             FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimary}" />
 
                                 <!-- Timed Lock Configuration Panel -->
-                                <Border x:Name="TimedLockBorder" Background="{DynamicResource SurfacePillBrush}"
-                                        BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1"
-                                        CornerRadius="8" Padding="14" Margin="24,0,0,12" Visibility="Collapsed">
+                                <Border x:Name="TimedLockBorder" Background="{DynamicResource SurfaceRaised}"
+                                        BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                        CornerRadius="{DynamicResource RadiusCard}" Padding="14" Margin="24,0,0,12" Visibility="Collapsed">
                                     <StackPanel>
-                                        <TextBlock Text="LOCK DURATION" FontSize="11" FontWeight="Bold"
-                                                   Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,8" />
+                                        <TextBlock Text="LOCK DURATION" FontSize="{DynamicResource FontSize12}" FontWeight="Bold"
+                                                   Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,8" />
 
                                         <!-- Active Lock Notice Banner (shown when actively locked) -->
-                                        <Border x:Name="ActiveLockedNoticeBorder" Background="#261A1A" BorderBrush="#DC2626"
-                                                BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,10" Visibility="Collapsed">
-                                            <StackPanel>
-                                                <TextBlock Text="🔒 Complete Lock is Actively Running" FontWeight="SemiBold" FontSize="12"
-                                                           Foreground="#F87171" Margin="0,0,0,2" />
-                                                <TextBlock Text="This block is currently locked under an active session. The lock duration cannot be modified or lessened until the timer completes."
-                                                           FontSize="11" Foreground="{DynamicResource TextLightBrush}" TextWrapping="Wrap" />
-                                            </StackPanel>
+                                        <Border x:Name="ActiveLockedNoticeBorder" Style="{StaticResource LockBannerStyle}"
+                                                Margin="0,0,0,10" Visibility="Collapsed">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Path Grid.Column="0" Style="{StaticResource Icon}" Data="{StaticResource IconLock}"
+                                                      Stroke="{DynamicResource Warning}" Width="16" Height="16" Margin="0,2,8,0" VerticalAlignment="Top" />
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="Complete Lock is Actively Running" FontWeight="SemiBold" FontSize="{DynamicResource FontSize12}"
+                                                               Foreground="{DynamicResource Warning}" Margin="0,0,0,2" />
+                                                    <TextBlock Text="This block is currently locked under an active session. The lock duration cannot be modified or lessened until the timer completes."
+                                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Grid>
                                         </Border>
 
                                         <!-- Preset duration buttons -->
-                                        <TextBlock Text="QUICK PRESETS" FontSize="11" FontWeight="Bold"
-                                                   Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,6" />
+                                        <TextBlock Text="QUICK PRESETS" FontSize="{DynamicResource FontSize12}" FontWeight="Bold"
+                                                   Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,6" />
                                         <Grid Margin="0,0,0,6">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
@@ -641,10 +658,10 @@
                                                 <ColumnDefinition Width="6" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <Button Grid.Column="0" Content="1 hour" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="1h" Padding="0,5" FontSize="11" />
-                                            <Button Grid.Column="2" Content="4 hours" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="4h" Padding="0,5" FontSize="11" />
-                                            <Button Grid.Column="4" Content="1 day" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="1d" Padding="0,5" FontSize="11" />
-                                            <Button Grid.Column="6" Content="3 days" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="3d" Padding="0,5" FontSize="11" />
+                                            <Button Grid.Column="0" Content="1 hour" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="1h" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
+                                            <Button Grid.Column="2" Content="4 hours" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="4h" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
+                                            <Button Grid.Column="4" Content="1 day" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="1d" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
+                                            <Button Grid.Column="6" Content="3 days" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="3d" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
                                         </Grid>
                                         <Grid Margin="0,0,0,10">
                                             <Grid.ColumnDefinitions>
@@ -656,10 +673,10 @@
                                                 <ColumnDefinition Width="6" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <Button Grid.Column="0" Content="1 week" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="1w" Padding="0,5" FontSize="11" />
-                                            <Button Grid.Column="2" Content="1 month" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="1m" Padding="0,5" FontSize="11" />
-                                            <Button Grid.Column="4" Content="3 months" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="3m" Padding="0,5" FontSize="11" />
-                                            <Button Grid.Column="6" Content="1 year" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="1y" Padding="0,5" FontSize="11" />
+                                            <Button Grid.Column="0" Content="1 week" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="1w" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
+                                            <Button Grid.Column="2" Content="1 month" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="1m" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
+                                            <Button Grid.Column="4" Content="3 months" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="3m" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
+                                            <Button Grid.Column="6" Content="1 year" Style="{StaticResource SecondaryButton}" Click="QuickLockDuration_Click" Tag="1y" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
                                         </Grid>
 
                                         <!-- Custom duration input -->
@@ -671,11 +688,11 @@
                                                 <ColumnDefinition Width="130" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0" Text="Custom duration:" VerticalAlignment="Center" Margin="0,0,10,0"
-                                                       FontSize="12" Foreground="{DynamicResource TextLightBrush}" />
+                                                       FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextPrimary}" />
                                             <TextBox Grid.Column="1" x:Name="TimedLockDurationInput" Text="1" Height="28"
-                                                     VerticalContentAlignment="Center" Padding="8,2" FontSize="12"
+                                                     VerticalContentAlignment="Center" Padding="8,2" FontSize="{DynamicResource FontSize12}"
                                                      Style="{StaticResource NumericInputTextBox}" />
-                                            <ComboBox Grid.Column="3" x:Name="TimedLockUnitComboBox" SelectedIndex="2" Height="28">
+                                            <ComboBox Grid.Column="3" x:Name="TimedLockUnitComboBox" SelectedIndex="2" Height="28" FontSize="{DynamicResource FontSize12}">
                                                 <ComboBoxItem Content="Minutes" />
                                                 <ComboBoxItem Content="Hours" />
                                                 <ComboBoxItem Content="Days" />
@@ -686,32 +703,47 @@
                                         </Grid>
 
                                         <!-- Explanation Banner -->
-                                        <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
-                                                BorderThickness="1" CornerRadius="6" Padding="12,8">
+                                        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                                                BorderThickness="1" CornerRadius="{DynamicResource RadiusButton}" Padding="12,8">
                                             <StackPanel>
-                                                <TextBlock Text="🔒 Complete Unconditional Lock" FontWeight="SemiBold" FontSize="12"
-                                                           Foreground="{DynamicResource AccentBlueBrush}" Margin="0,0,0,2" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                                    <Path Style="{StaticResource Icon}" Data="{StaticResource IconLock}" Width="14" Height="14"
+                                                          Stroke="{DynamicResource Accent}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                    <TextBlock Text="Complete Lock" FontWeight="SemiBold" FontSize="{DynamicResource FontSize12}"
+                                                               Foreground="{DynamicResource Accent}" VerticalAlignment="Center" />
+                                                </StackPanel>
                                                 <TextBlock Text="When saved, this block activates immediately and is completely locked for the specified duration. It cannot be stopped, unlocked, or turned off until the timer expires. No schedule needed."
-                                                           FontSize="11" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                                                           FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
                                             </StackPanel>
                                         </Border>
 
                                         <!-- Quick lock button -->
-                                        <Button x:Name="StartTimedLockNowButton" Content="⚡ Start Complete Lock Now" Click="StartTimedLockNow_Click"
-                                                Style="{StaticResource PrimaryButton}" Margin="0,10,0,0" Padding="16,6" FontSize="12"
-                                                HorizontalAlignment="Left" />
+                                        <Button x:Name="StartTimedLockNowButton" Style="{StaticResource PrimaryButton}" Click="StartTimedLockNow_Click"
+                                                Margin="0,10,0,0" Padding="16,6" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Path Style="{StaticResource Icon}" Data="{StaticResource IconPlay}" Width="12" Height="12"
+                                                      Stroke="{DynamicResource TextOnAccent}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                                <TextBlock Text="Start Complete Lock Now" VerticalAlignment="Center" FontSize="{DynamicResource FontSize12}" />
+                                            </StackPanel>
+                                        </Button>
                                     </StackPanel>
                                 </Border>
 
                                 <!-- Pomodoro Cycles Option -->
-                                <RadioButton x:Name="rbPomodoro" GroupName="LockMode" Content="🍅 Pomodoro Cycles (Focus sessions with break intervals)"
-                                             Checked="LockMode_Changed" Margin="0,0,0,6"
-                                             Foreground="{DynamicResource TextLightBrush}" />
+                                <RadioButton x:Name="rbPomodoro" GroupName="LockMode" Checked="LockMode_Changed" Margin="0,0,0,6"
+                                             Foreground="{DynamicResource TextPrimary}" FontSize="{DynamicResource FontSize13}">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Path Style="{StaticResource Icon}" Data="{StaticResource IconTimer}" Width="14" Height="14"
+                                              Stroke="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}"
+                                              Margin="0,0,6,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="Pomodoro Cycles (Focus sessions with break intervals)" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </RadioButton>
 
                                 <!-- Pomodoro Configuration Panel -->
-                                <Border x:Name="PomodoroBorder" Background="{DynamicResource SurfacePillBrush}"
-                                        BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1"
-                                        CornerRadius="8" Padding="14" Margin="24,0,0,12" Visibility="Collapsed">
+                                <Border x:Name="PomodoroBorder" Background="{DynamicResource SurfaceRaised}"
+                                        BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                        CornerRadius="{DynamicResource RadiusCard}" Padding="14" Margin="24,0,0,12" Visibility="Collapsed">
                                     <StackPanel>
                                         <Grid Margin="0,0,0,10">
                                             <Grid.ColumnDefinitions>
@@ -721,13 +753,13 @@
                                             </Grid.ColumnDefinitions>
                                             <!-- Focus Interval -->
                                             <StackPanel Grid.Column="0">
-                                                <TextBlock Text="Focus Interval (mins)" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,4" />
-                                                <TextBox x:Name="PomoFocusInput" Text="25" Style="{StaticResource NumericInputTextBox}" />
+                                                <TextBlock Text="Focus Interval (mins)" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
+                                                <TextBox x:Name="PomoFocusInput" Text="25" Style="{StaticResource NumericInputTextBox}" FontSize="{DynamicResource FontSize12}" />
                                             </StackPanel>
                                             <!-- Short Break -->
                                             <StackPanel Grid.Column="2">
-                                                <TextBlock Text="Short Break (mins)" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,4" />
-                                                <TextBox x:Name="PomoBreakInput" Text="5" Style="{StaticResource NumericInputTextBox}" />
+                                                <TextBlock Text="Short Break (mins)" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
+                                                <TextBox x:Name="PomoBreakInput" Text="5" Style="{StaticResource NumericInputTextBox}" FontSize="{DynamicResource FontSize12}" />
                                             </StackPanel>
                                         </Grid>
                                         <Grid Margin="0,0,0,10">
@@ -738,51 +770,61 @@
                                             </Grid.ColumnDefinitions>
                                             <!-- Cycles -->
                                             <StackPanel Grid.Column="0">
-                                                <TextBlock Text="Cycles" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,4" />
-                                                <TextBox x:Name="PomoCyclesInput" Text="4" Style="{StaticResource NumericInputTextBox}" />
+                                                <TextBlock Text="Cycles" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
+                                                <TextBox x:Name="PomoCyclesInput" Text="4" Style="{StaticResource NumericInputTextBox}" FontSize="{DynamicResource FontSize12}" />
                                             </StackPanel>
                                             <!-- Long Break -->
                                             <StackPanel Grid.Column="2">
-                                                <TextBlock Text="Long Break (mins)" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,4" />
-                                                <TextBox x:Name="PomoLongBreakInput" Text="15" Style="{StaticResource NumericInputTextBox}" />
+                                                <TextBlock Text="Long Break (mins)" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
+                                                <TextBox x:Name="PomoLongBreakInput" Text="15" Style="{StaticResource NumericInputTextBox}" FontSize="{DynamicResource FontSize12}" />
                                             </StackPanel>
                                         </Grid>
                                         <!-- Reward Badge -->
-                                        <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
-                                                BorderThickness="1" CornerRadius="6" Padding="10,6" Margin="0,0,0,10">
-                                            <TextBlock Text="🏆 Rewards: Earns 10m break reward credit upon completing all 4 focus cycles."
-                                                       FontSize="11" Foreground="{DynamicResource SuccessGreenBrush}" TextWrapping="Wrap" />
+                                        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                                                BorderThickness="1" CornerRadius="{DynamicResource RadiusButton}" Padding="10,6" Margin="0,0,0,10">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Path Style="{StaticResource Icon}" Data="{StaticResource IconCheck}" Width="14" Height="14"
+                                                      Stroke="{DynamicResource Success}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="Rewards: Earns 10m break reward credit upon completing all 4 focus cycles."
+                                                           FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource Success}" TextWrapping="Wrap"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
                                         </Border>
                                         <!-- Start Pomodoro Lock button -->
-                                        <Button x:Name="StartPomodoroLockNowButton" Content="⚡ Start Pomodoro Lock Now" Click="StartPomodoroLockNow_Click"
-                                                Style="{StaticResource PrimaryButton}" Padding="16,6" FontSize="12"
-                                                HorizontalAlignment="Left" />
+                                        <Button x:Name="StartPomodoroLockNowButton" Style="{StaticResource PrimaryButton}" Click="StartPomodoroLockNow_Click"
+                                                Padding="16,6" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Path Style="{StaticResource Icon}" Data="{StaticResource IconPlay}" Width="12" Height="12"
+                                                      Stroke="{DynamicResource TextOnAccent}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                                <TextBlock Text="Start Pomodoro Lock Now" VerticalAlignment="Center" FontSize="{DynamicResource FontSize12}" />
+                                            </StackPanel>
+                                        </Button>
                                     </StackPanel>
                                 </Border>
 
                                 <RadioButton x:Name="rbLocked" GroupName="LockMode" Content="Locked during schedule"
                                              Checked="LockMode_Changed" Margin="0,0,0,4"
-                                             Foreground="{DynamicResource TextLightBrush}" />
-                                <TextBlock x:Name="LockedHintTextBlock" Text="Requires at least one schedule rule." FontSize="11"
-                                           Foreground="{DynamicResource TextDimBrush}" Margin="28,0,0,10" Visibility="Collapsed" />
+                                             FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock x:Name="LockedHintTextBlock" Text="Requires at least one schedule rule." FontSize="{DynamicResource FontSize12}"
+                                           Foreground="{DynamicResource TextSecondary}" Margin="28,0,0,10" Visibility="Collapsed" />
 
                                 <RadioButton x:Name="rbTyping" GroupName="LockMode" Content="Typing challenge (requires typing an 80-character text to unlock)"
                                              Checked="LockMode_Changed" Margin="0,0,0,10"
-                                             Foreground="{DynamicResource TextLightBrush}" />
+                                             FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimary}" />
 
                                 <RadioButton x:Name="rbPassword" GroupName="LockMode" Content="Password protected"
                                              Checked="LockMode_Changed" Margin="0,0,0,10"
-                                             Foreground="{DynamicResource TextLightBrush}" />
+                                             FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimary}" />
                             </StackPanel>
 
                             <!-- Password Fields (shown only when Password mode is selected) -->
-                            <Border x:Name="PasswordInputsBorder" Background="{DynamicResource SurfacePillBrush}"
-                                    BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1"
-                                    CornerRadius="6" Padding="14" Margin="0,4,0,0" Visibility="Collapsed">
+                            <Border x:Name="PasswordInputsBorder" Background="{DynamicResource SurfaceRaised}"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                    CornerRadius="{DynamicResource RadiusButton}" Padding="14" Margin="0,4,0,0" Visibility="Collapsed">
                                 <StackPanel>
                                     <!-- Current Password (if profile already had a password) -->
                                     <StackPanel x:Name="CurrentPasswordPanel" Margin="0,0,0,10" Visibility="Collapsed">
-                                        <TextBlock Text="Current Password:" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,4" />
+                                        <TextBlock Text="Current Password:" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
                                         <PasswordBox x:Name="CurrentPasswordBox" Height="30" VerticalContentAlignment="Center" Padding="8,4" />
                                     </StackPanel>
 
@@ -794,18 +836,18 @@
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0">
-                                            <TextBlock Text="New Password:" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,4" />
+                                            <TextBlock Text="New Password:" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
                                             <PasswordBox x:Name="NewPasswordBox" Height="30" VerticalContentAlignment="Center" Padding="8,4" />
                                         </StackPanel>
                                         <StackPanel Grid.Column="2">
-                                            <TextBlock Text="Confirm Password:" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,4" />
+                                            <TextBlock Text="Confirm Password:" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
                                             <PasswordBox x:Name="ConfirmPasswordBox" Height="30" VerticalContentAlignment="Center" Padding="8,4" />
                                         </StackPanel>
                                     </Grid>
                                 </StackPanel>
                             </Border>
 
-                            <TextBlock x:Name="LockErrorTextBlock" Foreground="{DynamicResource DangerRedBrush}" FontSize="11"
+                            <TextBlock x:Name="LockErrorTextBlock" Foreground="{DynamicResource Danger}" FontSize="{DynamicResource FontSize12}"
                                        Margin="0,8,0,0" Visibility="Collapsed" />
                         </StackPanel>
                     </Border>

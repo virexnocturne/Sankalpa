@@ -514,4 +514,11 @@ public class MainUiEnhancementTests
             throw new AggregateException(caught);
         }
     }
+
+    [Fact]
+    public void BlockEditorDialog_FormatScheduleChipText_RespectsFormats()
+    {
+        Assert.Equal("Weekdays 08:00-17:00", BlockEditorDialog.FormatScheduleChipText(true));
+        Assert.Equal("Weekdays 8:00 AM-5:00 PM", BlockEditorDialog.FormatScheduleChipText(false));
+    }
 }

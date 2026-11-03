@@ -1,15 +1,17 @@
 <Window x:Class="Blocker.App.TypingChallengeDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Blocker.App"
+        local:WindowHelper.UseThemeTitleBar="True"
         Title="Typing Challenge Unlock"
         Width="600" Height="400"
         MinWidth="520" MinHeight="350"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        Background="{DynamicResource BgDarkBrush}"
-        Foreground="{DynamicResource TextLightBrush}">
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource TextPrimary}">
 
-    <Border Background="{DynamicResource BgDarkBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
+    <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
             BorderThickness="1" Padding="24">
         <Grid>
             <Grid.RowDefinitions>
@@ -23,19 +25,20 @@
             </Grid.RowDefinitions>
 
             <!-- Title -->
-            <TextBlock Grid.Row="0" Text="Type to Unlock" FontSize="18" FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextLightBrush}" Margin="0,0,0,8" />
+            <TextBlock Grid.Row="0" Text="Type to Unlock" FontFamily="{DynamicResource FontTitle}"
+                       FontSize="{DynamicResource FontSizeTitle}" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,8" />
 
             <!-- Prompt -->
             <TextBlock x:Name="PromptTextBlock" Grid.Row="1" Text="This item is currently locked. Type the text below exactly as shown. Copy-paste is disabled."
-                       FontSize="12" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,0,0,16" />
+                       FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,16" />
 
             <!-- Challenge Box -->
-            <Border Grid.Row="2" Background="{DynamicResource SurfacePillBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1"
-                    CornerRadius="6" Padding="14,12" Margin="0,0,0,14">
+            <Border Grid.Row="2" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    CornerRadius="{DynamicResource RadiusButton}" Padding="14,12" Margin="0,0,0,14">
                 <TextBlock x:Name="ChallengeTextBlock"
-                           FontFamily="Consolas, 'Courier New', monospace" FontSize="13"
-                           Foreground="{DynamicResource AccentBlueBrush}" TextWrapping="Wrap"
+                           FontFamily="{DynamicResource FontMono}" FontSize="{DynamicResource FontSize13}"
+                           Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap"
                            LineHeight="20" IsHitTestVisible="False" Focusable="False" />
             </Border>
 
@@ -46,18 +49,18 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Type challenge here:" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextLightBrush}" VerticalAlignment="Center" />
-                    <TextBlock x:Name="CharCountText" Grid.Column="1" Text="0 / 80" FontSize="11"
-                               Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="0" Text="Type challenge here:" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                    <TextBlock x:Name="CharCountText" Grid.Column="1" Text="0 / 80" FontFamily="{DynamicResource FontMono}"
+                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
                 </Grid>
                 <TextBox x:Name="InputTextBox" Height="34" VerticalContentAlignment="Center"
-                         FontFamily="Consolas, 'Courier New', monospace" FontSize="13"
+                         FontFamily="{DynamicResource FontMono}" FontSize="{DynamicResource FontSize13}"
                          Padding="8,4" TextChanged="InputTextBox_TextChanged" />
             </StackPanel>
 
             <!-- Error text -->
-            <TextBlock x:Name="ErrorTextBlock" Grid.Row="4" Foreground="{DynamicResource DangerRedBrush}" FontSize="11"
+            <TextBlock x:Name="ErrorTextBlock" Grid.Row="4" Foreground="{DynamicResource Danger}" FontSize="{DynamicResource FontSize12}"
                        Margin="0,0,0,12" Visibility="Collapsed" TextWrapping="Wrap" />
 
             <!-- Spacer -->

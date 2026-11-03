@@ -134,7 +134,14 @@ public class ScheduleRowItem : ViewModelBase
     {
         minutes = 0;
         if (string.IsNullOrWhiteSpace(s)) return false;
-        var parts = s.Trim().Split(':');
+        s = s.Trim();
+        if (DateTime.TryParse(s, System.Globalization.CultureInfo.CurrentCulture, System.Globalization.DateTimeStyles.NoCurrentDateDefault, out DateTime dt) ||
+            DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.NoCurrentDateDefault, out dt))
+        {
+            minutes = dt.Hour * 60 + dt.Minute;
+            return true;
+        }
+        var parts = s.Split(':');
         if (parts.Length == 2 && int.TryParse(parts[0], out int h) && int.TryParse(parts[1], out int m))
         {
             if (h >= 0 && h < 24 && m >= 0 && m < 60)
@@ -149,6 +156,11 @@ public class ScheduleRowItem : ViewModelBase
 
 public partial class BlockEditorDialog : Window
 {
+    public static string FormatScheduleChipText(bool is24Hour)
+    {
+        return is24Hour ? "Weekdays 08:00-17:00" : "Weekdays 8:00 AM-5:00 PM";
+    }
+
     private readonly ProfileViewModel? _originalProfile;
     private readonly IEnumerable<string>? _existingNames;
     private readonly bool _isElevated;
@@ -235,6 +247,11 @@ public partial class BlockEditorDialog : Window
 
         SelectTabByIndex(initialTab);
         Loaded += (s, e) => SelectTabByIndex(initialTab);
+        bool is24H = string.Equals(UiSettingsStore.Load().TimeFormat, "24h", StringComparison.OrdinalIgnoreCase);
+        if (QuickFillWeekdaysButton != null)
+        {
+            QuickFillWeekdaysButton.Content = FormatScheduleChipText(is24H);
+        }
 
         if (profile != null)
         {
@@ -879,6 +896,7 @@ public partial class BlockEditorDialog : Window
 
     private void QuickFillWeekdays_Click(object sender, RoutedEventArgs e)
     {
+        bool is24H = string.Equals(UiSettingsStore.Load().TimeFormat, "24h", StringComparison.OrdinalIgnoreCase);
         var row = new ScheduleRowItem
         {
             Mon = true,
@@ -888,8 +906,8 @@ public partial class BlockEditorDialog : Window
             Fri = true,
             Sat = false,
             Sun = false,
-            FromText = "08:00",
-            ToText = "17:00"
+            FromText = is24H ? "08:00" : "8:00 AM",
+            ToText = is24H ? "17:00" : "5:00 PM"
         };
         ScheduleRows.Add(row);
         ScheduleErrorTextBlock.Visibility = Visibility.Collapsed;
@@ -897,6 +915,7 @@ public partial class BlockEditorDialog : Window
 
     private void AddScheduleRow_Click(object sender, RoutedEventArgs e)
     {
+        bool is24H = string.Equals(UiSettingsStore.Load().TimeFormat, "24h", StringComparison.OrdinalIgnoreCase);
         var row = new ScheduleRowItem
         {
             Mon = true,
@@ -906,8 +925,8 @@ public partial class BlockEditorDialog : Window
             Fri = true,
             Sat = false,
             Sun = false,
-            FromText = "08:00",
-            ToText = "17:00"
+            FromText = is24H ? "08:00" : "8:00 AM",
+            ToText = is24H ? "17:00" : "5:00 PM"
         };
         ScheduleRows.Add(row);
         ScheduleErrorTextBlock.Visibility = Visibility.Collapsed;
