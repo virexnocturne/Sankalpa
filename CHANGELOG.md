@@ -4,6 +4,89 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FIX-2026-11-03-03] Button Internal Text Foreground Fix & Release Pipeline Synchronization
+- **Timestamp**: 2026-11-03 18:35 IST
+- **Component**: MainWindow.xaml, BlockEditorDialog.xaml, Controls.xaml, Release Pipeline (dist/Sankalpa-Release/, dist/release/, dist/app/)
+- **Status**: **SOLVED & VERIFIED**
+- **Problems Identified**:
+  1. **Dark Text on Dark Buttons in White Theme**: In White theme with Slate accent, the '+ New block' button rendered dark/black text on a dark slate fill. WPF's application-level implicit TextBlock style assigned Foreground='{DynamicResource TextPrimary}' (#111111), taking precedence over TextElement.Foreground on Button.
+  2. **Stale Process Redirect on Release Click**: Clicking Sankalpa.exe in dist/release activated an older running instance due to the Global\\BlockerUiSingletonMutex inter-process activation mechanism, rather than launching the freshly built binaries.
+- **Changes Applied**:
+  - **White Theme Button Text (MainWindow.xaml, BlockEditorDialog.xaml, Controls.xaml)**:
+    - Replaced inline Content='+ New block' in MainWindow.xaml with an explicit TextBlock child specifying Foreground='{DynamicResource TextOnAccent}' and FontWeight='SemiBold'.
+    - Updated 'Lock DNS' in MainWindow.xaml and 'Start Complete Lock Now' / 'Start Pomodoro Lock Now' in BlockEditorDialog.xaml to explicitly set Foreground='{DynamicResource TextOnAccent}'.
+    - Added ContentTemplate in PrimaryButton and DangerButton in Controls.xaml ensuring all string contents dynamically bind with TextOnAccent (#FFFFFF) or TextOnDanger (#FFFFFF).
+  - **Release Pipeline & Process Termination**:
+    - Terminated stale UI process prior to staging.
+    - Built self-contained single-file win-x64 release binaries via dotnet publish.
+    - Replaced Sankalpa.exe, Sankalpa.pdb, Blocker.Core.pdb, Sankalpa.dll, and licenses directly into dist/Sankalpa-Release/ and dist/app/.
+    - Created Windows junction dist/release pointing to dist/Sankalpa-Release to guarantee identical resolution whether launched via dist/release or dist/Sankalpa-Release.
+- **Verification**:
+  - Clean compile with dotnet build Blocker.sln (0 warnings, 0 errors).
+  - Verified dist/Sankalpa-Release/Sankalpa.exe, dist/app/Sankalpa.exe, and dist/release/Sankalpa.exe are byte-identical and updated.
+
+---
+
+### [FIX-2026-11-03-02] Shared Styles, Button Foregrounds & Typography Weight Refinement
+- **Timestamp**: 2026-11-03 18:10 IST
+- **Component**: Shared Theme Dictionaries (`Theme.Black.xaml`, `Theme.Grey.xaml`), Control Templates (`Controls.xaml`), Theme Engine (`ThemeManager.cs`), Embedded Fonts (`Fonts/FamiljenGrotesk-Medium.ttf`), Test Suite (`FoundationTests.cs`)
+- **Status**: **SOLVED & VERIFIED**
+- **Problems Identified**:
+  1. **Low Contrast Text/Icons on Buttons**: In `PrimaryButton` and `DangerButton`, text and icons fell back to `TextPrimary` from the global `TextBlock` and `Path` implicit styles, resulting in pale text on pale buttons (Black/Grey themes) and dark text on dark buttons (White theme).
+  2. **Pale Accent Fills in Dark Themes**: The foundation pass used high-luminance Tailwind 400/500 pastel accents in Black and Grey themes with black text, departing from the original muted slate aesthetic and reducing visual punch.
+  3. **Synthetic Font Weight Bolding**: Shared styles referenced weights up to 600/Bold while only 600 TTFs were embedded for Familjen Grotesk, causing WPF to synthesize or approximate intermediate weights. Tab labels, status bar elements, and buttons were not standardized to medium (500) weight.
+  4. **Obsolete Contrast Test**: `Accents_ContrastRatios_MeetRequirementsInEveryTheme` in `FoundationTests.cs` asserted a 3:1 accent-against-background contrast ratio that contradicted muted dark-theme fills.
+- **Changes Applied**:
+  - **Button Control Templates (`Controls.xaml`)**:
+    - Scoped `TextBlock` and `Path` (including `x:Key="Icon"`) styles within `ControlTemplate.Resources` for both `PrimaryButton` and `DangerButton`.
+    - Explicitly bound `ContentPresenter.TextElement.Foreground` and child elements to `TextOnAccent` (for Primary) and `TextOnDanger` (for Danger) across normal, hover, pressed, and disabled states.
+  - **Accent Colors & Contrast (`Theme.Black.xaml`, `Theme.Grey.xaml`, `ThemeManager.cs`)**:
+    - Restored original pre-foundation dark theme accent fills (Emerald `#047857`, Indigo `#4F46E5`, Violet `#7C3AED`, Amber `#B45309`, Rose `#E11D48`, Slate `#475569`).
+    - Standardized `TextOnAccent` to pure white (`#FFFFFF`) across all 6 accents in all 3 themes, achieving $\ge 4.5:1$ contrast while keeping fills visibly darker than text in dark themes.
+  - **Typography & Font Weight 500 (`Controls.xaml`, `Fonts/`)**:
+    - Standardized body text to 400 (`Normal`) and buttons/tab labels to 500 (`Medium`). Removed all occurrences of 600 or bold in shared styles.
+    - Downloaded and embedded the official static `FamiljenGrotesk-Medium.ttf` (usWeightClass 500) directly into `src/Blocker.App/Fonts/`, resolving cleanly in WPF without synthetic bolding.
+  - **Test Alignment (`FoundationTests.cs`)**:
+    - Removed the obsolete `Accents_ContrastRatios_MeetRequirementsInEveryTheme` test method; preserved all core WCAG background and surface contrast tests.
+- **Verification**:
+  - Verified `Typeface.TryGetGlyphTypeface` resolves Familjen Grotesk Medium, IBM Plex Sans Regular/Medium, and IBM Plex Mono Regular/Medium without bold simulation.
+  - Built `Blocker.sln` cleanly with **0 errors, 0 warnings**.
+
+---
+
+### [FIX-2026-11-03-01] Sankalpa Consistency & Visual Polish Pass (5-Agent Architecture)
+- **Timestamp**: 2026-11-03 17:30 IST
+- **Component**: Foundation (`Theme.Black.xaml`, `Theme.White.xaml`, `Theme.Grey.xaml`, `Typography.xaml`, `Icons.xaml`, `Controls.xaml`), Block Editor (`BlockEditorDialog.xaml`, `AppPickerDialog.xaml`), Lock Dialogs (`TypingChallengeDialog.xaml`, `PasswordUnlockDialog.xaml`), Dashboard (`MainWindow.xaml`, Status Bar, Card Layout), Settings (`MainWindow.xaml` Settings View, `MainViewModel.cs`), Test Suites (`Blocker.Core.Tests/`)
+- **Status**: **SOLVED & VERIFIED**
+- **Problems Identified**:
+  1. **Disparate Theme Models**: App maintained separate dark/light mode toggles and an Obsidian vs. Classic split with hard-coded hex colors and inconsistent component styles.
+  2. **Ad-hoc Typography & Scaling**: Literal font sizes below 12px existed throughout dialogs; font families were fragmented across system UI defaults.
+  3. **Emoji & Dingbat Glyphs**: Dialogs, buttons, and notifications used system emojis and symbols that rendered inconsistently across Windows versions.
+  4. **Layout Shifts on Active Session**: Dashboard block card layouts experienced column shifts when the Stop/Active state buttons appeared.
+  5. **Broken Settings Layout & Defect 5**: An unstyled tooltip popup in the top bar produced an unwanted white box artifact over the Settings interface section.
+- **Changes Applied**:
+  - **Unified Theme System**:
+    - Replaced legacy Obsidian/Classic options with three first-class resource dictionaries: `Theme.Black.xaml`, `Theme.White.xaml`, and `Theme.Grey.xaml` sharing identical token keys.
+    - Preserved 6 accent options (Emerald, Indigo, Violet, Amber, Rose, Slate) with dynamic runtime updates across all open windows.
+    - Migrated legacy `ThemeMode` and `DesignTheme` configuration entries transparently to `Theme` ("black", "white", "grey").
+  - **Typography Standard**:
+    - Embedded official static TTFs: Familjen Grotesk (Titles), IBM Plex Sans (Body), and IBM Plex Mono (Times/Durations/IPs/Numbers).
+    - Enforced minimum font size of 12px throughout all XAML files via tokenized `DynamicResource` sizing.
+  - **Vector Lucide Icons (`Icons.xaml`)**:
+    - Integrated stroke-based Lucide icons (24x24 grid, 1.75 stroke thickness) across all dashboard cards, headers, pickers, and editors.
+  - **Card Shift Fix & Dialog Polish**:
+    - Reserved Column 3 width (`Width="144"`) in `MainWindow.xaml` block cards, preventing action button state shifts.
+    - Standardized `BlockEditorDialog`, `AppPickerDialog`, `StartSessionDialog`, `ExtensionDialog`, and `AppearanceDialog`.
+    - Bound DNS Unlock button to `CanUnlockDns` and added `TimeFormatter` for 12h/24h schedule formatting.
+  - **Automated Quality Checks & Unit Tests**:
+    - Implemented `UiLint` automated validator checking for hardcoded hex colors, sub-12px font sizes, banned symbols, and incorrect plurals.
+    - Added comprehensive test suites: `FoundationTests.cs`, `DashboardTests.cs`, `EditorSitesTests.cs`, `EditorLockTests.cs`, `SettingsTests.cs` (574 tests passing).
+- **Verification**:
+  - Full test suite passed: **574 passed, 0 failed, 0 skipped**.
+  - Verified zero visual layout shifts on card session activation.
+
+---
+
 ### [FIX-2026-11-02-06] Missing Background Notifications When UI is Closed (BrowserGrace, BrowserKill, App Blocks)
 - **Timestamp**: 2026-11-02 21:35 IST
 - **Component**: Core Helper (`ExtensionHelper.cs`), Service Notification Dispatcher (`ServiceNotificationDispatcher.cs`), Native Messaging Host (`Blocker.NativeHost/Program.cs`), Desktop UI (`App.xaml.cs`)

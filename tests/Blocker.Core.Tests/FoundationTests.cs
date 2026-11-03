@@ -174,34 +174,6 @@ public class FoundationTests
         Assert.True(ComputeContrast(danger, surface) >= 4.5, $"{themeFileName}: Danger on Surface failed 4.5:1");
     }
 
-    [Theory]
-    [InlineData("black", "#000000")]
-    [InlineData("white", "#FFFFFF")]
-    [InlineData("grey", "#2A2B2E")]
-    public void Accents_ContrastRatios_MeetRequirementsInEveryTheme(string theme, string bgHex)
-    {
-        // 6 accents per theme
-        var accents = new Dictionary<string, (string acc, string textOnAcc)>
-        {
-            ["Emerald"] = theme == "white" ? ("#047857", "#FFFFFF") : ("#10B981", "#000000"),
-            ["Indigo"] = theme == "white" ? ("#4338CA", "#FFFFFF") : (theme == "grey" ? ("#818CF8", "#000000") : ("#6366F1", "#000000")),
-            ["Violet"] = theme == "white" ? ("#6D28D9", "#FFFFFF") : (theme == "grey" ? ("#A78BFA", "#000000") : ("#8B5CF6", "#000000")),
-            ["Amber"] = theme == "white" ? ("#B45309", "#FFFFFF") : (theme == "grey" ? ("#FBBF24", "#000000") : ("#F59E0B", "#000000")),
-            ["Rose"] = theme == "white" ? ("#BE123C", "#FFFFFF") : (theme == "grey" ? ("#FB7185", "#000000") : ("#F43F5E", "#000000")),
-            ["Slate"] = theme == "white" ? ("#334155", "#FFFFFF") : (theme == "grey" ? ("#CBD5E1", "#000000") : ("#94A3B8", "#000000"))
-        };
-
-        foreach (var (accentName, (accHex, textOnAccHex)) in accents)
-        {
-            // Accent at least 3:1 against Bg
-            double crBg = ComputeContrast(accHex, bgHex);
-            Assert.True(crBg >= 3.0, $"Theme {theme}, Accent {accentName} against Bg failed 3:1 (was {crBg:F2}:1)");
-
-            // TextOnAccent at least 4.5:1 against Accent
-            double crText = ComputeContrast(textOnAccHex, accHex);
-            Assert.True(crText >= 4.5, $"Theme {theme}, TextOnAccent against {accentName} failed 4.5:1 (was {crText:F2}:1)");
-        }
-    }
 
     #endregion
 

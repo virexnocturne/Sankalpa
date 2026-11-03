@@ -723,7 +723,7 @@
                                             <StackPanel Orientation="Horizontal">
                                                 <Path Style="{StaticResource Icon}" Data="{StaticResource IconPlay}" Width="12" Height="12"
                                                       Stroke="{DynamicResource TextOnAccent}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                                <TextBlock Text="Start Complete Lock Now" VerticalAlignment="Center" FontSize="{DynamicResource FontSize12}" />
+                                                <TextBlock Text="Start Complete Lock Now" Foreground="{DynamicResource TextOnAccent}" VerticalAlignment="Center" FontSize="{DynamicResource FontSize12}" />
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
@@ -796,7 +796,7 @@
                                             <StackPanel Orientation="Horizontal">
                                                 <Path Style="{StaticResource Icon}" Data="{StaticResource IconPlay}" Width="12" Height="12"
                                                       Stroke="{DynamicResource TextOnAccent}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                                <TextBlock Text="Start Pomodoro Lock Now" VerticalAlignment="Center" FontSize="{DynamicResource FontSize12}" />
+                                                <TextBlock Text="Start Pomodoro Lock Now" Foreground="{DynamicResource TextOnAccent}" VerticalAlignment="Center" FontSize="{DynamicResource FontSize12}" />
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>

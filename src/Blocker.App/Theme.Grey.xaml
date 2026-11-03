@@ -12,8 +12,8 @@
     <Color x:Key="ColorTextPrimary">#EDEDEF</Color>
     <Color x:Key="ColorTextSecondary">#B6B7BE</Color>
     <Color x:Key="ColorTextDisabled">#8A8B93</Color>
-    <Color x:Key="ColorAccent">#10B981</Color>
-    <Color x:Key="ColorTextOnAccent">#000000</Color>
+    <Color x:Key="ColorAccent">#047857</Color>
+    <Color x:Key="ColorTextOnAccent">#FFFFFF</Color>
     <Color x:Key="ColorSuccess">#5BD58A</Color>
     <Color x:Key="ColorWarning">#E5B341</Color>
     <Color x:Key="ColorDanger">#FF6B6B</Color>
@@ -30,8 +30,8 @@
     <Color x:Key="TextPrimaryColor">#EDEDEF</Color>
     <Color x:Key="TextMuted">#B6B7BE</Color>
     <Color x:Key="TextDim">#8A8B93</Color>
-    <Color x:Key="AccentBlue">#10B981</Color>
-    <Color x:Key="AccentBlueHover">#059669</Color>
+    <Color x:Key="AccentBlue">#047857</Color>
+    <Color x:Key="AccentBlueHover">#057A55</Color>
     <Color x:Key="SuccessGreen">#5BD58A</Color>
     <Color x:Key="DangerRed">#FF6B6B</Color>
     <Color x:Key="WarningAmber">#E5B341</Color>

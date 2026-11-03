@@ -194,33 +194,19 @@ public static class ThemeManager
             };
             return (acc, Color.FromRgb(0xFF, 0xFF, 0xFF));
         }
-        else if (normTheme == "grey")
+        else // black and grey (restore original muted slate button look from git history, fill darker than text, text clearly readable >= 4.5:1)
         {
             Color acc = accent switch
             {
-                AccentColorType.Emerald => Color.FromRgb(0x10, 0xB9, 0x81), // #10B981
-                AccentColorType.Indigo => Color.FromRgb(0x81, 0x8C, 0xF8),  // #818CF8
-                AccentColorType.Violet => Color.FromRgb(0xA7, 0x8B, 0xFA),  // #A78BFA
-                AccentColorType.Amber => Color.FromRgb(0xFB, 0xBF, 0x24),   // #FBBF24
-                AccentColorType.Rose => Color.FromRgb(0xFB, 0x71, 0x85),    // #FB7185
-                AccentColorType.Slate => Color.FromRgb(0xCB, 0xD5, 0xE1),   // #CBD5E1
-                _ => Color.FromRgb(0x10, 0xB9, 0x81)
+                AccentColorType.Emerald => Color.FromRgb(0x04, 0x78, 0x57), // #047857 (5.48:1 vs white)
+                AccentColorType.Indigo => Color.FromRgb(0x4F, 0x46, 0xE5),  // #4F46E5 (6.29:1 vs white)
+                AccentColorType.Violet => Color.FromRgb(0x7C, 0x3A, 0xED),  // #7C3AED (5.70:1 vs white)
+                AccentColorType.Amber => Color.FromRgb(0xB4, 0x53, 0x09),   // #B45309 (5.02:1 vs white)
+                AccentColorType.Rose => Color.FromRgb(0xE1, 0x1D, 0x48),    // #E11D48 (4.70:1 vs white)
+                AccentColorType.Slate => Color.FromRgb(0x47, 0x55, 0x69),   // #475569 (7.58:1 vs white)
+                _ => Color.FromRgb(0x04, 0x78, 0x57)
             };
-            return (acc, Color.FromRgb(0x00, 0x00, 0x00));
-        }
-        else // black
-        {
-            Color acc = accent switch
-            {
-                AccentColorType.Emerald => Color.FromRgb(0x10, 0xB9, 0x81), // #10B981
-                AccentColorType.Indigo => Color.FromRgb(0x63, 0x66, 0xF1),  // #6366F1
-                AccentColorType.Violet => Color.FromRgb(0x8B, 0x5C, 0xF6),  // #8B5CF6
-                AccentColorType.Amber => Color.FromRgb(0xF5, 0x9E, 0x0B),   // #F59E0B
-                AccentColorType.Rose => Color.FromRgb(0xF4, 0x3F, 0x5E),    // #F43F5E
-                AccentColorType.Slate => Color.FromRgb(0x94, 0xA3, 0xB8),   // #94A3B8
-                _ => Color.FromRgb(0x10, 0xB9, 0x81)
-            };
-            return (acc, Color.FromRgb(0x00, 0x00, 0x00));
+            return (acc, Color.FromRgb(0xFF, 0xFF, 0xFF));
         }
     }
 

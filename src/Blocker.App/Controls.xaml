@@ -24,6 +24,7 @@
         <Setter Property="local:WindowHelper.UseThemeTitleBar" Value="True" />
         <Setter Property="FontFamily" Value="{DynamicResource FontBody}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
+        <Setter Property="FontWeight" Value="Normal" />
         <Setter Property="Background" Value="{DynamicResource Bg}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
     </Style>
@@ -31,6 +32,7 @@
     <Style TargetType="{x:Type TextBlock}">
         <Setter Property="FontFamily" Value="{DynamicResource FontBody}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
+        <Setter Property="FontWeight" Value="Normal" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Style.Triggers>
             <Trigger Property="IsEnabled" Value="False">
@@ -42,6 +44,7 @@
     <Style TargetType="{x:Type Label}">
         <Setter Property="FontFamily" Value="{DynamicResource FontBody}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
+        <Setter Property="FontWeight" Value="Normal" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Style.Triggers>
             <Trigger Property="IsEnabled" Value="False">
@@ -57,7 +60,7 @@
         <Setter Property="FocusVisualStyle" Value="{StaticResource DefaultFocusVisualStyle}" />
         <Setter Property="FontFamily" Value="{DynamicResource FontBody}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
-        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="Background" Value="{DynamicResource SurfaceRaised}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderStrong}" />
@@ -102,30 +105,69 @@
         <Setter Property="Background" Value="{DynamicResource Accent}" />
         <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
-        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}" Foreground="{DynamicResource TextOnAccent}" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Button}">
+                    <ControlTemplate.Resources>
+                        <Style TargetType="{x:Type TextBlock}">
+                            <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                        <Style TargetType="{x:Type Path}">
+                            <Setter Property="Stroke" Value="{DynamicResource TextOnAccent}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                                    <Setter Property="Stroke" Value="{DynamicResource TextDisabled}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                        <Style x:Key="Icon" TargetType="{x:Type Path}" BasedOn="{StaticResource Icon}">
+                            <Setter Property="Stroke" Value="{DynamicResource TextOnAccent}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                                    <Setter Property="Stroke" Value="{DynamicResource TextDisabled}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ControlTemplate.Resources>
                     <Border x:Name="border"
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="6"
                             Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                        <ContentPresenter x:Name="contentPresenter"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
                                           RecognizesAccessKey="True"
-                                          TextElement.Foreground="{TemplateBinding Foreground}" />
+                                          TextElement.Foreground="{DynamicResource TextOnAccent}" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="border" Property="Opacity" Value="0.9" />
+                            <Setter TargetName="contentPresenter" Property="TextElement.Foreground" Value="{DynamicResource TextOnAccent}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="border" Property="Opacity" Value="0.75" />
+                            <Setter TargetName="contentPresenter" Property="TextElement.Foreground" Value="{DynamicResource TextOnAccent}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource SurfaceRaised}" />
                             <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource Border}" />
+                            <Setter TargetName="contentPresenter" Property="TextElement.Foreground" Value="{DynamicResource TextDisabled}" />
                             <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
                             <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
@@ -140,30 +182,69 @@
         <Setter Property="Background" Value="{DynamicResource Danger}" />
         <Setter Property="Foreground" Value="{DynamicResource TextOnDanger}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Danger}" />
-        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}" Foreground="{DynamicResource TextOnDanger}" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Button}">
+                    <ControlTemplate.Resources>
+                        <Style TargetType="{x:Type TextBlock}">
+                            <Setter Property="Foreground" Value="{DynamicResource TextOnDanger}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                        <Style TargetType="{x:Type Path}">
+                            <Setter Property="Stroke" Value="{DynamicResource TextOnDanger}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                                    <Setter Property="Stroke" Value="{DynamicResource TextDisabled}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                        <Style x:Key="Icon" TargetType="{x:Type Path}" BasedOn="{StaticResource Icon}">
+                            <Setter Property="Stroke" Value="{DynamicResource TextOnDanger}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                                    <Setter Property="Stroke" Value="{DynamicResource TextDisabled}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ControlTemplate.Resources>
                     <Border x:Name="border"
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="6"
                             Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                        <ContentPresenter x:Name="contentPresenter"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
                                           RecognizesAccessKey="True"
-                                          TextElement.Foreground="{TemplateBinding Foreground}" />
+                                          TextElement.Foreground="{DynamicResource TextOnDanger}" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="border" Property="Opacity" Value="0.9" />
+                            <Setter TargetName="contentPresenter" Property="TextElement.Foreground" Value="{DynamicResource TextOnDanger}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextOnDanger}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="border" Property="Opacity" Value="0.75" />
+                            <Setter TargetName="contentPresenter" Property="TextElement.Foreground" Value="{DynamicResource TextOnDanger}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextOnDanger}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource SurfaceRaised}" />
                             <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource Border}" />
+                            <Setter TargetName="contentPresenter" Property="TextElement.Foreground" Value="{DynamicResource TextDisabled}" />
                             <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
                             <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
@@ -328,7 +409,7 @@
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
         <Setter Property="Padding" Value="16,8" />
         <Setter Property="FontSize" Value="{DynamicResource FontSize13}" />
-        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>

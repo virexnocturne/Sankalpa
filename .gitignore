@@ -6,10 +6,10 @@
 .vs/
 .vscode/
 
-# Intermediate publish directories
-dist/app/
-dist/service/
-dist/cli/
+# Intermediate publish directories & packaged releases
+dist/
+packaging/dist/
+output*.txt
 
 # Test output & run logs
 test-output/
