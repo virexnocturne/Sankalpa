@@ -350,7 +350,7 @@ public partial class App : Wpf.Application
             string disp = BrowserCatalog.GetDisplayName(appName);
             _notifyIcon?.ShowBalloonTip(
                 6000,
-                $"⚠️ {disp} Terminated",
+                $"{disp} Terminated",
                 $"Reason: {profileName}\nAction: Install Sankalpa extension & enable 'Allow in InPrivate'.",
                 Forms.ToolTipIcon.Warning);
         }
@@ -360,7 +360,7 @@ public partial class App : Wpf.Application
             string disp = BrowserCatalog.GetDisplayName(appName);
             _notifyIcon?.ShowBalloonTip(
                 4000,
-                $"⏳ {disp} Closing Soon",
+                $"{disp} Closing Soon",
                 profileName,
                 Forms.ToolTipIcon.Warning);
         }
@@ -369,7 +369,7 @@ public partial class App : Wpf.Application
             if (!ShowDnsAlerts) return;
             _notifyIcon?.ShowBalloonTip(
                 5000,
-                "🛡️ DNS Shield Restored",
+                "DNS Shield Restored",
                 $"DNS tampering was detected and reverted to {profileName}.",
                 Forms.ToolTipIcon.Info);
         }
@@ -378,7 +378,7 @@ public partial class App : Wpf.Application
             if (!ShowAppAlerts) return;
             _notifyIcon?.ShowBalloonTip(
                 3000,
-                $"🚫 {appName} Blocked",
+                $"{appName} Blocked",
                 $"Blocked by profile '{profileName}'.",
                 Forms.ToolTipIcon.Info);
         }
