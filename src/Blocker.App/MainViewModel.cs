@@ -1742,7 +1742,7 @@ public class MainViewModel : ViewModelBase
             var res = await _pipeClient.SendRequestAsync(req);
             if (res.Connected && res.Response?.Ok == true)
             {
-                StatusMessage = $"Started {UiLogic.FormatDurationDescription(minutes)} block session with '{profileName}'.";
+                StatusMessage = $"{DurationFormatter.FormatAdjective(TimeSpan.FromMinutes(minutes))} session started on {profileName}.";
                 ErrorMessage = null;
                 await PollStatusAsync();
             }

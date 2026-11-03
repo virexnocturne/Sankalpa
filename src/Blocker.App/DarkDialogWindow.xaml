@@ -1,16 +1,18 @@
 <Window x:Class="Blocker.App.DarkDialogWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Blocker.App"
+        local:WindowHelper.UseThemeTitleBar="True"
         Title="Blocker"
         Width="440"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowStyle="SingleBorderWindow"
-        Background="{DynamicResource BgDarkBrush}"
-        Foreground="{DynamicResource TextLightBrush}">
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource TextPrimary}">
 
-    <Border Background="{DynamicResource BgDarkBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" Padding="20">
+    <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1" Padding="20">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -20,17 +22,18 @@
 
             <!-- Header / Title -->
             <TextBlock x:Name="TitleTextBlock" Grid.Row="0" Text="Title"
-                       FontWeight="SemiBold" FontSize="16" Foreground="{DynamicResource TextLightBrush}"
+                       FontFamily="{DynamicResource FontTitle}"
+                       FontWeight="SemiBold" FontSize="{DynamicResource FontSizeHeading}" Foreground="{DynamicResource TextPrimary}"
                        Margin="0,0,0,12" />
 
             <!-- Message Body -->
             <TextBlock x:Name="MessageTextBlock" Grid.Row="1" Text="Message goes here"
-                       FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource TextLightBrush}"
+                       FontSize="{DynamicResource FontSize13}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimary}"
                        LineHeight="20" Margin="0,0,0,20" />
 
             <!-- Don't show again checkbox -->
             <CheckBox x:Name="DontShowAgainCheckBox" Grid.Row="2" Content="Don't show this warning again"
-                      FontSize="12" Foreground="{DynamicResource TextMutedBrush}"
+                      FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}"
                       VerticalAlignment="Center" HorizontalAlignment="Left"
                       Visibility="Collapsed" Margin="0,0,16,0" />
 

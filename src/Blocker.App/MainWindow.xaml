@@ -4,14 +4,16 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Blocker.App"
+        local:WindowHelper.UseThemeTitleBar="True"
         mc:Ignorable="d"
         Title="Sankalpa"
         Icon="Assets/app.ico"
         Height="720" Width="860"
         MinHeight="600" MinWidth="680"
         WindowState="Maximized"
-        Background="{DynamicResource BgDarkBrush}"
-        Foreground="{DynamicResource TextLightBrush}"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource TextPrimary}"
+        FontFamily="{DynamicResource FontBody}"
         WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
@@ -91,7 +93,7 @@
         </Style>
     </Window.Resources>
 
-    <Grid Background="{DynamicResource BgDarkBrush}">
+    <Grid Background="{DynamicResource Bg}">
         <Grid.RowDefinitions>
             <!-- 0: Warning Banners -->
             <RowDefinition Height="Auto" />
@@ -105,7 +107,7 @@
 
         <!-- ROW 0: WARNING BANNERS -->
         <StackPanel Grid.Row="0">
-            <Border Background="#261C0E" BorderBrush="#452C0D" BorderThickness="0,0,0,1" Padding="20,8"
+            <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Warning}" BorderThickness="0,0,0,1" Padding="20,8"
                     Visibility="{Binding IsServiceConnected, Converter={StaticResource InvBoolToVis}}">
                 <Grid MaxWidth="920">
                     <Grid.ColumnDefinitions>
@@ -113,26 +115,26 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="Background service is not running. Blocks will not be enforced."
-                               FontWeight="SemiBold" FontSize="12" Foreground="#FDE68A" VerticalAlignment="Center" />
+                               FontWeight="SemiBold" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource Warning}" VerticalAlignment="Center" />
                     <Button Grid.Column="1" Content="Retry connection" Command="{Binding RetryConnectionCommand}"
-                            Background="#3E240D" Foreground="#FDE68A" Padding="12,4" FontSize="11" VerticalAlignment="Center" />
+                            Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Warning}" Foreground="{DynamicResource Warning}" Padding="12,4" FontSize="{DynamicResource FontSize12}" VerticalAlignment="Center" />
                 </Grid>
             </Border>
 
-            <Border Background="#261C0E" BorderBrush="#452C0D" BorderThickness="0,0,0,1" Padding="20,6"
+            <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Warning}" BorderThickness="0,0,0,1" Padding="20,6"
                     Visibility="{Binding ShowWebsiteWarningBanner, Converter={StaticResource BoolToVis}}">
                 <Grid MaxWidth="920">
                     <TextBlock Text="{Binding WebsiteWarningBannerText}"
-                               FontWeight="SemiBold" FontSize="11" Foreground="#FDE68A" VerticalAlignment="Center" />
+                               FontWeight="SemiBold" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource Warning}" VerticalAlignment="Center" />
                 </Grid>
             </Border>
 
             <ItemsControl ItemsSource="{Binding WarningBanners}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Background="#261C0E" BorderBrush="#452C0D" BorderThickness="0,0,0,1" Padding="20,6">
+                        <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Warning}" BorderThickness="0,0,0,1" Padding="20,6">
                             <Grid MaxWidth="920">
-                                <TextBlock Text="{Binding}" FontWeight="SemiBold" FontSize="11" Foreground="#FDE68A"
+                                <TextBlock Text="{Binding}" FontWeight="SemiBold" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource Warning}"
                                            VerticalAlignment="Center" TextWrapping="Wrap" />
                             </Grid>
                         </Border>
@@ -142,7 +144,7 @@
         </StackPanel>
 
         <!-- ROW 1: TOP BAR -->
-        <Border Grid.Row="1" Background="{DynamicResource SurfacePillBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
+        <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                 BorderThickness="0,0,0,1" Padding="16,0">
             <Grid MaxWidth="920">
                 <Grid.ColumnDefinitions>
@@ -158,8 +160,8 @@
                     <Button Command="{Binding BackToBlocksCommand}" Margin="0,0,4,0">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource TopNavTabButtonStyle}">
-                                <Setter Property="Background" Value="{DynamicResource BgDarkBrush}" />
-                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                                <Setter Property="Background" Value="{DynamicResource Bg}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
                                 <Setter Property="BorderThickness" Value="0,0,0,2" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
@@ -171,25 +173,25 @@
                             </Style>
                         </Button.Style>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Path Data="{StaticResource IconShield}" Stretch="Uniform" Width="13" Height="13" Margin="0,0,8,0" VerticalAlignment="Center">
+                            <Path Data="{StaticResource IconShield}" Width="14" Height="14" Margin="0,0,8,0" VerticalAlignment="Center">
                                 <Path.Style>
-                                    <Style TargetType="Path">
-                                        <Setter Property="Fill" Value="{DynamicResource TextLightBrush}" />
+                                    <Style TargetType="Path" BasedOn="{StaticResource Icon}">
+                                        <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
-                                                <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
+                                                <Setter Property="Stroke" Value="{DynamicResource TextSecondary}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Path.Style>
                             </Path>
-                            <TextBlock Text="Website &amp; App Blocks" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center">
+                            <TextBlock Text="Website &amp; App Blocks" FontWeight="SemiBold" FontSize="{DynamicResource FontSize13}" VerticalAlignment="Center">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{DynamicResource TextLightBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
-                                                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -203,14 +205,14 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Command="{Binding ToggleSettingsCommand}" Style="{StaticResource IconButton}"
                             ToolTip="Settings" Width="30" Height="30">
-                        <Path Data="{StaticResource IconSettings}" Stretch="Uniform" Width="15" Height="15"
+                        <Path Data="{StaticResource IconSettings}" Width="16" Height="16"
                               VerticalAlignment="Center" HorizontalAlignment="Center">
                             <Path.Style>
-                                <Style TargetType="Path">
-                                    <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
+                                <Style TargetType="Path" BasedOn="{StaticResource Icon}">
+                                    <Setter Property="Stroke" Value="{DynamicResource TextSecondary}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsSettingsViewActive}" Value="True">
-                                            <Setter Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                            <Setter Property="Stroke" Value="{DynamicResource Accent}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -222,10 +224,10 @@
         </Border>
 
         <!-- ROW 2: MAIN BODY (Blocks View or In-Window Settings View) -->
-        <Grid Grid.Row="2" Background="{DynamicResource BgDarkBrush}">
+        <Grid Grid.Row="2" Background="{DynamicResource Bg}">
             <!-- 1. BLOCKS VIEW -->
             <ScrollViewer Visibility="{Binding IsSettingsViewActive, Converter={StaticResource InvBoolToVis}}"
-                          Background="{DynamicResource BgDarkBrush}" VerticalScrollBarVisibility="Auto">
+                          Background="{DynamicResource Bg}" VerticalScrollBarVisibility="Auto">
                 <StackPanel MaxWidth="920" Margin="20,20,20,16">
                     <!-- Title Header Row -->
                     <Grid Margin="0,0,0,18">
@@ -234,33 +236,34 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Column="0" Text="Website &amp; App Blocks" FontSize="20" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextLightBrush}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="0" Text="Website &amp; App Blocks" FontFamily="{DynamicResource FontTitle}"
+                                   FontSize="{DynamicResource FontSizeHeading}" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
 
                         <!-- Primary Header Add Button -->
                         <Button Grid.Column="1" Command="{Binding NewBlockCommand}"
+                                Style="{StaticResource PrimaryButton}"
                                 Content="+ New block"
-                                Foreground="#FFFFFF"
-                                Padding="14,6" FontSize="12" FontWeight="SemiBold"
+                                Padding="14,6" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold"
                                 VerticalAlignment="Center" />
                     </Grid>
 
                     <!-- Feedback Toast -->
-                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource SuccessGreenBrush}"
-                               FontSize="12" FontWeight="SemiBold" Margin="0,0,0,10"
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextPrimary}"
+                               FontSize="{DynamicResource FontSize12}" FontWeight="Normal" Margin="0,0,0,10"
                                Visibility="{Binding StatusMessage, Converter={StaticResource StringNotEmptyToVis}}" />
-                    <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource DangerRedBrush}"
-                               FontSize="12" FontWeight="SemiBold" Margin="0,0,0,10"
+                    <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource Danger}"
+                               FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" Margin="0,0,0,10"
                                Visibility="{Binding ErrorMessage, Converter={StaticResource StringNotEmptyToVis}}" />
 
                     <!-- Cards List -->
                     <ItemsControl ItemsSource="{Binding Profiles}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Background="{DynamicResource BgCardBrush}"
+                                <Border Background="{DynamicResource Surface}"
                                         BorderThickness="1"
-                                        BorderBrush="{DynamicResource BorderDarkBrush}"
-                                        CornerRadius="8"
+                                        BorderBrush="{DynamicResource Border}"
+                                        CornerRadius="{DynamicResource RadiusCard}"
                                         Padding="{Binding CardPadding}" Margin="{Binding CardMargin}">
                                     <Grid>
                                         <Grid.RowDefinitions>
@@ -272,7 +275,7 @@
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
 
-                                        <!-- Line 1: Name + Switch -->
+                                        <!-- Line 1: Name and Toggle -->
                                         <Grid Grid.Row="0" Margin="0,0,0,8">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
@@ -282,8 +285,9 @@
                                             <!-- Profile Name (Double-click to inline edit) -->
                                             <Grid Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
                                                 <!-- View Mode: Double-click to rename -->
-                                                <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource TextLightBrush}" VerticalAlignment="Center"
+                                                <TextBlock Text="{Binding Name}" FontFamily="{DynamicResource FontTitle}"
+                                                           FontSize="{DynamicResource FontSize16}" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
                                                            Cursor="Hand" ToolTip="Double-click to rename block"
                                                            Visibility="{Binding IsEditingName, Converter={StaticResource InvBoolToVis}}"
                                                            MouseLeftButtonDown="ProfileName_MouseLeftButtonDown">
@@ -295,10 +299,11 @@
                                                 <!-- Edit Mode: Inline TextBox -->
                                                 <TextBox x:Name="InlineNameTextBox"
                                                          Text="{Binding EditingName, UpdateSourceTrigger=PropertyChanged}"
-                                                         FontSize="14" FontWeight="SemiBold"
-                                                         Foreground="{DynamicResource TextLightBrush}"
-                                                         Background="{DynamicResource SurfacePillBrush}"
-                                                         BorderBrush="{DynamicResource AccentBlueBrush}"
+                                                         FontFamily="{DynamicResource FontTitle}"
+                                                         FontSize="{DynamicResource FontSize16}" FontWeight="SemiBold"
+                                                         Foreground="{DynamicResource TextPrimary}"
+                                                         Background="{DynamicResource SurfaceRaised}"
+                                                         BorderBrush="{DynamicResource Accent}"
                                                          BorderThickness="1"
                                                          Padding="6,3"
                                                          VerticalAlignment="Center"
@@ -316,27 +321,28 @@
                                                           Style="{StaticResource ToggleSwitchStyle}"
                                                           ToolTip="Toggle block on/off"
                                                           VerticalAlignment="Center" />
-                                                <TextBlock Text="{Binding OnOffText}" Width="26" FontSize="12" FontWeight="Medium"
-                                                           Foreground="{DynamicResource TextDimBrush}" Margin="8,0,0,0"
+                                                <TextBlock Text="{Binding OnOffText}" Width="26" FontSize="{DynamicResource FontSize12}" FontWeight="Medium"
+                                                           Foreground="{DynamicResource TextSecondary}" Margin="8,0,0,0"
                                                            VerticalAlignment="Center" />
                                             </StackPanel>
                                         </Grid>
 
                                         <!-- Line 1b: Live Active Focus Session (if running) -->
-                                        <Border Grid.Row="1" CornerRadius="5" Padding="10,4" Margin="0,0,0,8"
-                                                Background="{DynamicResource SurfacePillBrush}"
-                                                BorderBrush="{DynamicResource AccentBlueBrush}" BorderThickness="1"
+                                        <Border Grid.Row="1" CornerRadius="{DynamicResource RadiusButton}" Padding="10,4" Margin="0,0,0,8"
+                                                Background="{DynamicResource SurfaceRaised}"
+                                                BorderBrush="{DynamicResource Accent}" BorderThickness="1"
                                                 HorizontalAlignment="Left"
                                                 Visibility="{Binding IsSessionRunning, Converter={StaticResource BoolToVis}}">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <Path Data="{StaticResource IconClock}" Fill="{DynamicResource AccentBlueBrush}"
-                                                      Stretch="Uniform" Width="12" Height="12" Margin="0,0,6,0" VerticalAlignment="Center" />
-                                                <TextBlock Text="Active session: " FontSize="12" FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource TextLightBrush}" VerticalAlignment="Center" />
-                                                <TextBlock Text="{Binding SessionRemainingFormatted}" FontSize="12" FontWeight="Bold"
-                                                           Foreground="{DynamicResource AccentBlueBrush}" VerticalAlignment="Center" />
-                                                <TextBlock Text=" remaining" FontSize="12"
-                                                           Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                                                <Path Style="{StaticResource Icon}" Data="{StaticResource IconClock}"
+                                                      Stroke="{DynamicResource Accent}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="Active session: " FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding SessionRemainingFormatted}" FontFamily="{DynamicResource FontMono}"
+                                                           FontSize="{DynamicResource FontSize12}" FontWeight="Bold"
+                                                           Foreground="{DynamicResource Accent}" VerticalAlignment="Center" />
+                                                <TextBlock Text=" remaining" FontSize="{DynamicResource FontSize12}"
+                                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
                                             </StackPanel>
                                         </Border>
 
@@ -349,8 +355,8 @@
                                                 <ColumnDefinition Width="1.5*" />
                                                 <!-- Col 2: Lock Status -->
                                                 <ColumnDefinition Width="1.1*" />
-                                                <!-- Col 3: Action Buttons -->
-                                                <ColumnDefinition Width="Auto" />
+                                                <!-- Col 3: Action Buttons (Reserved width to fix shift when Stop button appears) -->
+                                                <ColumnDefinition Width="144" />
                                             </Grid.ColumnDefinitions>
 
                                             <!-- Col 0: Schedule status (Click opens Schedule tab) -->
@@ -359,8 +365,8 @@
                                                     CommandParameter="{Binding}"
                                                     Style="{StaticResource FlatLockLabelButtonStyle}"
                                                     ToolTip="Click to edit schedule">
-                                                <TextBlock Text="{Binding ScheduleColText}" FontSize="12"
-                                                           Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding ScheduleColText}" FontSize="{DynamicResource FontSize12}"
+                                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
                                             </Button>
 
                                             <!-- Col 1: Apps & Sites Flat Text Buttons -->
@@ -371,8 +377,8 @@
                                                         Style="{StaticResource FlatLockLabelButtonStyle}"
                                                         Margin="0,0,12,0"
                                                         ToolTip="Click to edit applications">
-                                                    <TextBlock Text="{Binding AppsBadgeText}" FontSize="12"
-                                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding AppsBadgeText}" FontSize="{DynamicResource FontSize12}"
+                                                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
                                                 </Button>
 
                                                 <!-- Sites button -->
@@ -381,8 +387,8 @@
                                                         Style="{StaticResource FlatLockLabelButtonStyle}"
                                                         Margin="0,0,12,0"
                                                         ToolTip="Click to edit websites">
-                                                    <TextBlock Text="{Binding SitesBadgeText}" FontSize="12"
-                                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding SitesBadgeText}" FontSize="{DynamicResource FontSize12}"
+                                                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
                                                 </Button>
 
                                                 <!-- Exceptions button (if any) -->
@@ -391,8 +397,8 @@
                                                         Style="{StaticResource FlatLockLabelButtonStyle}"
                                                         Visibility="{Binding HasExceptions, Converter={StaticResource BoolToVis}}"
                                                         ToolTip="Click to edit website exceptions">
-                                                    <TextBlock Text="{Binding ExceptionsBadgeText}" FontSize="12"
-                                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding ExceptionsBadgeText}" FontSize="{DynamicResource FontSize12}"
+                                                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
                                                 </Button>
                                             </StackPanel>
 
@@ -402,8 +408,8 @@
                                                     CommandParameter="{Binding}"
                                                     Style="{StaticResource FlatLockLabelButtonStyle}"
                                                     ToolTip="Click to open Lock Protection">
-                                                <TextBlock Text="{Binding LockColText}" FontSize="12"
-                                                           Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding LockColText}" FontSize="{DynamicResource FontSize12}"
+                                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
                                             </Button>
 
                                             <!-- Col 3: Actions (Stop, Edit, Delete) -->
@@ -412,7 +418,7 @@
                                                 <Button Content="Stop"
                                                         Command="{Binding DataContext.StopSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                         Style="{StaticResource DangerButton}"
-                                                        Padding="12,3" FontSize="11" Margin="0,0,6,0"
+                                                        Padding="12,3" FontSize="{DynamicResource FontSize12}" Margin="0,0,6,0"
                                                         Visibility="{Binding IsSessionRunning, Converter={StaticResource BoolToVis}}" />
 
                                                 <!-- Edit button -->
@@ -427,8 +433,9 @@
                                                         CommandParameter="{Binding}"
                                                         Style="{StaticResource IconButton}" Width="26" Height="26" Padding="6"
                                                         ToolTip="Delete block" VerticalAlignment="Center">
-                                                    <Path Data="{StaticResource IconTrash}" Fill="{DynamicResource TextDimBrush}"
-                                                          Stretch="Uniform" Width="11" Height="11" />
+                                                    <Path Style="{StaticResource Icon}" Data="{StaticResource IconTrash}"
+                                                          Stroke="{DynamicResource TextSecondary}"
+                                                          Stretch="Uniform" Width="12" Height="12" />
                                                 </Button>
                                             </StackPanel>
                                         </Grid>
@@ -1033,7 +1040,7 @@
         </Grid>
 
         <!-- ROW 3: SLIM STATUS BAR (Calm, Unified Typography) -->
-        <Border Grid.Row="3" Background="{DynamicResource SurfacePillBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
+        <Border Grid.Row="3" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                 BorderThickness="0,1,0,0" Padding="20,7">
             <Grid MaxWidth="920">
                 <Grid.ColumnDefinitions>
@@ -1052,17 +1059,17 @@
                     <Ellipse Width="7" Height="7" Margin="0,0,6,0">
                         <Ellipse.Style>
                             <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="{DynamicResource SuccessGreenBrush}" />
+                                <Setter Property="Fill" Value="{DynamicResource Success}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsServiceConnected}" Value="False">
-                                        <Setter Property="Fill" Value="{DynamicResource DangerRedBrush}" />
+                                        <Setter Property="Fill" Value="{DynamicResource Danger}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Ellipse.Style>
                     </Ellipse>
-                    <TextBlock Text="Service: " FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
-                    <TextBlock FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextLightBrush}">
+                    <TextBlock Text="Service: " FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock FontSize="{DynamicResource FontSize12}" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Text" Value="Running" />
@@ -1078,8 +1085,8 @@
 
                 <!-- Admin Rights -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Admin Rights: " FontSize="11" Foreground="{DynamicResource TextDimBrush}" />
-                    <TextBlock FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextLightBrush}">
+                    <TextBlock Text="Admin Rights: " FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock FontSize="{DynamicResource FontSize12}" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Text" Value="Elevated" />
@@ -1098,19 +1105,19 @@
                     <Ellipse Width="7" Height="7" Margin="0,0,6,0">
                         <Ellipse.Style>
                             <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="{DynamicResource TextDimBrush}" />
+                                <Setter Property="Fill" Value="{DynamicResource TextDisabled}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsWebsitesBlocking}" Value="True">
-                                        <Setter Property="Fill" Value="{DynamicResource SuccessGreenBrush}" />
+                                        <Setter Property="Fill" Value="{DynamicResource Success}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding HostsStatusDisplay}" Value="Websites: error">
-                                        <Setter Property="Fill" Value="{DynamicResource DangerRedBrush}" />
+                                        <Setter Property="Fill" Value="{DynamicResource Danger}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Ellipse.Style>
                     </Ellipse>
-                    <TextBlock Text="{Binding HostsStatusDisplay}" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextLightBrush}" />
+                    <TextBlock Text="{Binding HostsStatusDisplay}" FontSize="{DynamicResource FontSize12}" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
                 </StackPanel>
 
                 <!-- Extension Status -->
@@ -1118,19 +1125,19 @@
                     <Ellipse Width="7" Height="7" Margin="0,0,6,0">
                         <Ellipse.Style>
                             <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="{DynamicResource TextDimBrush}" />
+                                <Setter Property="Fill" Value="{DynamicResource TextDisabled}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsExtensionConnected}" Value="True">
-                                        <Setter Property="Fill" Value="{DynamicResource SuccessGreenBrush}" />
+                                        <Setter Property="Fill" Value="{DynamicResource Success}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding ExtensionStatusDisplay}" Value="Extension: error">
-                                        <Setter Property="Fill" Value="{DynamicResource DangerRedBrush}" />
+                                        <Setter Property="Fill" Value="{DynamicResource Danger}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Ellipse.Style>
                     </Ellipse>
-                    <TextBlock Text="{Binding ExtensionStatusDisplay}" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextLightBrush}" />
+                    <TextBlock Text="{Binding ExtensionStatusDisplay}" FontSize="{DynamicResource FontSize12}" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
                 </StackPanel>
             </Grid>
         </Border>
