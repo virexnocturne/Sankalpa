@@ -804,6 +804,10 @@ public class Worker : BackgroundService
             string taskkillPath = Path.Combine(systemDir, "taskkill.exe");
             if (!File.Exists(taskkillPath))
             {
+                taskkillPath = @"C:\Windows\System32\taskkill.exe";
+            }
+            if (!File.Exists(taskkillPath))
+            {
                 taskkillPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe");
             }
             if (!File.Exists(taskkillPath))

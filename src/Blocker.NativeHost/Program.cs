@@ -417,14 +417,45 @@ public static class Program
     {
         try
         {
-            // Ensure AppUserModelID "Sankalpa" is registered in HKCU so ToastNotificationManager does not throw RPC_E_SERVERFAULT
+            Log($"[NativeHost] ShowToastNotification invoked: kind='{kind}', name='{name}', profileOrReason='{profileOrReason}'");
+
+            // 1. Ensure HKCU\Software\Classes\AppUserModelId\Sankalpa is verified and registered before calling ToastNotificationManager
             string appIconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
             if (!File.Exists(appIconPath))
             {
                 appIconPath = Path.Combine(AppContext.BaseDirectory, "Sankalpa.exe");
             }
-            ExtensionHelper.EnsureAumidRegistered(appIconPath);
 
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Classes\AppUserModelId\Sankalpa");
+                if (key != null)
+                {
+                    key.SetValue("DisplayName", "Sankalpa", Microsoft.Win32.RegistryValueKind.String);
+                    key.SetValue("ShowInSettings", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    if (File.Exists(appIconPath))
+                    {
+                        key.SetValue("IconUri", appIconPath, Microsoft.Win32.RegistryValueKind.String);
+                    }
+                    key.SetValue("IconBackgroundColor", "0", Microsoft.Win32.RegistryValueKind.String);
+                    Log("[NativeHost] Verified and registered HKCU\\Software\\Classes\\AppUserModelId\\Sankalpa in registry.");
+                }
+            }
+            catch (Exception regEx)
+            {
+                Log($"[NativeHost] Notice: Direct HKCU AUMID registration check: {regEx.Message}");
+            }
+
+            try
+            {
+                ExtensionHelper.EnsureAumidRegistered(appIconPath);
+            }
+            catch (Exception aumidEx)
+            {
+                Log($"[NativeHost] Notice: ExtensionHelper.EnsureAumidRegistered: {aumidEx.Message}");
+            }
+
+            // 2. Build Toast XML with appropriate title, message, and icon
             string title;
             string line1;
             string? line2 = null;
@@ -447,14 +478,33 @@ public static class Program
                 title = "🛡️ DNS Shield Restored";
                 line1 = $"DNS tampering was detected and reverted to {profileOrReason}.";
             }
-            else
+            else if (string.Equals(kind, "App", StringComparison.OrdinalIgnoreCase))
             {
                 title = $"🚫 {name} Blocked";
                 line1 = $"Blocked by profile '{profileOrReason}'.";
             }
+            else
+            {
+                // General or custom notification (delivered regardless of active block state)
+                title = string.IsNullOrWhiteSpace(name) ? "Sankalpa Notification" : name;
+                line1 = string.IsNullOrWhiteSpace(profileOrReason) ? kind : profileOrReason;
+            }
+
+            // Find visual icon asset if available
+            string? logoPngPath = Path.Combine(AppContext.BaseDirectory, "Assets", "logo.png");
+            if (!File.Exists(logoPngPath))
+            {
+                logoPngPath = Path.Combine(AppContext.BaseDirectory, "Assets", "logo-32.png");
+            }
 
             var sb = new System.Text.StringBuilder();
             sb.Append("<toast duration=\"short\"><visual><binding template=\"ToastGeneric\">");
+            if (File.Exists(logoPngPath))
+            {
+                sb.Append("<image placement=\"appLogoOverride\" hint-crop=\"circle\" src=\"")
+                  .Append(System.Security.SecurityElement.Escape(Path.GetFullPath(logoPngPath)))
+                  .Append("\" />");
+            }
             sb.Append("<text>").Append(System.Security.SecurityElement.Escape(title)).Append("</text>");
             sb.Append("<text>").Append(System.Security.SecurityElement.Escape(line1)).Append("</text>");
             if (!string.IsNullOrEmpty(line2))
@@ -463,19 +513,26 @@ public static class Program
             }
             sb.Append("</binding></visual><audio src=\"ms-winsoundevent:Notification.Default\" /></toast>");
 
+            string toastXml = sb.ToString();
+            Log($"[NativeHost] Prepared Toast XML: {toastXml}");
+
             var doc = new Windows.Data.Xml.Dom.XmlDocument();
-            doc.LoadXml(sb.ToString());
+            doc.LoadXml(toastXml);
             var toast = new Windows.UI.Notifications.ToastNotification(doc);
 
             bool shown = false;
             try
             {
+                // 3. Call ToastNotificationManager.CreateToastNotifier("Sankalpa").Show(toast)
                 var notifier = Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier("Sankalpa");
                 notifier.Show(toast);
                 shown = true;
-                Log($"[NativeHost] Successfully displayed toast notification via WinRT for '{title}'.");
-                // Allow asynchronous COM RPC to complete before process exit
-                System.Threading.Thread.Sleep(1000);
+                Log($"[NativeHost] Successfully invoked WinRT ToastNotifier.Show() for '{title}'.");
+
+                // CRITICAL: WinRT ToastNotifier.Show() is an asynchronous COM RPC call.
+                // Wait 1200ms after Show() to ensure Windows Action Center finishes receiving and rendering the toast!
+                System.Threading.Thread.Sleep(1200);
+                Log("[NativeHost] WinRT toast display wait completed (1200ms).");
             }
             catch (Exception ex)
             {
@@ -484,12 +541,13 @@ public static class Program
 
             if (!shown)
             {
+                Log("[NativeHost] Falling back to PowerShell notification toast.");
                 ShowFallbackNotification(title, line1, line2);
             }
         }
         catch (Exception ex)
         {
-            Log($"[NativeHost] Failed to show toast notification: {ex.Message}");
+            Log($"[NativeHost] Failed to show toast notification: {ex}");
         }
     }
 
@@ -513,7 +571,7 @@ public static class Program
                 "$doc.LoadXml($rawXml); " +
                 "$t = [Windows.UI.Notifications.ToastNotification]::new($doc); " +
                 "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Sankalpa').Show($t); " +
-                "Start-Sleep -Milliseconds 800; " +
+                "Start-Sleep -Milliseconds 1200; " +
                 "} catch { }";
 
             byte[] bytes = System.Text.Encoding.Unicode.GetBytes(psScript);
@@ -528,8 +586,8 @@ public static class Program
                 UseShellExecute = false
             };
             using var p = Process.Start(psi);
-            p?.WaitForExit(3500);
-            Log("[NativeHost] Dispatched fallback PowerShell notification.");
+            p?.WaitForExit(4000);
+            Log("[NativeHost] Dispatched fallback PowerShell notification successfully.");
         }
         catch (Exception ex)
         {

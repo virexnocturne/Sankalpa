@@ -106,13 +106,6 @@
         <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
         <Setter Property="FontWeight" Value="Medium" />
-        <Setter Property="ContentTemplate">
-            <Setter.Value>
-                <DataTemplate>
-                    <TextBlock Text="{Binding}" Foreground="{DynamicResource TextOnAccent}" />
-                </DataTemplate>
-            </Setter.Value>
-        </Setter>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Button}">
@@ -183,13 +176,6 @@
         <Setter Property="Foreground" Value="{DynamicResource TextOnDanger}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Danger}" />
         <Setter Property="FontWeight" Value="Medium" />
-        <Setter Property="ContentTemplate">
-            <Setter.Value>
-                <DataTemplate>
-                    <TextBlock Text="{Binding}" Foreground="{DynamicResource TextOnDanger}" />
-                </DataTemplate>
-            </Setter.Value>
-        </Setter>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Button}">
