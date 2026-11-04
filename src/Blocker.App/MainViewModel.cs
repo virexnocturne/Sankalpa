@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Blocker.Core;
+using Application = System.Windows.Application;
 
 namespace Blocker.App;
 
@@ -283,6 +284,10 @@ public class MainViewModel : ViewModelBase
     private string _dnsMessage = string.Empty;
     private string _dnsCustomDurationInput = "1";
     private int _dnsCustomDurationUnitIndex = 2; // Default: Days
+    private int _dnsCustomDays = 0;
+    private int _dnsCustomHours = 0;
+    private int _dnsCustomMinutes = 15;
+    private int _dnsCustomSeconds = 0;
     private DateTime? _dnsLockedUntilUtc;
     private int _pollCycleCount = 0;
 
@@ -501,6 +506,93 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+    public int DnsCustomDays
+    {
+        get => _dnsCustomDays;
+        set
+        {
+            if (SetProperty(ref _dnsCustomDays, value))
+            {
+                OnPropertyChanged(nameof(DnsCustomDurationSummary));
+            }
+        }
+    }
+
+    public int DnsCustomHours
+    {
+        get => _dnsCustomHours;
+        set
+        {
+            if (SetProperty(ref _dnsCustomHours, value))
+            {
+                OnPropertyChanged(nameof(DnsCustomDurationSummary));
+            }
+        }
+    }
+
+    public int DnsCustomMinutes
+    {
+        get => _dnsCustomMinutes;
+        set
+        {
+            if (SetProperty(ref _dnsCustomMinutes, value))
+            {
+                OnPropertyChanged(nameof(DnsCustomDurationSummary));
+            }
+        }
+    }
+
+    public int DnsCustomSeconds
+    {
+        get => _dnsCustomSeconds;
+        set
+        {
+            if (SetProperty(ref _dnsCustomSeconds, value))
+            {
+                OnPropertyChanged(nameof(DnsCustomDurationSummary));
+            }
+        }
+    }
+
+    public string DnsCustomDurationSummary
+    {
+        get
+        {
+            int d = Math.Max(0, DnsCustomDays);
+            int h = Math.Max(0, DnsCustomHours);
+            int m = Math.Max(0, DnsCustomMinutes);
+            int s = Math.Max(0, DnsCustomSeconds);
+
+            if (d > 0)
+            {
+                return $"{d}d {h}h {m}m {s}s";
+            }
+            if (h > 0)
+            {
+                return $"{h}h {m}m {s}s";
+            }
+            return $"{m}m {s}s";
+        }
+    }
+
+    public void ApplyDnsPresetDuration(int index)
+    {
+        string[] presetTags = { "1h", "4h", "1d", "3d", "1w", "1m", "3m", "1y" };
+        if (index >= 0 && index < presetTags.Length)
+        {
+            ApplyDnsPresetDuration(presetTags[index]);
+        }
+        else if (index > 0)
+        {
+            TimeSpan ts = TimeSpan.FromMinutes(index);
+            DnsCustomDays = (int)ts.TotalDays;
+            DnsCustomHours = ts.Hours;
+            DnsCustomMinutes = ts.Minutes;
+            DnsCustomSeconds = ts.Seconds;
+            DnsLockDurationMinutes = index;
+        }
+    }
+
     public void ApplyDnsPresetDuration(string? tag)
     {
         if (string.IsNullOrWhiteSpace(tag)) return;
@@ -510,41 +602,73 @@ public class MainViewModel : ViewModelBase
                 _dnsCustomDurationInput = "1";
                 _dnsCustomDurationUnitIndex = 1;
                 _dnsLockDurationMinutes = 60;
+                DnsCustomDays = 0;
+                DnsCustomHours = 1;
+                DnsCustomMinutes = 0;
+                DnsCustomSeconds = 0;
                 break;
             case "4h":
                 _dnsCustomDurationInput = "4";
                 _dnsCustomDurationUnitIndex = 1;
                 _dnsLockDurationMinutes = 240;
+                DnsCustomDays = 0;
+                DnsCustomHours = 4;
+                DnsCustomMinutes = 0;
+                DnsCustomSeconds = 0;
                 break;
             case "1d":
                 _dnsCustomDurationInput = "1";
                 _dnsCustomDurationUnitIndex = 2;
                 _dnsLockDurationMinutes = 1440;
+                DnsCustomDays = 1;
+                DnsCustomHours = 0;
+                DnsCustomMinutes = 0;
+                DnsCustomSeconds = 0;
                 break;
             case "3d":
                 _dnsCustomDurationInput = "3";
                 _dnsCustomDurationUnitIndex = 2;
                 _dnsLockDurationMinutes = 4320;
+                DnsCustomDays = 3;
+                DnsCustomHours = 0;
+                DnsCustomMinutes = 0;
+                DnsCustomSeconds = 0;
                 break;
             case "1w":
                 _dnsCustomDurationInput = "1";
                 _dnsCustomDurationUnitIndex = 3;
                 _dnsLockDurationMinutes = 10080;
+                DnsCustomDays = 7;
+                DnsCustomHours = 0;
+                DnsCustomMinutes = 0;
+                DnsCustomSeconds = 0;
                 break;
             case "1m":
                 _dnsCustomDurationInput = "1";
                 _dnsCustomDurationUnitIndex = 4;
                 _dnsLockDurationMinutes = 43200;
+                DnsCustomDays = 30;
+                DnsCustomHours = 0;
+                DnsCustomMinutes = 0;
+                DnsCustomSeconds = 0;
                 break;
             case "3m":
                 _dnsCustomDurationInput = "3";
                 _dnsCustomDurationUnitIndex = 4;
                 _dnsLockDurationMinutes = 129600;
+                DnsCustomDays = 90;
+                DnsCustomHours = 0;
+                DnsCustomMinutes = 0;
+                DnsCustomSeconds = 0;
                 break;
             case "1y":
                 _dnsCustomDurationInput = "1";
                 _dnsCustomDurationUnitIndex = 5;
                 _dnsLockDurationMinutes = 525600;
+                DnsCustomDays = 365;
+                DnsCustomHours = 0;
+                DnsCustomMinutes = 0;
+                DnsCustomSeconds = 0;
                 break;
         }
 
@@ -594,6 +718,7 @@ public class MainViewModel : ViewModelBase
         Profiles = new ObservableCollection<ProfileViewModel>();
         Profiles.CollectionChanged += (s, e) =>
         {
+            OnPropertyChanged(nameof(ProfileCount));
             if (e.NewItems != null)
             {
                 foreach (ProfileViewModel p in e.NewItems.OfType<ProfileViewModel>())
@@ -689,20 +814,7 @@ public class MainViewModel : ViewModelBase
 
         StopSessionCommand = new RelayCommand(async () => await StopSessionAsync(), () => IsSessionActive);
         RetryConnectionCommand = new RelayCommand(async () => await RetryConnectionAsync());
-        DeleteBlockCommand = new RelayCommand<ProfileViewModel>(async p =>
-        {
-            if (p == null) return;
-            bool confirm = DarkDialogWindow.Show(
-                $"Are you sure you want to delete '{p.Name}'?\n\nThis will remove all associated app and website block rules.",
-                "Delete Block",
-                isConfirmation: true,
-                primaryText: "Delete",
-                secondaryText: "Cancel");
-            if (confirm)
-            {
-                await DeleteProfileAsync(p.Name);
-            }
-        });
+        DeleteBlockCommand = new RelayCommand<ProfileViewModel>(async p => await DeleteBlockAsync(p));
         ToggleDayNightCommand = new RelayCommand(() =>
         {
             Theme = IsDarkMode ? "white" : "black";
@@ -769,6 +881,7 @@ public class MainViewModel : ViewModelBase
     #region Properties
 
     public ObservableCollection<ProfileViewModel> Profiles { get; }
+    public int ProfileCount => Profiles.Count;
     public ObservableCollection<ActiveBlockChipItem> ActiveChips { get; }
 
     public bool HasActiveBlocks => ActiveChips.Count > 0 || IsSessionActive;
@@ -1013,6 +1126,7 @@ public class MainViewModel : ViewModelBase
     #region Commands
 
     public RelayCommand NewBlockCommand { get; }
+    public RelayCommand OpenNewBlockDialogCommand => NewBlockCommand;
     public RelayCommand OpenExtensionDialogCommand { get; }
     public RelayCommand<ProfileViewModel> EditBlockCommand { get; }
     public RelayCommand<ProfileViewModel> OpenLockTabCommand { get; }
@@ -1391,6 +1505,39 @@ public class MainViewModel : ViewModelBase
     {
         try
         {
+            if (!string.IsNullOrWhiteSpace(oldName) && !oldName.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                var existingProf = Profiles.FirstOrDefault(p => string.Equals(p.Name, oldName, StringComparison.OrdinalIgnoreCase));
+                int id = existingProf?.Id ?? 0;
+                var renameArgs = new Dictionary<string, string>
+                {
+                    ["name"] = name,
+                    ["old_name"] = oldName
+                };
+                if (id > 0)
+                {
+                    renameArgs["id"] = id.ToString();
+                }
+
+                var renameReq = new Request
+                {
+                    Command = CommandNames.RenameProfile,
+                    Args = renameArgs
+                };
+
+                var renameRes = await _pipeClient.SendRequestAsync(renameReq);
+                if (!renameRes.Connected || renameRes.Response?.Ok != true)
+                {
+                    var alreadyNamed = Profiles.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+                    if (alreadyNamed == null)
+                    {
+                        ErrorMessage = renameRes.Response?.Error ?? "Failed to rename block.";
+                        StatusMessage = null;
+                        return;
+                    }
+                }
+            }
+
             var args = new Dictionary<string, string>
             {
                 ["name"] = name,
@@ -1437,16 +1584,6 @@ public class MainViewModel : ViewModelBase
             var res = await _pipeClient.SendRequestAsync(req);
             if (res.Connected && res.Response?.Ok == true)
             {
-                // If renamed, delete the old one
-                if (!string.IsNullOrWhiteSpace(oldName) && !oldName.Equals(name, StringComparison.OrdinalIgnoreCase))
-                {
-                    await _pipeClient.SendRequestAsync(new Request
-                    {
-                        Command = CommandNames.DeleteProfile,
-                        Args = new Dictionary<string, string> { ["name"] = oldName }
-                    });
-                }
-
                 StatusMessage = $"Saved block '{name}'.";
                 ErrorMessage = null;
                 await LoadProfilesAsync();
@@ -1610,12 +1747,91 @@ public class MainViewModel : ViewModelBase
         }
     }
 
-    public async Task DeleteProfileAsync(string name, string? unlockPassword = null)
+    public async Task DeleteBlockAsync(ProfileViewModel? p)
+    {
+        if (p == null) return;
+
+        // Active or turned on profiles cannot be deleted
+        if (p.IsActive || p.Enabled || p.IsSessionRunning || p.IsLockedFromToggling)
+        {
+            DarkDialogWindow.Show(
+                $"Block '{p.Name}' cannot be deleted while it is active or turned on.\n\nPlease turn off the block or stop the active session before deleting.",
+                "Cannot Delete Block",
+                isConfirmation: false,
+                primaryText: "OK");
+            return;
+        }
+
+        string? unlockPassword = null;
+        string? unlockText = null;
+
+        // Prompt for unlock credentials if locked with password or challenge
+        if (p.LockMode == LockMode.Password || p.HasPasswordLock)
+        {
+            var pwdDlg = new PasswordUnlockDialog(p.Name);
+            if (Application.Current?.MainWindow != null && Application.Current.MainWindow.IsLoaded)
+            {
+                pwdDlg.Owner = Application.Current.MainWindow;
+            }
+            if (pwdDlg.ShowDialog() != true)
+            {
+                return;
+            }
+            unlockPassword = pwdDlg.ResultPassword;
+        }
+        else if (p.LockMode == LockMode.TypingChallenge || p.HasTypingChallenge)
+        {
+            var chReq = new Request
+            {
+                Command = CommandNames.GetUnlockChallenge,
+                Args = new() { ["name"] = p.Name }
+            };
+            var chRes = await _pipeClient.SendRequestAsync(chReq);
+            if (!chRes.Connected || chRes.Response?.Ok != true || string.IsNullOrEmpty(chRes.Response.Data))
+            {
+                ErrorMessage = chRes.Response?.Error ?? "Failed to request unlock challenge.";
+                return;
+            }
+
+            var challengeDlg = new TypingChallengeDialog(chRes.Response.Data);
+            if (Application.Current?.MainWindow != null && Application.Current.MainWindow.IsLoaded)
+            {
+                challengeDlg.Owner = Application.Current.MainWindow;
+            }
+            if (challengeDlg.ShowDialog() != true)
+            {
+                return;
+            }
+            unlockText = challengeDlg.ResultText;
+        }
+        else if (p.LockMode == LockMode.Locked && (p.LockedNow || p.IsLockedFromToggling))
+        {
+            DarkDialogWindow.Show(
+                $"Block '{p.Name}' is locked.\n\nIt cannot be deleted while locked.",
+                "Block Locked",
+                isConfirmation: false,
+                primaryText: "OK");
+            return;
+        }
+
+        bool confirm = DarkDialogWindow.Show(
+            $"Are you sure you want to delete '{p.Name}'?\n\nThis will remove all associated app and website block rules.",
+            "Delete Block",
+            isConfirmation: true,
+            primaryText: "Delete",
+            secondaryText: "Cancel");
+        if (!confirm) return;
+
+        await DeleteProfileAsync(p.Name, unlockPassword, unlockText);
+    }
+
+    public async Task DeleteProfileAsync(string name, string? unlockPassword = null, string? unlockText = null)
     {
         try
         {
             var delArgs = new Dictionary<string, string> { ["name"] = name };
             if (!string.IsNullOrEmpty(unlockPassword)) delArgs["unlock_password"] = unlockPassword;
+            if (!string.IsNullOrEmpty(unlockText)) delArgs["unlock_text"] = unlockText;
 
             var req = new Request
             {
@@ -1954,8 +2170,13 @@ public class MainViewModel : ViewModelBase
             return;
         }
 
-        RecalculateDnsLockDuration();
-        long durationSeconds = checked((long)Math.Max(1, DnsLockDurationMinutes) * 60L);
+        long customSeconds = (long)Math.Max(0, DnsCustomDays) * 86400L
+                           + (long)Math.Max(0, DnsCustomHours) * 3600L
+                           + (long)Math.Max(0, DnsCustomMinutes) * 60L
+                           + (long)Math.Max(0, DnsCustomSeconds);
+        long durationSeconds = customSeconds > 0
+            ? customSeconds
+            : checked((long)Math.Max(1, DnsLockDurationMinutes) * 60L);
         string formattedDuration = UiLogic.FormatCountdown(durationSeconds);
         DateTime targetTime = DateTime.Now.AddSeconds(durationSeconds);
 

@@ -88,10 +88,12 @@ public class DashboardTests
 
         var lines = File.ReadAllLines(mainWindowPath);
 
-        // Header + Block cards section: lines 1 to 442
-        var dashboardLines = lines.Take(442).ToList();
-        // Status bar section: lines 1034 to end
-        dashboardLines.AddRange(lines.Skip(1033));
+        // Header + Block cards section up to Settings View
+        int settingsIndex = Array.FindIndex(lines, l => l.Contains("IN-WINDOW SETTINGS VIEW"));
+        int statusBarIndex = Array.FindIndex(lines, l => l.Contains("SLIM STATUS BAR") || l.Contains("ROW 3:"));
+
+        var dashboardLines = (settingsIndex >= 0 ? lines.Take(settingsIndex) : lines.Take(442)).ToList();
+        dashboardLines.AddRange(statusBarIndex >= 0 ? lines.Skip(statusBarIndex) : lines.Skip(1033));
 
         string combined = string.Join("\n", dashboardLines);
 
@@ -129,5 +131,25 @@ public class DashboardTests
         Assert.DoesNotContain("⚠️", combined);
         Assert.DoesNotContain("⚡", combined);
         Assert.DoesNotContain("🍅", combined);
+    }
+
+    [Fact]
+    public void Dashboard_EmptyState_And_StatusBar_And_CanDelete_PresentInXaml()
+    {
+        string root = GetRepoRoot();
+        string mainWindowPath = Path.Combine(root, "src", "Blocker.App", "MainWindow.xaml");
+        string xaml = File.ReadAllText(mainWindowPath);
+
+        // Empty state
+        Assert.Contains("No Block Profiles Yet", xaml);
+        Assert.Contains("OpenNewBlockDialogCommand", xaml);
+        Assert.Contains("+ New Block", xaml);
+
+        // Clickable Extension Status
+        Assert.Contains("StatusBarButtonStyle", xaml);
+        Assert.Contains("Command=\"{Binding OpenExtensionDialogCommand}\"", xaml);
+
+        // CanDelete on Delete button
+        Assert.Contains("IsEnabled=\"{Binding CanDelete}\"", xaml);
     }
 }

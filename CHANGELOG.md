@@ -4,6 +4,55 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FIX-2026-11-04-01] Main UI Bug Fixes (Bugs 1-7), Browser Termination Fix & Independent Service Notifications
+- **Timestamp**: 2026-11-04 13:10 IST
+- **Component**: Desktop App (`MainWindow.xaml`, `MainWindow.xaml.cs`, `MainViewModel.cs`, `ProfileViewModel.cs`, `App.xaml.cs`), Core Engine (`BrowserCatalog.cs`, `FallbackPlanner.cs`), Background Service (`ServiceNotificationDispatcher.cs`, `Worker.cs`), Test Suites (`DashboardTests.cs`, `NotificationGraceTests.cs`, `SettingsTests.cs`)
+- **Status**: **SOLVED & VERIFIED**
+- **Problems Identified**:
+  1. **DNS Protection Custom Duration Bindings (Bug 1)**: `MainWindow.xaml` bound to `DnsCustomDays`, `DnsCustomHours`, `DnsCustomMinutes`, `DnsCustomSeconds`, and `DnsCustomDurationSummary`, which did not exist on `MainViewModel`, triggering WPF data-binding errors and causing custom DNS lock durations to be ignored.
+  2. **Inline Rename Pressing Escape Commits (Bug 2)**: In `MainWindow.xaml.cs`, pressing Escape in `InlineNameTextBox_KeyDown` committed changes rather than reverting them.
+  3. **Dashboard Delete Bypasses Password/Challenge & Fails on Enabled Blocks (Bug 3)**: Profile cards lacked `CanDelete` binding; `DeleteBlockCommand` bypassed password/typing challenge locks and attempted deletion on active profiles, causing service rejections and errors.
+  4. **Rename During Unlocked Edit Duplicates Profiles (Bug 4)**: Editing an active profile and saving under a new name saved the profile and then attempted to delete `oldName`, which failed for active profiles and created duplicate profiles.
+  5. **Extension Status in Status Bar Unclickable (Bug 5)**: Extension connection indicator was a static `StackPanel` without a click handler or command to open the extension dialog.
+  6. **Missing Empty State on Dashboard (Bug 6)**: Dashboard presented a blank area when `Profiles.Count == 0` without instructions or call-to-action.
+  7. **Legacy Branding in Tray Balloon Tip (Bug 7)**: Minimizing to system tray showed legacy "Blocker" title and description.
+  8. **Item 8 Skipped as Feature**: Maintained `WindowState="Maximized"` on `MainWindow.xaml` per user specification.
+  9. **Browser Termination Not Working**:
+     - `Worker.cs` called relative `taskkill.exe` without full path, which silently failed in Session 0 Windows Service environments.
+     - Calling `Process.GetProcessById(processId).Kill(entireProcessTree: true)` on sandboxed Chromium child processes failed without killing root browser processes, while `killedBrowsersThisPass.Add(exeName)` caused subsequent browser PIDs to be skipped.
+  10. **Notifications Tied to UI**:
+     - `ServiceNotificationDispatcher.cs` declared `DuplicateTokenEx` with `CharSet = CharSet.Auto` which threw `EntryPointNotFoundException: Entry point was not found` (probing for `DuplicateTokenExW`), and `CreateProcessAsUser` lacked explicit `CreateProcessAsUserW` entry point.
+     - When `Sankalpa.exe` UI was closed, background service notifications failed in Session 0, leaving notifications silent.
+- **Changes Applied**:
+  - **MainViewModel & ProfileViewModel (Bugs 1, 3, 4)**:
+    - Implemented `DnsCustomDays`, `DnsCustomHours`, `DnsCustomMinutes`, `DnsCustomSeconds`, and `DnsCustomDurationSummary` with full `INotifyPropertyChanged` support. Synchronized custom properties in `ApplyDnsPresetDuration` and calculated lock duration directly in `LockDnsAsync`.
+    - Added `CanDelete => !IsLockedFromToggling && !IsActive`, `HasPasswordLock`, `HasTypingChallenge`, and `NotifyStateChanged()` to `ProfileViewModel.cs`.
+    - Implemented `DeleteBlockAsync` in `MainViewModel.cs`: guards against deleting active/turned-on blocks, prompts for `PasswordUnlockDialog` or `TypingChallengeDialog` when locked, and passes unlock credentials to `CommandNames.DeleteProfile`.
+    - Updated `SaveProfileAsync` to atomically dispatch `CommandNames.RenameProfile` when renaming existing profiles, eliminating profile duplication.
+  - **MainWindow XAML & Views (Bugs 2, 5, 6, 7)**:
+    - Updated `InlineNameTextBox_KeyDown` in `MainWindow.xaml.cs` to call `profile.CancelEditName()` and return immediately on `Key.Escape`.
+    - Converted the status bar extension indicator into an interactive button styled with `StatusBarButtonStyle`, bound to `OpenExtensionDialogCommand` with tooltip.
+    - Added an empty state card on the dashboard when `Profiles.Count == 0` featuring an icon badge, title, subtitle, and "+ New Block" action button.
+    - Bound `IsEnabled="{Binding CanDelete}"` on dashboard card delete buttons.
+    - Updated tray balloon tip strings in `App.xaml.cs` to "Sankalpa".
+    - Preserved `WindowState="Maximized"`.
+  - **Browser Termination Fix (`Worker.cs`, `BrowserCatalog.cs`)**:
+    - Implemented `ExecuteTaskkillByImageName` using verified system path `Path.Combine(Environment.SystemDirectory, "taskkill.exe")` with `"/F /T /IM "{exeName}""`.
+    - Handled process-tree kills with graceful fallback to direct process termination on all matching PIDs.
+    - Swept detached worker/child processes via taskkill whenever an active profile blocks a browser application.
+    - Expanded `KnownUnsupportedBrowsers` in `BrowserCatalog.cs` to include `chromium.exe`, `thorium.exe`, `mullvadbrowser.exe`, and `iridium.exe`.
+  - **Independent Background Notifications (`ServiceNotificationDispatcher.cs`)**:
+    - Fixed P/Invoke declarations: `DuplicateTokenEx` with `ExactSpelling = true` and `CreateProcessAsUserW` with explicit entry point in `advapi32.dll`.
+    - Enhanced user session token discovery: queries active console session via `WTSGetActiveConsoleSessionId()`, falling back to active interactive `explorer.exe` process session IDs and acquiring user tokens via `OpenProcessToken` with duplicate rights.
+    - Expanded `ResolveNativeHostExe` across base directory, LocalAppData, and registry paths (including `HKEY_USERS` under SYSTEM).
+    - Verified desktop toast notifications fire reliably whether `Sankalpa.exe` UI is open or completely closed.
+- **Verification**:
+  - Solution build: `dotnet build Blocker.sln` succeeded with **0 warnings and 0 errors**.
+  - Test suites: **All 634 tests passed** (546 in `Sankalpa.Tests`, 88 in `Sankalpa.Security.Tests`).
+  - Automated UI lint: `UiLint` passed all 8 checks.
+
+---
+
 ### [FIX-2026-11-03-03] Button Internal Text Foreground Fix & Release Pipeline Synchronization
 - **Timestamp**: 2026-11-03 18:35 IST
 - **Component**: MainWindow.xaml, BlockEditorDialog.xaml, Controls.xaml, Release Pipeline (dist/Sankalpa-Release/, dist/release/, dist/app/)

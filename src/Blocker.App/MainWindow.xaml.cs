@@ -142,7 +142,14 @@ public partial class MainWindow : Window
     {
         if (sender is TextBox tb && tb.DataContext is ProfileViewModel profile)
         {
-            if (e.Key == Key.Enter || e.Key == Key.Escape)
+            if (e.Key == Key.Escape)
+            {
+                profile.CancelEditName();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Enter)
             {
                 e.Handled = true;
                 var binding = tb.GetBindingExpression(TextBox.TextProperty);

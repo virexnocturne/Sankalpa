@@ -306,7 +306,11 @@ public static class BrowserCatalog
         "duckduckgo.exe",
         "sidekick.exe",
         "wavebrowser.exe",
-        "arc.exe"
+        "arc.exe",
+        "chromium.exe",
+        "thorium.exe",
+        "mullvadbrowser.exe",
+        "iridium.exe"
     };
 
     public static bool IsSupportedBrowser(string exeName)
