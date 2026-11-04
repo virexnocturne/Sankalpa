@@ -364,4 +364,64 @@ public class NotificationGraceTests
         cts.Cancel();
         await Task.WhenAll(heartbeatTasks);
     }
+
+    [Fact]
+    public void ServiceNotification_Win32EntryPoints_AreResolvableWithoutEntryPointNotFoundException()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        // Verify advapi32.dll exports
+        IntPtr hAdv = System.Runtime.InteropServices.NativeLibrary.Load("advapi32.dll");
+        Assert.NotEqual(IntPtr.Zero, hAdv);
+        Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hAdv, "DuplicateTokenEx", out _));
+        Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hAdv, "CreateProcessAsUserW", out _));
+        Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hAdv, "OpenProcessToken", out _));
+        System.Runtime.InteropServices.NativeLibrary.Free(hAdv);
+
+        // Verify kernel32.dll exports
+        IntPtr hKernel = System.Runtime.InteropServices.NativeLibrary.Load("kernel32.dll");
+        Assert.NotEqual(IntPtr.Zero, hKernel);
+        Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hKernel, "WTSGetActiveConsoleSessionId", out _));
+        Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hKernel, "OpenProcess", out _));
+        Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hKernel, "CloseHandle", out _));
+        System.Runtime.InteropServices.NativeLibrary.Free(hKernel);
+
+        // Verify wtsapi32.dll exports
+        IntPtr hWts = System.Runtime.InteropServices.NativeLibrary.Load("wtsapi32.dll");
+        Assert.NotEqual(IntPtr.Zero, hWts);
+        Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hWts, "WTSQueryUserToken", out _));
+        System.Runtime.InteropServices.NativeLibrary.Free(hWts);
+
+        // Verify userenv.dll exports
+        IntPtr hUserenv = System.Runtime.InteropServices.NativeLibrary.Load("userenv.dll");
+        Assert.NotEqual(IntPtr.Zero, hUserenv);
+        Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hUserenv, "CreateEnvironmentBlock", out _));
+        Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hUserenv, "DestroyEnvironmentBlock", out _));
+        System.Runtime.InteropServices.NativeLibrary.Free(hUserenv);
+    }
+
+    [Fact]
+    public void UnsupportedBrowsers_IncludesNewlyCoveredBrowsers()
+    {
+        Assert.True(BrowserCatalog.IsUnsupportedBrowser("chromium.exe"));
+        Assert.True(BrowserCatalog.IsUnsupportedBrowser("thorium.exe"));
+        Assert.True(BrowserCatalog.IsUnsupportedBrowser("mullvadbrowser.exe"));
+        Assert.True(BrowserCatalog.IsUnsupportedBrowser("iridium.exe"));
+
+        var filtered = BrowserCatalog.FilterAllBrowserProcesses(new[] { "chromium", "thorium", "notepad" });
+        Assert.Contains("chromium.exe", filtered);
+        Assert.Contains("thorium.exe", filtered);
+        Assert.DoesNotContain("notepad.exe", filtered);
+    }
+
+    [Fact]
+    public void TaskkillPath_ResolvesSystemDirectoryExecutable()
+    {
+        string systemDir = Environment.SystemDirectory;
+        string taskkillPath = System.IO.Path.Combine(systemDir, "taskkill.exe");
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.True(System.IO.File.Exists(taskkillPath), $"taskkill.exe should exist at {taskkillPath}");
+        }
+    }
 }

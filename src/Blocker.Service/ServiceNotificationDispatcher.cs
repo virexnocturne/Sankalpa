@@ -16,7 +16,7 @@ public static class ServiceNotificationDispatcher
     [DllImport("wtsapi32.dll", SetLastError = true)]
     private static extern bool WTSQueryUserToken(uint SessionId, out IntPtr phToken);
 
-    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    [DllImport("advapi32.dll", SetLastError = true, ExactSpelling = true)]
     private static extern bool DuplicateTokenEx(
         IntPtr hExistingToken,
         uint dwDesiredAccess,
@@ -57,8 +57,8 @@ public static class ServiceNotificationDispatcher
         public int dwThreadId;
     }
 
-    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern bool CreateProcessAsUser(
+    [DllImport("advapi32.dll", SetLastError = true, EntryPoint = "CreateProcessAsUserW", CharSet = CharSet.Unicode)]
+    private static extern bool CreateProcessAsUserW(
         IntPtr hToken,
         string? lpApplicationName,
         string lpCommandLine,
@@ -210,23 +210,29 @@ public static class ServiceNotificationDispatcher
         string candidateBase = Path.Combine(AppContext.BaseDirectory, "Blocker.NativeHost.exe");
         if (File.Exists(candidateBase)) return Path.GetFullPath(candidateBase);
 
-        // 2. In LocalAppData
+        // 2. In LocalAppData (Blocker or Sankalpa)
         string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         string candidateAppData = Path.Combine(localAppData, "Blocker", "Blocker.NativeHost.exe");
         if (File.Exists(candidateAppData)) return Path.GetFullPath(candidateAppData);
 
+        string candidateAppDataSankalpa = Path.Combine(localAppData, "Sankalpa", "Blocker.NativeHost.exe");
+        if (File.Exists(candidateAppDataSankalpa)) return Path.GetFullPath(candidateAppDataSankalpa);
+
         // 3. Inspect Registry NativeMessagingHosts entries registered by ExtensionHelper
         try
         {
-            string[] regKeys = new[]
+            string[] hostSubKeys = new[]
             {
                 @"Software\Google\Chrome\NativeMessagingHosts\com.sankalpa.native_host",
                 @"Software\Microsoft\Edge\NativeMessagingHosts\com.sankalpa.native_host",
-                @"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.sankalpa.native_host"
+                @"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.sankalpa.native_host",
+                @"Software\Mozilla\NativeMessagingHosts\com.sankalpa.native_host"
             };
-            foreach (var rk in regKeys)
+
+            foreach (var rk in hostSubKeys)
             {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(rk) ?? Microsoft.Win32.Registry.LocalMachine.OpenSubKey(rk);
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(rk) ??
+                                Microsoft.Win32.Registry.LocalMachine.OpenSubKey(rk);
                 if (key != null)
                 {
                     string? manifestPath = key.GetValue(null)?.ToString();
@@ -245,6 +251,39 @@ public static class ServiceNotificationDispatcher
                     }
                 }
             }
+
+            // In Session 0 (running as SYSTEM), inspect active user profiles in HKEY_USERS
+            try
+            {
+                foreach (string userSid in Microsoft.Win32.Registry.Users.GetSubKeyNames())
+                {
+                    if (userSid.StartsWith("S-1-5-21-", StringComparison.OrdinalIgnoreCase) && !userSid.EndsWith("_Classes", StringComparison.OrdinalIgnoreCase))
+                    {
+                        foreach (var rk in hostSubKeys)
+                        {
+                            using var userKey = Microsoft.Win32.Registry.Users.OpenSubKey($@"{userSid}\{rk}");
+                            if (userKey != null)
+                            {
+                                string? manifestPath = userKey.GetValue(null)?.ToString();
+                                if (!string.IsNullOrEmpty(manifestPath) && File.Exists(manifestPath))
+                                {
+                                    string json = File.ReadAllText(manifestPath);
+                                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                                    if (doc.RootElement.TryGetProperty("path", out var pProp))
+                                    {
+                                        string? exe = pProp.GetString();
+                                        if (!string.IsNullOrEmpty(exe) && File.Exists(exe))
+                                        {
+                                            return Path.GetFullPath(exe);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
         }
         catch { }
 
@@ -314,7 +353,7 @@ public static class ServiceNotificationDispatcher
             uint activeSessionId = WTSGetActiveConsoleSessionId();
             if (activeSessionId == 0xFFFFFFFF || activeSessionId == 0)
             {
-                var explorer = Process.GetProcessesByName("explorer").FirstOrDefault();
+                var explorer = Process.GetProcessesByName("explorer").FirstOrDefault(e => e.SessionId > 0);
                 if (explorer != null)
                 {
                     activeSessionId = (uint)explorer.SessionId;
@@ -338,27 +377,35 @@ public static class ServiceNotificationDispatcher
                 try
                 {
                     const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+                    const uint PROCESS_QUERY_INFORMATION = 0x0400;
                     const uint TOKEN_DUPLICATE = 0x0002;
                     const uint TOKEN_QUERY = 0x0008;
                     const uint TOKEN_ASSIGN_PRIMARY = 0x0001;
 
                     var explorerProcs = Process.GetProcessesByName("explorer");
-                    foreach (var exp in explorerProcs)
+                    var targetExplorers = explorerProcs.Where(e => e.SessionId == (int)activeSessionId).ToList();
+                    if (targetExplorers.Count == 0)
                     {
-                        if (exp.SessionId == (int)activeSessionId || (activeSessionId == 0 && exp.SessionId != 0))
+                        targetExplorers = explorerProcs.Where(e => e.SessionId > 0).ToList();
+                    }
+
+                    foreach (var exp in targetExplorers)
+                    {
+                        IntPtr hExp = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, exp.Id);
+                        if (hExp == IntPtr.Zero)
                         {
-                            IntPtr hExp = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, exp.Id);
-                            if (hExp != IntPtr.Zero)
+                            hExp = OpenProcess(PROCESS_QUERY_INFORMATION, false, exp.Id);
+                        }
+                        if (hExp != IntPtr.Zero)
+                        {
+                            if (OpenProcessToken(hExp, TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY, out hUserToken))
                             {
-                                if (OpenProcessToken(hExp, TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY, out hUserToken))
-                                {
-                                    activeSessionId = (uint)exp.SessionId;
-                                    Log($"[ServiceNotification] Acquired user token via explorer.exe PID {exp.Id} in session {activeSessionId}");
-                                    CloseHandle(hExp);
-                                    break;
-                                }
+                                activeSessionId = (uint)exp.SessionId;
+                                Log($"[ServiceNotification] Acquired user token via explorer.exe PID {exp.Id} in session {activeSessionId}");
                                 CloseHandle(hExp);
+                                break;
                             }
+                            CloseHandle(hExp);
                         }
                     }
                 }
@@ -400,9 +447,9 @@ public static class ServiceNotificationDispatcher
 
                 string commandLine = $"\"{exePath}\" {arguments}";
 
-                if (CreateProcessAsUser(
+                if (CreateProcessAsUserW(
                     hDuplicatedToken,
-                    null,
+                    exePath,
                     commandLine,
                     IntPtr.Zero,
                     IntPtr.Zero,
@@ -420,7 +467,7 @@ public static class ServiceNotificationDispatcher
                 }
                 else
                 {
-                    Log($"[ServiceNotification] CreateProcessAsUser failed for '{exePath}'. Win32 error: {Marshal.GetLastWin32Error()}");
+                    Log($"[ServiceNotification] CreateProcessAsUserW failed for '{exePath}'. Win32 error: {Marshal.GetLastWin32Error()}");
                     return false;
                 }
             }

@@ -79,7 +79,7 @@ public class SettingsTests
         Assert.True(File.Exists(mainWindowPath));
 
         var lines = File.ReadAllLines(mainWindowPath);
-        var settingsLines = lines.Skip(450).Take(585).ToList();
+        int sIdx = Array.FindIndex(lines, l => l.Contains("IN-WINDOW SETTINGS VIEW")); int sbIdx = Array.FindIndex(lines, l => l.Contains("SLIM STATUS BAR") || l.Contains("ROW 3:")); var settingsLines = (sIdx >= 0 && sbIdx > sIdx) ? lines.Skip(sIdx).Take(sbIdx - sIdx).ToList() : lines.Skip(450).Take(585).ToList();
         string settingsContent = string.Join("\n", settingsLines);
 
         Assert.Contains(@"Content=""Black""", settingsContent);
@@ -98,8 +98,13 @@ public class SettingsTests
         Assert.True(File.Exists(mainWindowPath));
 
         var lines = File.ReadAllLines(mainWindowPath);
-        // Extract Settings View: lines 451 to 1032
-        var settingsLines = lines.Skip(450).Take(585).ToList();
+        // Extract Settings View
+        int settingsIndex = Array.FindIndex(lines, l => l.Contains("IN-WINDOW SETTINGS VIEW"));
+        int statusBarIndex = Array.FindIndex(lines, l => l.Contains("SLIM STATUS BAR") || l.Contains("ROW 3:"));
+
+        var settingsLines = (settingsIndex >= 0 && statusBarIndex > settingsIndex)
+            ? lines.Skip(settingsIndex).Take(statusBarIndex - settingsIndex).ToList()
+            : lines.Skip(450).Take(585).ToList();
         string combined = string.Join("\n", settingsLines);
 
         // Assert legacy brushes do not exist

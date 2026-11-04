@@ -239,7 +239,9 @@ public class Worker : BackgroundService
 
                 // Prune browsers that are no longer in grace period
                 _loggedGraceBrowsers.RemoveWhere(b => !fallbackPlan.GracePeriodBrowsers.Any(gb =>
-                    b.StartsWith(gb, StringComparison.OrdinalIgnoreCase) || b.StartsWith(gb + ".exe", StringComparison.OrdinalIgnoreCase)));
+                    b.StartsWith(gb + ":", StringComparison.OrdinalIgnoreCase) ||
+                    b.StartsWith((gb.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? gb : gb + ".exe") + ":", StringComparison.OrdinalIgnoreCase) ||
+                    b.Equals(gb, StringComparison.OrdinalIgnoreCase)));
 
                 // Notify about browsers in grace period:
                 // - Alert immediately upon entering grace (initial warning, 60s)
@@ -597,32 +599,36 @@ public class Worker : BackgroundService
                 string exeName = process.ExeName;
 
                 // 1. Check unauthorized browsers first (e.g. unextended msedge, chrome, tor, opera)
-                if (hasUnauthorizedBrowsers && unauthorizedBrowsers!.Contains(exeName))
+                if (hasUnauthorizedBrowsers && (unauthorizedBrowsers!.Contains(exeName) || unauthorizedBrowsers!.Contains(processName + ".exe")))
                 {
                     try
                     {
                         using var pObj = Process.GetProcessById(processId);
-                        pObj.Kill(entireProcessTree: true);
+                        try
+                        {
+                            pObj.Kill(entireProcessTree: true);
+                        }
+                        catch
+                        {
+                            try
+                            {
+                                pObj.Kill();
+                            }
+                            catch { }
+                        }
                     }
                     catch { }
 
                     if (killedBrowsersThisPass.Add(exeName))
                     {
-                        try
-                        {
-                            // Secondary sweep with taskkill to ensure any detached child workers or helper processes are terminated
-                            using var proc = Process.Start(new ProcessStartInfo
-                            {
-                                FileName = "taskkill.exe",
-                                Arguments = $"/F /T /IM \"{exeName}\"",
-                                CreateNoWindow = true,
-                                UseShellExecute = false
-                            });
-                            proc?.WaitForExit(1000);
-                        }
-                        catch { }
+                        ExecuteTaskkillByImageName(exeName);
 
-                        _loggedGraceBrowsers.RemoveWhere(b => b.StartsWith(exeName, StringComparison.OrdinalIgnoreCase) || b.StartsWith(exeName + ".exe", StringComparison.OrdinalIgnoreCase));
+                        _db.FallbackPlanner.ResetBrowserTracking(exeName);
+
+                        _loggedGraceBrowsers.RemoveWhere(b =>
+                            b.StartsWith(exeName + ":", StringComparison.OrdinalIgnoreCase) ||
+                            b.StartsWith(exeName + ".exe:", StringComparison.OrdinalIgnoreCase) ||
+                            b.Equals(exeName, StringComparison.OrdinalIgnoreCase));
 
                         string specificReason = (unauthorizedReasons != null && unauthorizedReasons.TryGetValue(exeName, out var r))
                             ? r
@@ -667,7 +673,30 @@ public class Worker : BackgroundService
                         try
                         {
                             using var targetProc = Process.GetProcessById(processId);
-                            targetProc.Kill(entireProcessTree: true);
+                            try
+                            {
+                                targetProc.Kill(entireProcessTree: true);
+                            }
+                            catch
+                            {
+                                try
+                                {
+                                    targetProc.Kill();
+                                }
+                                catch { }
+                            }
+
+                            // If blocked app is a browser or multi-process app, sweep all detached/child processes via taskkill
+                            bool isBrowserOrMultiProcess =
+                                BrowserCatalog.IsSupportedBrowser(exeName) ||
+                                BrowserCatalog.IsUnsupportedBrowser(exeName) ||
+                                BrowserCatalog.IsSupportedBrowser(processName) ||
+                                BrowserCatalog.IsUnsupportedBrowser(processName);
+
+                            if (isBrowserOrMultiProcess && killedBrowsersThisPass.Add(exeName))
+                            {
+                                ExecuteTaskkillByImageName(exeName);
+                            }
 
                             string matchingProfileName = isAntiKillTool
                                 ? "Sankalpa Tamper Protection"
@@ -765,5 +794,32 @@ public class Worker : BackgroundService
 
         _pidOriginalFileNameCache[processId] = originalFileName;
         return originalFileName;
+    }
+
+    private static void ExecuteTaskkillByImageName(string exeName)
+    {
+        try
+        {
+            string systemDir = Environment.SystemDirectory;
+            string taskkillPath = Path.Combine(systemDir, "taskkill.exe");
+            if (!File.Exists(taskkillPath))
+            {
+                taskkillPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe");
+            }
+            if (!File.Exists(taskkillPath))
+            {
+                taskkillPath = "taskkill.exe";
+            }
+
+            using var proc = Process.Start(new ProcessStartInfo
+            {
+                FileName = taskkillPath,
+                Arguments = $"/F /T /IM \"{exeName}\"",
+                CreateNoWindow = true,
+                UseShellExecute = false
+            });
+            proc?.WaitForExit(1500);
+        }
+        catch { }
     }
 }

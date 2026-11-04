@@ -217,7 +217,7 @@ public class FallbackPlanner
                     state = new BrowserTrackingState
                     {
                         ProcessName = exe,
-                        DisplayName = exe
+                        DisplayName = BrowserCatalog.GetDisplayName(exe)
                     };
                     _browsers[exe] = state;
                 }

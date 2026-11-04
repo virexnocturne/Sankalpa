@@ -85,6 +85,7 @@ public class ProfileViewModel : ViewModelBase
             {
                 OnPropertyChanged(nameof(IsLockedFromToggling));
                 OnPropertyChanged(nameof(CanToggle));
+                OnPropertyChanged(nameof(CanDelete));
                 OnPropertyChanged(nameof(IsToggleChecked));
                 OnPropertyChanged(nameof(OnOffText));
                 OnPropertyChanged(nameof(LockColText));
@@ -107,6 +108,7 @@ public class ProfileViewModel : ViewModelBase
             {
                 OnPropertyChanged(nameof(IsLockedFromToggling));
                 OnPropertyChanged(nameof(CanToggle));
+                OnPropertyChanged(nameof(CanDelete));
                 OnPropertyChanged(nameof(IsToggleChecked));
                 OnPropertyChanged(nameof(OnOffText));
                 OnPropertyChanged(nameof(LockColText));
@@ -331,6 +333,9 @@ public class ProfileViewModel : ViewModelBase
 
     public bool IsLockedFromToggling => (IsSessionRunning && IsSessionLocked) || (IsActive && LockedNow);
     public bool CanToggle => !IsLockedFromToggling;
+    public bool CanDelete => !IsLockedFromToggling && !IsActive;
+    public bool HasPasswordLock => LockMode == LockMode.Password;
+    public bool HasTypingChallenge => LockMode == LockMode.TypingChallenge;
     public bool IsToggleChecked => IsLockedFromToggling || Enabled;
 
     public string OnOffText => (IsLockedFromToggling || Enabled) ? "ON" : "OFF";
@@ -372,6 +377,7 @@ public class ProfileViewModel : ViewModelBase
                 OnPropertyChanged(nameof(StateChipBackground));
                 OnPropertyChanged(nameof(StateChipForeground));
                 OnPropertyChanged(nameof(CardStripeThickness));
+                OnPropertyChanged(nameof(CanDelete));
             }
         }
     }
@@ -386,6 +392,8 @@ public class ProfileViewModel : ViewModelBase
                 IsDirty = true;
                 OnPropertyChanged(nameof(LockLabel));
                 OnPropertyChanged(nameof(LockColText));
+                OnPropertyChanged(nameof(HasPasswordLock));
+                OnPropertyChanged(nameof(HasTypingChallenge));
             }
         }
     }
@@ -403,6 +411,7 @@ public class ProfileViewModel : ViewModelBase
                 OnPropertyChanged(nameof(CardStripeThickness));
                 OnPropertyChanged(nameof(IsLockedFromToggling));
                 OnPropertyChanged(nameof(CanToggle));
+                OnPropertyChanged(nameof(CanDelete));
                 OnPropertyChanged(nameof(IsToggleChecked));
                 OnPropertyChanged(nameof(OnOffText));
             }
@@ -438,6 +447,7 @@ public class ProfileViewModel : ViewModelBase
                 OnPropertyChanged(nameof(CanEdit));
                 OnPropertyChanged(nameof(IsLockedFromToggling));
                 OnPropertyChanged(nameof(CanToggle));
+                OnPropertyChanged(nameof(CanDelete));
                 OnPropertyChanged(nameof(IsToggleChecked));
                 OnPropertyChanged(nameof(OnOffText));
             }
@@ -480,6 +490,25 @@ public class ProfileViewModel : ViewModelBase
     {
         get => _isDirty;
         set => SetProperty(ref _isDirty, value);
+    }
+
+    public void NotifyStateChanged()
+    {
+        OnPropertyChanged(nameof(IsLockedFromToggling));
+        OnPropertyChanged(nameof(CanToggle));
+        OnPropertyChanged(nameof(CanDelete));
+        OnPropertyChanged(nameof(CanEdit));
+        OnPropertyChanged(nameof(IsReadOnly));
+        OnPropertyChanged(nameof(IsToggleChecked));
+        OnPropertyChanged(nameof(OnOffText));
+        OnPropertyChanged(nameof(StateChipText));
+        OnPropertyChanged(nameof(StateChipBackground));
+        OnPropertyChanged(nameof(StateChipForeground));
+        OnPropertyChanged(nameof(CardStripeThickness));
+        OnPropertyChanged(nameof(LockLabel));
+        OnPropertyChanged(nameof(LockColText));
+        OnPropertyChanged(nameof(HasPasswordLock));
+        OnPropertyChanged(nameof(HasTypingChallenge));
     }
 
     public Profile ToModel()

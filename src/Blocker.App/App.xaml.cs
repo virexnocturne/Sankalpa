@@ -431,8 +431,8 @@ public partial class App : Wpf.Application
             {
                 _notifyIcon.ShowBalloonTip(
                     3000,
-                    "Blocker",
-                    "Blocker is still running in the background. Double-click tray icon to open.",
+                    "Sankalpa",
+                    "Sankalpa is minimized to system tray. Double-click tray icon to open.",
                     Forms.ToolTipIcon.Info);
                 _balloonShown = true;
             }
