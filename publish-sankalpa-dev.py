@@ -66,8 +66,8 @@ for item in os.listdir(STAGING_DIR):
             except Exception as e:
                 print(f"Warning: Could not replace {item}: {e}")
 
-# 5. Copy Assets, Licenses & Config
-print("\n--- Copying Assets, Licenses & Config ---")
+# 5. Copy Assets, Licenses, Config & Extension
+print("\n--- Copying Assets, Licenses, Config & Extension ---")
 assets_src = os.path.join(REPO_ROOT, "src", "Blocker.App", "Assets")
 assets_dest = os.path.join(OUTPUT_DIR, "Assets")
 if os.path.exists(assets_src):
@@ -83,6 +83,22 @@ if os.path.exists(licenses_src):
         shutil.rmtree(licenses_dest)
     shutil.copytree(licenses_src, licenses_dest)
     print("Licenses copied.")
+
+ext_src = os.path.join(REPO_ROOT, "extension")
+ext_dest = os.path.join(OUTPUT_DIR, "extension")
+if os.path.exists(ext_src):
+    if os.path.exists(ext_dest):
+        shutil.rmtree(ext_dest)
+    shutil.copytree(ext_src, ext_dest)
+    print("Extension folder copied to Sankalpa dev.")
+
+# Also copy to dist/Sankalpa-Release so installer builder includes it
+rel_ext_dest = os.path.join(REPO_ROOT, "dist", "Sankalpa-Release", "extension")
+if os.path.exists(ext_src):
+    if os.path.exists(rel_ext_dest):
+        shutil.rmtree(rel_ext_dest)
+    shutil.copytree(ext_src, rel_ext_dest)
+    print("Extension folder copied to dist/Sankalpa-Release.")
 
 config_src = os.path.join(REPO_ROOT, "src", "Blocker.Service", "appsettings.json")
 if os.path.exists(config_src):
