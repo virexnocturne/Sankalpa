@@ -4,6 +4,48 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FIX-2026-11-04-02] UI Button ContentTemplate Fix, Autonomous Browser Termination Rework, Independent Windows Toast Pipeline & Live OS Verification
+- **Timestamp**: 2026-11-04 15:10 IST
+- **Component**: Desktop UI (`Controls.xaml`), Engine & Planning (`FallbackPlanner.cs`, `NotificationThrottler.cs`), Background Service (`Worker.cs`, `ServiceNotificationDispatcher.cs`), Native Host (`Program.cs`), Build Pipeline (`publish-sankalpa-dev.py`), Tests (`FallbackPlannerTests.cs`, `NotificationGraceTests.cs`)
+- **Status**: **SOLVED & VERIFIED IN LIVE OS**
+- **Problems Identified**:
+  1. **Button ContentTemplate Bug**: In `Controls.xaml`, `PrimaryButton` and `DangerButton` contained `<Setter Property="ContentTemplate">` with a `<TextBlock Text="{Binding}" />`. When buttons contained nested visual children such as `<TextBlock Text="+ New block" />`, WPF evaluated `.ToString()` on the TextBlock, rendering the string `"System.Windows.Controls.TextBlock"` instead of the inner text.
+  2. **Browser Termination Skipped Without Website Rules**: In `FallbackPlanner.cs`, an early exit `if (!hasWebsiteBlocks) { result.UnauthorizedBrowserProcesses.Clear(); result.GracePeriodBrowsers.Clear(); return result; }` wiped out unauthorized browsers and grace period tracking whenever no active profile contained explicit website blocking rules, preventing unextended browsers from ever entering the grace period or being terminated.
+  3. **Toast Notifications Dropping on Process Exit**: WinRT `ToastNotifier.Show()` is an asynchronous COM RPC call. Spawning `Blocker.NativeHost.exe` without an intentional delay caused the process to exit in 2–5ms, abruptly terminating the COM RPC before the Windows Action Center could receive and render the toast.
+  4. **Throttler Blocking Grace Milestones**: The notification throttler used a flat key that caused countdown milestones (60s, 30s, 10s) for the same browser to be dropped.
+- **Changes Applied**:
+  - **WPF Button Templates (`Controls.xaml`)**:
+    - Removed `<Setter Property="ContentTemplate">` from `PrimaryButton` and `DangerButton`. Button content now directly renders visual child elements or string content naturally without type-name string coercion.
+  - **Autonomous Browser Termination Rework (`FallbackPlanner.cs`, `Worker.cs`)**:
+    - Removed the restrictive `!hasWebsiteBlocks` guard from `FallbackPlanner.cs`. Unmonitored browsers and browsers without extension / incognito permission are now consistently tracked in the 60-second grace period and flagged for termination upon expiration regardless of active website rules.
+    - Robustified `Worker.cs` process termination using `ExecuteTaskkillByImageName` (`C:\Windows\System32\taskkill.exe /F /T /IM "{exeName}"`) and handle-based tree killing with fallback.
+  - **Independent Toast Notification Pipeline (`Blocker.NativeHost/Program.cs`, `ServiceNotificationDispatcher.cs`, `NotificationThrottler.cs`)**:
+    - Added `Thread.Sleep(1200)` in `NativeHost` after calling `ToastNotifier.Show()` to guarantee the WinRT COM RPC completes before process termination.
+    - Updated `ServiceNotificationDispatcher` to differentiate countdown milestones (`60s`, `30s`, `10s`), allowing milestone notifications to pass through the throttler unhindered.
+    - Enhanced synchronous multi-target logging across `AppContext.BaseDirectory/logs`, `C:\ProgramData\Sankalpa\logs`, and `%LOCALAPPDATA%\Blocker\logs`.
+    - Maintained zero UI dependency: Session 0 `WTSQueryUserToken` and `explorer.exe` token duplication dispatch toasts directly into active user sessions even when `Sankalpa.exe` UI is completely closed.
+  - **Automated Publishing & Release Sync (`publish-sankalpa-dev.py`)**:
+    - Automated self-contained `win-x64` Release builds of `Sankalpa.exe`, `Blocker.Service.exe`, `Blocker.NativeHost.exe`, and `sankalpa-cli.exe` into `C:\Users\virex\.gemini\antigravity\scratch\Sankalpa dev`.
+    - Handled file locks safely using staging directories and fallback renaming for active Native Messaging instances.
+- **Verification**:
+  - **Unit & Security Tests**: All **641 tests passed** (553 in `Sankalpa.Tests`, 88 in `Sankalpa.Security.Tests`).
+  - **UI Button Verification**: `UiLint` passed 8/8 tests; no type string coercion occurs.
+  - **Live Chrome Verification (UI Closed)**:
+    - Launched Google Chrome without extension:
+    - T+1s: `BrowserGrace (60s)` toast dispatched to user session.
+    - T+32s: `BrowserGrace (30s)` toast dispatched to user session.
+    - T+51s: `BrowserGrace (10s)` toast dispatched to user session.
+    - T+62s: `BrowserKill` toast dispatched, taskkill executed, and Chrome processes were terminated.
+  - **Live Firefox Verification (UI Closed)**:
+    - Launched Mozilla Firefox:
+    - T+1s: `BrowserGrace (60s)` toast dispatched to user session.
+    - T+31s: `BrowserGrace (30s)` toast dispatched to user session.
+    - T+51s: `BrowserGrace (10s)` toast dispatched to user session.
+    - T+61s: `BrowserKill` toast dispatched, taskkill executed, and Firefox processes were terminated.
+
+---
+
+
 ### [FIX-2026-11-04-01] Main UI Bug Fixes (Bugs 1-7), Browser Termination Fix & Independent Service Notifications
 - **Timestamp**: 2026-11-04 13:10 IST
 - **Component**: Desktop App (`MainWindow.xaml`, `MainWindow.xaml.cs`, `MainViewModel.cs`, `ProfileViewModel.cs`, `App.xaml.cs`), Core Engine (`BrowserCatalog.cs`, `FallbackPlanner.cs`), Background Service (`ServiceNotificationDispatcher.cs`, `Worker.cs`), Test Suites (`DashboardTests.cs`, `NotificationGraceTests.cs`, `SettingsTests.cs`)

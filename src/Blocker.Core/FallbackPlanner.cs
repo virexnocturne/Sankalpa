@@ -308,16 +308,6 @@ public class FallbackPlanner
         }
 
         var profilesList = (activeProfiles ?? Enumerable.Empty<Profile>()).ToList();
-        bool hasWebsiteBlocks = profilesList.Any(p => p.BlockAllWebsites || (p.WebRules != null && p.WebRules.Any(r => !r.Allow && !string.IsNullOrWhiteSpace(r.Pattern))) || (p.BlockedDomains != null && p.BlockedDomains.Any(d => !string.IsNullOrWhiteSpace(d))));
-
-        if (!hasWebsiteBlocks)
-        {
-            result.FallbackActive = false;
-            result.UnauthorizedBrowserProcesses.Clear();
-            result.UnauthorizedReasons.Clear();
-            result.GracePeriodBrowsers.Clear();
-            return result;
-        }
 
         if (missingBrowserReason != null)
         {
@@ -329,31 +319,33 @@ public class FallbackPlanner
                 result.BlockAllUncovered = true;
             }
 
-            // Requirement 6: Compute fallback domains: concrete host parts of all blocked patterns from active profiles
+            // Compute fallback domains: concrete host parts of all blocked patterns from active profiles
             // Run through existing hosts domain normalization and expansion; skip IP addresses and invalid names.
             foreach (var profile in profilesList)
             {
-                if (profile.WebRules == null) continue;
-                foreach (var rule in profile.WebRules.Where(r => !r.Allow && !string.IsNullOrWhiteSpace(r.Pattern)))
+                if (profile.WebRules != null)
                 {
-                    string p = rule.Pattern.Trim();
-                    if (p.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) p = p[7..];
-                    if (p.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) p = p[8..];
-
-                    int slashIdx = p.IndexOf('/');
-                    string hostPart = slashIdx >= 0 ? p[..slashIdx] : p;
-                    if (hostPart.EndsWith("$")) hostPart = hostPart[..^1];
-
-                    if (hostPart.Contains('*'))
+                    foreach (var rule in profile.WebRules.Where(r => !r.Allow && !string.IsNullOrWhiteSpace(r.Pattern)))
                     {
-                        continue; // Glob hosts cannot be enforced by hosts fallback
-                    }
+                        string p = rule.Pattern.Trim();
+                        if (p.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) p = p[7..];
+                        if (p.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) p = p[8..];
 
-                    if (HostsFileBuilder.TryNormalizeDomain(hostPart, out string normalizedDomain))
-                    {
-                        foreach (var variant in HostsFileBuilder.ExpandDomain(normalizedDomain))
+                        int slashIdx = p.IndexOf('/');
+                        string hostPart = slashIdx >= 0 ? p[..slashIdx] : p;
+                        if (hostPart.EndsWith("$")) hostPart = hostPart[..^1];
+
+                        if (hostPart.Contains('*'))
                         {
-                            result.FallbackDomains.Add(variant);
+                            continue; // Glob hosts cannot be enforced by hosts fallback
+                        }
+
+                        if (HostsFileBuilder.TryNormalizeDomain(hostPart, out string normalizedDomain))
+                        {
+                            foreach (var variant in HostsFileBuilder.ExpandDomain(normalizedDomain))
+                            {
+                                result.FallbackDomains.Add(variant);
+                            }
                         }
                     }
                 }

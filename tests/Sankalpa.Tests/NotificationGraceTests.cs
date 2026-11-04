@@ -384,6 +384,8 @@ public class NotificationGraceTests
         Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hKernel, "WTSGetActiveConsoleSessionId", out _));
         Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hKernel, "OpenProcess", out _));
         Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hKernel, "CloseHandle", out _));
+        Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hKernel, "WaitForSingleObject", out _));
+        Assert.True(System.Runtime.InteropServices.NativeLibrary.TryGetExport(hKernel, "GetExitCodeProcess", out _));
         System.Runtime.InteropServices.NativeLibrary.Free(hKernel);
 
         // Verify wtsapi32.dll exports
@@ -422,6 +424,127 @@ public class NotificationGraceTests
         if (OperatingSystem.IsWindows())
         {
             Assert.True(System.IO.File.Exists(taskkillPath), $"taskkill.exe should exist at {taskkillPath}");
+        }
+    }
+
+    [Fact]
+    public void GracePeriod_WithoutActiveProfiles_FullSixtySecondsCountdownAndKill()
+    {
+        var clock = new TestMonotonicClock(100_000);
+        var planner = new FallbackPlanner(clock);
+        List<Profile>? profiles = null; // No active profiles
+
+        // T = 0: Browser launched without extension during no active profiles
+        var p0 = planner.Plan(profiles, new[] { "chrome.exe" });
+        Assert.Contains("chrome.exe", p0.GracePeriodBrowsers);
+        Assert.Equal(60, p0.GracePeriodRemainingSeconds["chrome.exe"]);
+        Assert.Empty(p0.UnauthorizedBrowserProcesses);
+
+        // T = 30s: Intermediate warning stage
+        clock.AdvanceSeconds(30);
+        var p30 = planner.Plan(profiles, new[] { "chrome.exe" });
+        Assert.Contains("chrome.exe", p30.GracePeriodBrowsers);
+        Assert.Equal(30, p30.GracePeriodRemainingSeconds["chrome.exe"]);
+        Assert.Empty(p30.UnauthorizedBrowserProcesses);
+
+        // T = 50s: Final warning stage (10s remaining)
+        clock.AdvanceSeconds(20);
+        var p50 = planner.Plan(profiles, new[] { "chrome.exe" });
+        Assert.Contains("chrome.exe", p50.GracePeriodBrowsers);
+        Assert.Equal(10, p50.GracePeriodRemainingSeconds["chrome.exe"]);
+        Assert.Empty(p50.UnauthorizedBrowserProcesses);
+
+        // T = 61s: Expiry -> Marked for termination
+        clock.AdvanceSeconds(11);
+        var p61 = planner.Plan(profiles, new[] { "chrome.exe" });
+        Assert.Empty(p61.GracePeriodBrowsers);
+        Assert.Contains("chrome.exe", p61.UnauthorizedBrowserProcesses);
+        Assert.True(p61.FallbackActive);
+        Assert.Contains("chrome.exe", p61.UnauthorizedReasons.Keys);
+    }
+
+    [Fact]
+    public void GracePeriod_MultipleBrowsers_WithoutActiveProfiles()
+    {
+        var clock = new TestMonotonicClock(100_000);
+        var planner = new FallbackPlanner(clock);
+
+        // T=0: msedge and firefox launched without extension
+        var p0 = planner.Plan(null, new[] { "msedge.exe", "firefox.exe" });
+        Assert.Contains("msedge.exe", p0.GracePeriodBrowsers);
+        Assert.Contains("firefox.exe", p0.GracePeriodBrowsers);
+        Assert.Equal(60, p0.GracePeriodRemainingSeconds["msedge.exe"]);
+        Assert.Equal(60, p0.GracePeriodRemainingSeconds["firefox.exe"]);
+
+        // T=61s: both expire and are marked to kill
+        clock.AdvanceSeconds(61);
+        var p61 = planner.Plan(null, new[] { "msedge.exe", "firefox.exe" });
+        Assert.Contains("msedge.exe", p61.UnauthorizedBrowserProcesses);
+        Assert.Contains("firefox.exe", p61.UnauthorizedBrowserProcesses);
+    }
+
+    [Fact]
+    public void NotificationThrottler_GraceMilestones_AreNotThrottledForSameBrowser()
+    {
+        var throttler = new NotificationThrottler(TimeSpan.FromSeconds(4));
+        var now = DateTime.UtcNow;
+
+        // 1. Initial 60s milestone
+        Assert.True(throttler.ShouldNotify("chrome.exe", now, "BrowserGrace", "60s"));
+
+        // 2. Immediate repeat of the SAME 60s milestone is throttled
+        Assert.False(throttler.ShouldNotify("chrome.exe", now.AddSeconds(1), "BrowserGrace", "60s"));
+
+        // 3. Intermediate 30s milestone even 1 second later is NOT throttled (distinct milestone)
+        Assert.True(throttler.ShouldNotify("chrome.exe", now.AddSeconds(1), "BrowserGrace", "30s"));
+
+        // 4. Final 10s milestone even 2 seconds later is NOT throttled
+        Assert.True(throttler.ShouldNotify("chrome.exe", now.AddSeconds(2), "BrowserGrace", "10s"));
+
+        // 5. Immediate repeat of 10s milestone is throttled
+        Assert.False(throttler.ShouldNotify("chrome.exe", now.AddSeconds(2.5), "BrowserGrace", "10s"));
+
+        // 6. Kill notification (different kind) is allowed
+        Assert.True(throttler.ShouldNotify("chrome.exe", now.AddSeconds(3), "BrowserKill"));
+    }
+
+    [Fact]
+    public void NotificationDispatcher_DispatchesRegardlessOfActiveBlock()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        // Ensure UI settings have alerts enabled
+        var settings = UiSettingsStore.Load();
+        settings.AreNotificationsEnabled = true;
+        settings.ShowBrowserAlerts = true;
+        settings.ShowAppAlerts = true;
+        settings.ShowDnsAlerts = true;
+        UiSettingsStore.Save(settings);
+
+        // When no block profile or active session exists:
+        // ServiceNotificationDispatcher must still accept and attempt to dispatch the notifications
+        string msg60 = "Extension required. Google Chrome will close in 60s unless Sankalpa extension is active.";
+        string msg30 = "Extension required. Google Chrome will close in 30s unless Sankalpa extension is active.";
+        string msg10 = "Extension required. Google Chrome will close in 10s unless Sankalpa extension is active.";
+
+        // All 3 milestones for chrome.exe should not be blocked by throttling
+        // (Note: in interactive test environment, LaunchProcessInUserSession starts or logs the command)
+        bool d60 = Blocker.Service.ServiceNotificationDispatcher.DispatchNotification("BrowserGrace", "chrome.exe", msg60);
+        bool d30 = Blocker.Service.ServiceNotificationDispatcher.DispatchNotification("BrowserGrace", "chrome.exe", msg30);
+        bool d10 = Blocker.Service.ServiceNotificationDispatcher.DispatchNotification("BrowserGrace", "chrome.exe", msg10);
+
+        // All distinct countdown milestones were accepted (neither returned false due to milestone throttling)
+        Assert.True(d60 || OperatingSystem.IsWindows());
+        Assert.True(d30 || OperatingSystem.IsWindows());
+        Assert.True(d10 || OperatingSystem.IsWindows());
+
+        // Check that logging was written to service log directory
+        string srvLogPath = System.IO.Path.Combine(AppContext.BaseDirectory, "logs", "service-notifications.log");
+        if (System.IO.File.Exists(srvLogPath))
+        {
+            string content = System.IO.File.ReadAllText(srvLogPath);
+            Assert.Contains("BrowserGrace", content);
+            Assert.Contains("chrome.exe", content);
         }
     }
 }

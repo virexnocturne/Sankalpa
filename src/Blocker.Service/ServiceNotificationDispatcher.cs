@@ -86,30 +86,49 @@ public static class ServiceNotificationDispatcher
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out IntPtr TokenHandle);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetExitCodeProcess(IntPtr hProcess, out uint lpExitCode);
+
     private static readonly object _logLock = new();
     private static void Log(string message)
     {
         try
         {
             string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}";
-            // 1. Service base directory log
-            try
+            lock (_logLock)
             {
-                string srvLogDir = Path.Combine(AppContext.BaseDirectory, "logs");
-                Directory.CreateDirectory(srvLogDir);
-                File.AppendAllText(Path.Combine(srvLogDir, "service-notifications.log"), line + Environment.NewLine);
-            }
-            catch { }
+                // 1. Service base directory log
+                try
+                {
+                    string srvLogDir = Path.Combine(AppContext.BaseDirectory, "logs");
+                    Directory.CreateDirectory(srvLogDir);
+                    File.AppendAllText(Path.Combine(srvLogDir, "service-notifications.log"), line + Environment.NewLine);
+                }
+                catch { }
 
-            // 2. User AppData log
-            try
-            {
-                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                string userLogDir = Path.Combine(localAppData, "Blocker", "logs");
-                Directory.CreateDirectory(userLogDir);
-                File.AppendAllText(Path.Combine(userLogDir, "service-notifications.log"), line + Environment.NewLine);
+                // 2. ProgramData log (accessible by all users and LocalSystem in Session 0)
+                try
+                {
+                    string progData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                    string commonLogDir = Path.Combine(progData, "Sankalpa", "logs");
+                    Directory.CreateDirectory(commonLogDir);
+                    File.AppendAllText(Path.Combine(commonLogDir, "service-notifications.log"), line + Environment.NewLine);
+                }
+                catch { }
+
+                // 3. User AppData log
+                try
+                {
+                    string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                    string userLogDir = Path.Combine(localAppData, "Blocker", "logs");
+                    Directory.CreateDirectory(userLogDir);
+                    File.AppendAllText(Path.Combine(userLogDir, "service-notifications.log"), line + Environment.NewLine);
+                }
+                catch { }
             }
-            catch { }
         }
         catch { }
     }
@@ -118,12 +137,28 @@ public static class ServiceNotificationDispatcher
     {
         try
         {
-            if (!_throttler.ShouldNotify(name, DateTime.UtcNow, kind))
+            // Milestone extraction: ensure countdown milestones (60s, 30s, 10s) for the same browser are not throttled
+            string? milestone = null;
+            if (string.Equals(kind, "BrowserGrace", StringComparison.OrdinalIgnoreCase))
             {
+                var match = System.Text.RegularExpressions.Regex.Match(profileOrReason, @"\b(\d+s)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    milestone = match.Groups[1].Value;
+                }
+                else if (!string.IsNullOrWhiteSpace(profileOrReason))
+                {
+                    milestone = profileOrReason;
+                }
+            }
+
+            if (!_throttler.ShouldNotify(name, DateTime.UtcNow, kind, milestone))
+            {
+                Log($"[ServiceNotification] Notification throttled: kind='{kind}', name='{name}', milestone='{milestone}'");
                 return false;
             }
 
-            Log($"[ServiceNotification] Dispatching notification: kind='{kind}', name='{name}', reason='{profileOrReason}'");
+            Log($"[ServiceNotification] Dispatching notification (delivered regardless of active block): kind='{kind}', name='{name}', milestone='{milestone}', reason='{profileOrReason}'");
 
             // Check notification settings
             try
@@ -151,7 +186,7 @@ public static class ServiceNotificationDispatcher
                         return false;
                     }
                 }
-                else
+                else if (string.Equals(kind, "App", StringComparison.OrdinalIgnoreCase))
                 {
                     if (!settings.ShowAppAlerts)
                     {
@@ -345,7 +380,19 @@ public static class ServiceNotificationDispatcher
                     UseShellExecute = false
                 };
                 using var proc = Process.Start(psi);
-                Log($"[ServiceNotification] Started in current interactive session: {exePath}");
+                Log($"[ServiceNotification] Started in current interactive session: {exePath} (PID: {proc?.Id})");
+                if (proc != null)
+                {
+                    bool exited = proc.WaitForExit(3500);
+                    if (exited && proc.HasExited)
+                    {
+                        Log($"[ServiceNotification] Interactive process PID {proc.Id} exited with code: {proc.ExitCode}");
+                    }
+                    else
+                    {
+                        Log($"[ServiceNotification] Interactive process PID {proc.Id} running asynchronously in user session.");
+                    }
+                }
                 return true;
             }
 
@@ -391,10 +438,14 @@ public static class ServiceNotificationDispatcher
 
                     foreach (var exp in targetExplorers)
                     {
-                        IntPtr hExp = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, exp.Id);
+                        IntPtr hExp = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION, false, exp.Id);
                         if (hExp == IntPtr.Zero)
                         {
                             hExp = OpenProcess(PROCESS_QUERY_INFORMATION, false, exp.Id);
+                        }
+                        if (hExp == IntPtr.Zero)
+                        {
+                            hExp = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, exp.Id);
                         }
                         if (hExp != IntPtr.Zero)
                         {
@@ -461,6 +512,11 @@ public static class ServiceNotificationDispatcher
                     out PROCESS_INFORMATION pi))
                 {
                     Log($"[ServiceNotification] Launched '{exePath}' (PID: {pi.dwProcessId}) in user session {activeSessionId}");
+                    uint waitResult = WaitForSingleObject(pi.hProcess, 3500);
+                    if (GetExitCodeProcess(pi.hProcess, out uint exitCode))
+                    {
+                        Log($"[ServiceNotification] Process PID {pi.dwProcessId} exited with code: {exitCode} (waitResult: {waitResult})");
+                    }
                     CloseHandle(pi.hProcess);
                     CloseHandle(pi.hThread);
                     return true;
@@ -510,10 +566,15 @@ public static class ServiceNotificationDispatcher
                 title = "🛡️ DNS Shield Restored";
                 line1 = $"DNS tampering was detected and reverted to {profileOrReason}.";
             }
-            else
+            else if (string.Equals(kind, "App", StringComparison.OrdinalIgnoreCase))
             {
                 title = $"🚫 {name} Blocked";
                 line1 = $"Blocked by profile '{profileOrReason}'.";
+            }
+            else
+            {
+                title = string.IsNullOrWhiteSpace(name) ? "Sankalpa Notification" : name;
+                line1 = string.IsNullOrWhiteSpace(profileOrReason) ? kind : profileOrReason;
             }
 
             string escTitle = System.Security.SecurityElement.Escape(title) ?? title;
@@ -544,7 +605,7 @@ public static class ServiceNotificationDispatcher
                 "$doc.LoadXml($rawXml); " +
                 "$t = [Windows.UI.Notifications.ToastNotification]::new($doc); " +
                 "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Sankalpa').Show($t); " +
-                "Start-Sleep -Milliseconds 800; " +
+                "Start-Sleep -Milliseconds 1200; " +
                 "} catch { }";
 
             byte[] bytes = System.Text.Encoding.Unicode.GetBytes(psScript);

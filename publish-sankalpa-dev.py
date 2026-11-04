@@ -2,24 +2,22 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 REPO_ROOT = r"C:\Users\virex\.gemini\antigravity\scratch\Blocker"
 OUTPUT_DIR = r"C:\Users\virex\.gemini\antigravity\scratch\Sankalpa dev"
+STAGING_DIR = os.path.join(REPO_ROOT, "dist", "staging")
 
 print(f"=== Publishing Sankalpa Latest to: {OUTPUT_DIR} ===")
 
-# 1. Ensure output directory exists
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(STAGING_DIR, exist_ok=True)
 
-# 2. Stop existing service if running so binaries can be replaced
-print("Checking and stopping SankalpaService if running...")
+# 1. Stop service so it releases locks
+print("Checking and stopping SankalpaService...")
 subprocess.run(["sc.exe", "stop", "SankalpaService"], capture_output=True)
 
-# Kill any existing Sankalpa or Blocker processes
-for proc in ["Sankalpa", "Blocker.Service", "Blocker.NativeHost", "sankalpa-cli"]:
-    subprocess.run(["taskkill.exe", "/F", "/T", "/IM", f"{proc}.exe"], capture_output=True)
-
-# 3. Publish all projects as self-contained single-file win-x64 Release binaries
+# 2. Publish all projects into STAGING_DIR first
 projects = [
     ("Blocker.NativeHost", os.path.join(REPO_ROOT, "src", "Blocker.NativeHost", "Blocker.NativeHost.csproj")),
     ("Blocker.Service", os.path.join(REPO_ROOT, "src", "Blocker.Service", "Blocker.Service.csproj")),
@@ -36,7 +34,7 @@ for name, proj_path in projects:
         "--self-contained", "true",
         "/p:PublishSingleFile=true",
         "/p:IncludeNativeLibrariesForSelfExtract=true",
-        "-o", OUTPUT_DIR
+        "-o", STAGING_DIR
     ]
     res = subprocess.run(cmd, text=True, capture_output=True)
     if res.returncode != 0:
@@ -45,7 +43,30 @@ for name, proj_path in projects:
     else:
         print(f"SUCCESS: {name} published.")
 
-# 4. Copy Assets and Licenses
+# 3. Terminate running UI / NativeHost instances before copying
+for proc in ["Sankalpa", "Blocker.NativeHost", "Blocker.Service", "sankalpa-cli"]:
+    subprocess.run(["taskkill.exe", "/F", "/T", "/IM", f"{proc}.exe"], capture_output=True)
+time.sleep(0.5)
+
+# 4. Copy from STAGING_DIR to OUTPUT_DIR with atomic rename fallback for locked files
+print("\n--- Deploying Staged Binaries to Sankalpa dev ---")
+for item in os.listdir(STAGING_DIR):
+    src_file = os.path.join(STAGING_DIR, item)
+    dest_file = os.path.join(OUTPUT_DIR, item)
+    if os.path.isfile(src_file):
+        try:
+            shutil.copy2(src_file, dest_file)
+        except PermissionError:
+            # File is currently held open by another process: rename old file and place new one
+            old_file = dest_file + f".old_{int(time.time())}"
+            try:
+                os.rename(dest_file, old_file)
+                shutil.copy2(src_file, dest_file)
+                print(f"Replaced locked file {item} (old renamed to {os.path.basename(old_file)})")
+            except Exception as e:
+                print(f"Warning: Could not replace {item}: {e}")
+
+# 5. Copy Assets, Licenses & Config
 print("\n--- Copying Assets, Licenses & Config ---")
 assets_src = os.path.join(REPO_ROOT, "src", "Blocker.App", "Assets")
 assets_dest = os.path.join(OUTPUT_DIR, "Assets")
@@ -67,56 +88,29 @@ config_src = os.path.join(REPO_ROOT, "src", "Blocker.Service", "appsettings.json
 if os.path.exists(config_src):
     shutil.copy2(config_src, os.path.join(OUTPUT_DIR, "appsettings.json"))
 
-# Copy run-sankalpa launcher
 launcher_cmd = os.path.join(OUTPUT_DIR, "run-sankalpa.cmd")
 with open(launcher_cmd, "w", encoding="utf-8") as f:
     f.write("@echo off\r\nstart \"\" \"%~dp0Sankalpa.exe\"\r\n")
-print(f"Created launcher: {launcher_cmd}")
 
-# 5. Register native messaging host from the new Sankalpa dev location
+# 6. Register Native Messaging Host & AUMID
 native_host_exe = os.path.join(OUTPUT_DIR, "Blocker.NativeHost.exe")
 if os.path.exists(native_host_exe):
     print("\n--- Registering Native Host & AUMID from Sankalpa dev ---")
     reg_res = subprocess.run([native_host_exe, "--register"], capture_output=True, text=True)
     print(reg_res.stdout)
 
-# 6. Update Windows Service configuration to point to Sankalpa dev and start it
-print("\n--- Updating SankalpaService binPath to Sankalpa dev ---")
-service_exe = os.path.join(OUTPUT_DIR, "Blocker.Service.exe")
-if os.path.exists(service_exe):
-    config_cmd = ["sc.exe", "config", "SankalpaService", f'binPath= "{service_exe}"']
-    subprocess.run(config_cmd, capture_output=True)
-    print(f"Service binPath set to: {service_exe}")
-    start_res = subprocess.run(["sc.exe", "start", "SankalpaService"], capture_output=True, text=True)
-    print("Service start result:", start_res.stdout.strip() or start_res.stderr.strip())
-
-# 7. Delete every other older versions
-print("\n--- Cleaning up older versions ---")
-older_dirs = [
-    os.path.join(REPO_ROOT, "dist", "app"),
-    os.path.join(REPO_ROOT, "dist", "cli"),
-    os.path.join(REPO_ROOT, "dist", "service"),
-    os.path.join(REPO_ROOT, "dist", "Sankalpa-Release"),
-]
-
-for d in older_dirs:
-    if os.path.exists(d):
-        try:
-            shutil.rmtree(d)
-            print(f"Deleted older version directory: {d}")
-        except Exception as ex:
-            print(f"Could not delete {d}: {ex}")
-
-# Also ensure dist has a junction or clean mirror to Sankalpa dev if requested
-dist_dir = os.path.join(REPO_ROOT, "dist")
-os.makedirs(dist_dir, exist_ok=True)
-dist_sankalpa_dev = os.path.join(dist_dir, "Sankalpa dev")
-if os.path.exists(dist_sankalpa_dev):
+# 7. Update service path in dist/Sankalpa-Release and restart service
+service_dist_dest = os.path.join(REPO_ROOT, "dist", "Sankalpa-Release", "Blocker.Service.exe")
+if os.path.exists(os.path.dirname(service_dist_dest)):
     try:
-        if os.path.islink(dist_sankalpa_dev) or os.path.isdir(dist_sankalpa_dev):
-            subprocess.run(["cmd.exe", "/c", f'rmdir "{dist_sankalpa_dev}"'], capture_output=True)
-    except:
-        pass
-subprocess.run(["cmd.exe", "/c", f'mklink /J "{dist_sankalpa_dev}" "{OUTPUT_DIR}"'], capture_output=True)
+        shutil.copy2(os.path.join(OUTPUT_DIR, "Blocker.Service.exe"), service_dist_dest)
+    except Exception as e:
+        print(f"Copying service to dist: {e}")
+
+print("Starting SankalpaService...")
+subprocess.run(["sc.exe", "start", "SankalpaService"], capture_output=True)
+
+# 8. Clean up staging directory
+shutil.rmtree(STAGING_DIR, ignore_errors=True)
 
 print("\n=== Release to 'Sankalpa dev' completed successfully! ===")

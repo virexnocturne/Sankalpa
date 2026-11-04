@@ -13,7 +13,7 @@ public class NotificationThrottler
         _throttleWindow = throttleWindow ?? TimeSpan.FromSeconds(5);
     }
 
-    public bool ShouldNotify(string appName, DateTime nowUtc, string kind = "App")
+    public bool ShouldNotify(string appName, DateTime nowUtc, string kind = "App", string? milestone = null)
     {
         if (string.IsNullOrWhiteSpace(appName))
         {
@@ -21,7 +21,10 @@ public class NotificationThrottler
         }
 
         string cleanKind = string.IsNullOrWhiteSpace(kind) ? "App" : kind.Trim();
-        string key = $"{cleanKind}:{appName.Trim()}";
+        string cleanApp = appName.Trim();
+        string key = string.IsNullOrWhiteSpace(milestone)
+            ? $"{cleanKind}:{cleanApp}"
+            : $"{cleanKind}:{cleanApp}:{milestone.Trim()}";
 
         bool shouldNotify = false;
         _lastNotified.AddOrUpdate(
