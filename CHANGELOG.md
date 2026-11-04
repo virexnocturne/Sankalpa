@@ -4,6 +4,35 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FIX-2026-11-04-03] Strict Uninstall Protection & Companion Extension Synchronization (v1.1.1)
+- **Timestamp**: 2026-11-04 15:50 IST
+- **Component**: Core Engine (`UninstallGuard.cs`), CLI (`Program.cs`, `Blocker.Cli.csproj`), Windows Installer (`Sankalpa.iss`), Maintenance Scripts (`clean-uninstall.cmd`, `publish-sankalpa-dev.py`), Tests (`UninstallGuardTests.cs`)
+- **Status**: **SOLVED & VERIFIED IN LIVE OS**
+- **Problems Identified**:
+  1. **Uninstall Tamper Bypass**: Users could attempt to bypass active focus block sessions by launching Windows Settings / Add-Remove Programs or running uninstallation routines while a block was actively running.
+  2. **Extension Version Out of Sync**: The browser extension was on manifest version 1.0.0 while releasing v1.1.x.
+- **Changes Applied**:
+  - **Core Uninstall Guard (`UninstallGuard.cs`)**:
+    - Created `UninstallGuard` with status-based checking (`CanUninstallFromStatus`) and defense-in-depth offline SQLite database and Windows `hosts` file verification (`CheckDatabaseForActiveBlock`, `CheckSystemHostsForActiveBlock`, `CheckOfflineActiveBlock`).
+    - Detects active manual timer sessions, active schedule windows, locked profiles, and active hosts file redirects.
+  - **CLI Command (`sankalpa-cli.exe check-uninstall`)**:
+    - Returns exit code `0` if no block is active (uninstall permitted).
+    - Returns exit code `1` if any block session, schedule, or locked profile is active (uninstall forbidden).
+  - **Windows Installer Integration (`Sankalpa.iss`)**:
+    - Added `InitializeUninstall(): Boolean` event hook to Inno Setup. Before displaying any uninstall screens or modifying any services or files, the uninstaller executes `sankalpa-cli.exe check-uninstall`.
+    - If a block is active, the uninstaller displays a critical error notification and immediately aborts uninstallation.
+  - **Portable & Developer Uninstaller (`clean-uninstall.cmd`)**:
+    - Added step 0 verifying `sankalpa-cli.exe check-uninstall` before stopping services or touching data.
+  - **Extension Version 1.1.1**:
+    - Bumped `extension/manifest.json` to 1.1.1 and generated store-ready package `sankalpa-extension-v1.1.1.zip`.
+- **Verification**:
+  - **Unit Tests**: All 6 new `UninstallGuardTests` passed.
+  - **Full Test Suite**: All **647 tests passed** (559 in `Sankalpa.Tests`, 88 in `Sankalpa.Security.Tests`).
+  - **CLI Verification**: `sankalpa-cli check-uninstall` returns exit code 0 when idle and exit code 1 when active.
+
+---
+
+
 ### [FIX-2026-11-04-02] UI Button ContentTemplate Fix, Autonomous Browser Termination Rework, Independent Windows Toast Pipeline & Live OS Verification
 - **Timestamp**: 2026-11-04 15:10 IST
 - **Component**: Desktop UI (`Controls.xaml`), Engine & Planning (`FallbackPlanner.cs`, `NotificationThrottler.cs`), Background Service (`Worker.cs`, `ServiceNotificationDispatcher.cs`), Native Host (`Program.cs`), Build Pipeline (`publish-sankalpa-dev.py`), Tests (`FallbackPlannerTests.cs`, `NotificationGraceTests.cs`)

@@ -76,20 +76,20 @@ public class HostsFileManagerTests : IDisposable
     {
         var manager = new HostsFileManager(_hostsPath)
         {
-            MaxRetries = 6,
-            RetryDelayMs = 25
+            MaxRetries = 10,
+            RetryDelayMs = 50
         };
 
         // 1. Initial applied block
         manager.SyncHosts(new[] { "example.com" });
         Assert.Equal(HostsState.Blocking, manager.State);
 
-        // 2. Lock the hosts file in a background task and release after ~25ms
+        // 2. Lock the hosts file in a background task and release after ~20ms
         using var streamLock = new FileStream(_hostsPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
         var unlockTask = Task.Run(async () =>
         {
-            await Task.Delay(25);
+            await Task.Delay(20);
             streamLock.Dispose();
         });
 

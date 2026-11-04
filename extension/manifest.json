@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sankalpa Blocker",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Companion extension for Sankalpa desktop app",
   "permissions": [
     "nativeMessaging",

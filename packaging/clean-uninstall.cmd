@@ -6,6 +6,31 @@ echo   Sankalpa Clean Uninstaller & Environment Reset
 echo ========================================================
 echo.
 
+:: 0. Check Uninstall Protection (strictly forbids uninstallation if any block is active)
+echo [*] Checking uninstall protection...
+set "CLI_EXE=%~dp0sankalpa-cli.exe"
+if not exist "!CLI_EXE!" set "CLI_EXE=%~dp0dist\Sankalpa-Release\sankalpa-cli.exe"
+if not exist "!CLI_EXE!" set "CLI_EXE=C:\Program Files\Sankalpa\sankalpa-cli.exe"
+
+if exist "!CLI_EXE!" (
+    "!CLI_EXE!" check-uninstall
+    if !errorlevel! neq 0 (
+        echo.
+        echo ========================================================
+        echo   [ACCESS DENIED] UNINSTALL PROTECTION IS ACTIVE
+        echo ========================================================
+        echo   An active block session or schedule is currently running!
+        echo   Sankalpa cannot be uninstalled while a block is active.
+        echo   Strict uninstall protection is enforced.
+        echo.
+        echo   Please wait until all active blocks have finished.
+        echo ========================================================
+        echo.
+        pause
+        exit /b 1
+    )
+)
+
 :: 1. Check for administrative privileges
 net session >nul 2>&1
 if %errorlevel% neq 0 (

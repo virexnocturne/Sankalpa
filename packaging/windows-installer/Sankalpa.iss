@@ -5,7 +5,7 @@
 
 #define MyAppName "Sankalpa"
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.1.1"
 #endif
 #define MyAppPublisher "Sankalpa"
 #define MyAppURL "https://github.com/virex/Sankalpa"
@@ -107,6 +107,33 @@ Filename: "{sys}\sc.exe"; Parameters: "delete SankalpaService"; Flags: runhidden
 Filename: "{app}\{#MyHostExeName}"; Parameters: "--unregister"; Flags: runhidden
 
 [Code]
+// Uninstall Protection: strictly forbid uninstallation if any block session or schedule is active
+function InitializeUninstall(): Boolean;
+var
+  ResultCode: Integer;
+  CliPath: string;
+begin
+  Result := True;
+  CliPath := ExpandConstant('{app}\{#MyCliExeName}');
+
+  if FileExists(CliPath) then
+  begin
+    if Exec(CliPath, 'check-uninstall', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      if ResultCode <> 0 then
+      begin
+        MsgBox('Uninstall Protection Active!' + #13#10#13#10 +
+               'Sankalpa cannot be uninstalled while a block session or schedule is active.' + #13#10#13#10 +
+               'Strict uninstall protection prevents bypassing active focus blocks.' + #13#10#13#10 +
+               'Please wait until all active sessions and schedules have completed before uninstalling.',
+               mbCriticalError, MB_OK);
+        Result := False;
+        Exit;
+      end;
+    end;
+  end;
+end;
+
 // Helper function to check if a Windows service is registered
 function ServiceExists(ServiceName: string): Boolean;
 var

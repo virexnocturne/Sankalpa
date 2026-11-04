@@ -108,6 +108,49 @@ switch (command)
         break;
     }
 
+    case "check-uninstall":
+    case "can-uninstall":
+    {
+        // 1. Live named pipe check to SankalpaService
+        try
+        {
+            var res = await pipeClient.SendRequestAsync(new Request { Command = CommandNames.GetStatus });
+            if (res.Connected && res.Response?.Ok == true && !string.IsNullOrWhiteSpace(res.Response.Data))
+            {
+                var status = JsonSerializer.Deserialize<StatusData>(res.Response.Data, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (!UninstallGuard.CanUninstallFromStatus(status, out string? reason))
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("[ACCESS DENIED] Uninstall protection is active: a block is currently active!");
+                    Console.WriteLine($"  {reason}");
+                    Console.ResetColor();
+                    return 1;
+                }
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("[OK] No active block. Uninstallation permitted.");
+                Console.ResetColor();
+                return 0;
+            }
+        }
+        catch { }
+
+        // 2. Offline fallback check (direct DB / hosts file check)
+        if (UninstallGuard.CheckOfflineActiveBlock(out string? offlineReason))
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("[ACCESS DENIED] Uninstall protection is active: a block is currently active!");
+            Console.WriteLine($"  {offlineReason}");
+            Console.ResetColor();
+            return 1;
+        }
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine("[OK] No active block. Uninstallation permitted.");
+        Console.ResetColor();
+        return 0;
+    }
+
     case "hosts-clean":
         request = new Request { Command = CommandNames.CleanHosts };
         printSuccess = resp => Console.WriteLine(resp.Data ?? "Hosts file cleaned successfully.");
@@ -777,6 +820,7 @@ static void PrintUsage()
     Console.WriteLine("  blocker status");
     Console.WriteLine("  blocker start [--profile <name>] [--minutes <m>] [--seconds <s>] [--locked [true|false]]");
     Console.WriteLine("  blocker stop [--unlock-text <T>] [--unlock-password <P>]");
+    Console.WriteLine("  blocker check-uninstall");
     Console.WriteLine("  blocker hosts-clean");
     Console.WriteLine("  blocker hosts-status");
     Console.WriteLine("  blocker unlock-challenge --name <name>");
