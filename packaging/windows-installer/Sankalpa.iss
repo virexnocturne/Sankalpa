@@ -129,18 +129,23 @@ end;
 // Post-uninstall: Ask user if they wish to remove custom user data and profiles
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  DataDir: string;
+  DataDir, LegacyDataDir, CommonDataDir: string;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
     DataDir := ExpandConstant('{localappdata}\Sankalpa');
-    if DirExists(DataDir) then
+    LegacyDataDir := ExpandConstant('{localappdata}\Blocker');
+    CommonDataDir := ExpandConstant('{commonappdata}\Sankalpa');
+
+    if DirExists(DataDir) or DirExists(LegacyDataDir) or DirExists(CommonDataDir) then
     begin
       if MsgBox('Do you want to delete your Sankalpa block history, statistics, and profile data?' + #13#10#13#10 +
-                'Select "Yes" to remove all data completely, or "No" to keep your profiles for future installations.',
+                'Select "Yes" to remove all data and logs completely, or "No" to keep your profiles for future installations.',
                 mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
       begin
-        DelTree(DataDir, True, True, True);
+        if DirExists(DataDir) then DelTree(DataDir, True, True, True);
+        if DirExists(LegacyDataDir) then DelTree(LegacyDataDir, True, True, True);
+        if DirExists(CommonDataDir) then DelTree(CommonDataDir, True, True, True);
       end;
     end;
   end;

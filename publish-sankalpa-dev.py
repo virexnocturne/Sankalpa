@@ -105,6 +105,9 @@ if os.path.exists(config_src):
     shutil.copy2(config_src, os.path.join(OUTPUT_DIR, "appsettings.json"))
 
 launcher_cmd = os.path.join(OUTPUT_DIR, "run-sankalpa.cmd")
+uninstaller_cmd = os.path.join(REPO_ROOT, "packaging", "clean-uninstall.cmd")
+if os.path.exists(uninstaller_cmd):
+    shutil.copy2(uninstaller_cmd, os.path.join(OUTPUT_DIR, "clean-uninstall.cmd"))
 with open(launcher_cmd, "w", encoding="utf-8") as f:
     f.write("@echo off\r\nstart \"\" \"%~dp0Sankalpa.exe\"\r\n")
 
