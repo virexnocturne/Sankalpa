@@ -6,11 +6,11 @@
 
 <p align="center">
   <strong>Tamper-resistant focus, website, and application blocker for Windows.</strong><br />
-  Reclaim your digital time with unbreakable focus sessions, scheduled blocks, and deep-work protections.
+  Reclaim your digital focus with unbreakable focus sessions, automatic schedule lockouts, delayed unlocks, and deep anti-tamper protections.
 </p>
 
 <p align="center">
-  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release" /></a>
+  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.2.0" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64)-blue?logo=windows" alt="Platform: Windows" />
   <img src="https://img.shields.io/badge/Framework-.NET%208.0%20WPF-purple?logo=dotnet" alt=".NET 8" />
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20%26%20Local-success?logo=shield" alt="Privacy First" />
@@ -25,53 +25,67 @@
 
 ---
 
+## 🌟 What's New in v1.2.0
+
+- 🔒 **Automatic Schedule Lockdown**: Block profiles with active schedules are now automatically locked during their scheduled time windows (`Schedule 🔒`). The toggle switch is disabled so you cannot simply turn off blocks mid-session.
+- ⏳ **Delayed Unlock**: Added a tamper-resistant cooldown timer option (15m, 30m, 1h, 2h). Must wait out an active timer in front of the screen before a locked block can be modified.
+- 🛑 **Strict Uninstall Guard**: Anti-tamper protection integrated into Windows Add-Remove Programs (`unins000.exe`). If any block session or scheduled block is active, uninstallation is strictly forbidden and aborted immediately.
+- 🎨 **Streamlined Desktop UI**: Removed misleading Stop buttons on locked blocks and eliminated header text clipping in the schedule editor for a cleaner experience.
+- 🌐 **Updated Companion Extension (v1.2.0)**: Fully synchronized with latest engine rules, real-time native messaging, and seamless multi-browser support.
+
+---
+
 ## Table of Contents
 - [Download & Quick Start](#-download--quick-start)
-- [How It Works](#-how-it-works-architecture)
-- [Showcase & Key Features](#-showcase--key-features)
-  - [1. Distraction-Free Themes](#1-distraction-free-themes)
-  - [2. Multi-Target Blocklists (Websites & Apps)](#2-multi-target-blocklists-websites--apps)
-  - [3. Focus Schedules & Timers](#3-focus-schedules--timers)
-  - [4. Tamper-Proof Lock Protections](#4-tamper-proof-lock-protections)
+- [How It Works (Architecture)](#-how-it-works-architecture)
+- [Comprehensive Features](#-comprehensive-features)
+  - [1. Multi-Target Blocklists (Websites & Apps)](#1-multi-target-blocklists-websites--apps)
+  - [2. Focus Schedules & Daily Allowances](#2-focus-schedules--daily-allowances)
+  - [3. Unbreakable Lock Protections](#3-unbreakable-lock-protections)
+  - [4. Distraction-Free Themes](#4-distraction-free-themes)
   - [5. Companion Browser Extension](#5-companion-browser-extension)
+- [Security Architecture & Anti-Tamper Hardening](#-security-architecture--anti-tamper-hardening)
 - [Privacy Guarantee](#-privacy-guarantee)
-- [Security Architecture & Hardening](#-security-architecture--hardening)
-- [Isolated Simulation Test Suite](#-isolated-simulation-test-suite)
 - [Command Line Interface (CLI)](#-command-line-interface-cli)
+- [Testing & Verification](#-testing--verification)
 - [Building from Source](#-building-from-source)
+- [Licenses](#-licenses)
 
 ---
 
 ## 🚀 Download & Quick Start
 
-### 1. Download the Windows Installer
-Download the latest one-click setup wizard from the official GitHub release:
+### 1. Download Latest Release (v1.2.0)
+Download the installer or standalone release directly from [GitHub Releases](https://github.com/virexnocturne/Sankalpa/releases/latest):
 
-👉 **[Download Sankalpa-Setup-1.0.0.exe](https://github.com/virexnocturne/Sankalpa/releases/download/v1.0.0/Sankalpa-Setup-1.0.0.exe)**
-
-| File | Size | SHA-256 Checksum |
-| :--- | :--- | :--- |
-| `Sankalpa-Setup-1.0.0.exe` | ~81 MB | `1404027B274CC148E7AF984A9758EC8726CC0FE1456D2E0D5D5BE0946C2FCA60` |
+| File | Type | Size | SHA-256 Checksum |
+| :--- | :--- | :--- | :--- |
+| **[`Sankalpa-Setup-1.2.0.exe`](https://github.com/virexnocturne/Sankalpa/releases/download/v1.2.0/Sankalpa-Setup-1.2.0.exe)** | **Recommended Installer** | 115 MB | `FB400EBA47A1424E21E14DAA13D50EBABAFD93627452298159567AC4DCE867BF` |
+| **[`Sankalpa.exe`](https://github.com/virexnocturne/Sankalpa/releases/download/v1.2.0/Sankalpa.exe)** | Portable Standalone | 158 MB | `955EE0739B845A99BB2A186F3C9D71FFBDB61D7919F595A034BF5BECC9AD6348` |
+| **[`sankalpa-extension-v1.2.0.zip`](https://github.com/virexnocturne/Sankalpa/releases/download/v1.2.0/sankalpa-extension-v1.2.0.zip)** | Companion Extension | 39 KB | `E0E27ABF25C9E6D74C63A67180CFD83DFCB68A4340A54620C82D97518862EA3E` |
 
 ### 2. Run the Setup Wizard
-1. Double-click **`Sankalpa-Setup-1.0.0.exe`**.
-2. When Windows User Account Control (UAC) prompts, click **Yes**. (Administrator elevation is required **once** during installation so the installer can register the tamper-resistant background service).
-3. Follow the wizard steps to complete installation. Sankalpa will automatically start in the background.
+1. Run **`Sankalpa-Setup-1.2.0.exe`**.
+2. Click **Yes** when Windows User Account Control (UAC) prompts (Administrator rights are needed **once** during installation to register the tamper-resistant background service).
+3. The setup automatically installs the desktop application, background enforcement service, native messaging bridge, and desktop shortcuts.
 
-> **Note on Windows SmartScreen**: Because this is a fresh open-source release, Windows Defender SmartScreen may display *"Windows protected your PC"*. Simply click **More info** → **Run anyway**.
+> **Note on Windows SmartScreen**: Windows Defender SmartScreen may display *"Windows protected your PC"* on fresh releases. Click **More info** → **Run anyway**.
 
-### 3. Install the Browser Companion (Recommended)
-For zero-latency website blocking and InPrivate protection, download **`sankalpa-extension-v1.0.0.zip`** from the [v1.0.0 Release](https://github.com/virexnocturne/Sankalpa/releases/tag/v1.0.0) or install via the Chrome Web Store:
-1. Open your browser extension manager (`chrome://extensions`, `edge://extensions`, or `about:debugging` in Firefox).
-2. Enable **Developer mode** (top-right toggle).
-3. Drag and drop the unzipped extension folder into the browser window.
-4. Enable **"Allow in Incognito / InPrivate"** in extension details so focus rules cannot be bypassed.
+### 3. Install Companion Extension
+For instantaneous website blocking and incognito protection:
+1. Open your browser's extension manager:
+   - Chrome / Brave / Opera: `chrome://extensions`
+   - Microsoft Edge: `edge://extensions`
+   - Mozilla Firefox: `about:debugging`
+2. Enable **Developer mode** toggle.
+3. Unzip **`sankalpa-extension-v1.2.0.zip`** and click **Load unpacked** (or click **"Open folder"** from the desktop app's status bar).
+4. In extension details, enable **"Allow in Incognito / InPrivate"**.
 
 ---
 
 ## ⚙️ How It Works (Architecture)
 
-Sankalpa is engineered with a **dual-layer protection model** that separates user interface controls from system-level enforcement:
+Sankalpa is built with a **dual-layer protection model** that cleanly isolates user configuration from system-level enforcement:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -108,30 +122,20 @@ Sankalpa is engineered with a **dual-layer protection model** that separates use
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-1. **Sankalpa Desktop UI (`Sankalpa.exe`)**: A lightweight WPF application running with standard user privileges. You configure block profiles, customize themes, set schedules, and trigger focus timers.
-2. **Tamper-Resistant Windows Service (`Blocker.Service.exe`)**: Runs with `SYSTEM` privileges in the background. It monitors active processes, updates local DNS/hosts redirection, and maintains monotonic session timers across reboots. Even if you close the UI, the service remains vigilant.
-3. **Auto-Restart Watchdog**: If the service process is abnormally killed, Windows Service Control Manager automatically restarts it with zero delay (`sc failure restart/0/restart/0`).
-4. **Native Messaging Bridge (`Blocker.NativeHost.exe`)**: Translates extension events directly to the background service and dispatches native Windows Shell Action Center toast notifications even when the desktop UI window is closed.
+1. **Desktop Client (`Sankalpa.exe`)**: Modern WPF application with responsive design, instant search, inline profile renaming, and dark/light themes.
+2. **Background Enforcer Service (`Blocker.Service.exe`)**: Runs continuously under the `NT AUTHORITY\SYSTEM` account. Maintains timers across reboots, kills unauthorized apps, and applies system DNS/hosts redirection.
+3. **Native Messaging Host (`Blocker.NativeHost.exe`)**: Dispatches real-time extension heartbeats and Windows Shell Action Center toast alerts even when the UI is closed.
+4. **Auto-Restart Watchdog**: Windows Service Control Manager automatically restarts the service with 0ms delay if terminated (`sc failure restart/0/restart/0`).
 
 ---
 
-## 🎨 Showcase & Key Features
+## 🎯 Comprehensive Features
 
-### 1. Distraction-Free Themes
-Sankalpa offers three master themes designed for extended focus: **Black** (ultra-deep OLED), **White** (clean high-contrast daylight), and **Grey** (soft neutral slate). All three support 6 dynamic accents (Emerald, Indigo, Violet, Amber, Rose, Slate).
+### 1. Multi-Target Blocklists (Websites & Apps)
+Create customized, context-specific block profiles (e.g. *Deep Work*, *Study Mode*, *Social Media Detoxing*):
 
-<p align="center">
-  <img src="docs/screenshots/dashboard-black.png" alt="Black Theme" width="48%" />
-  <img src="docs/screenshots/dashboard-white.png" alt="White Theme" width="48%" />
-</p>
-
----
-
-### 2. Multi-Target Blocklists (Websites & Apps)
-Create independent block profiles for different contexts (e.g. *Deep Work*, *Writing*, *No Social Media*).
-
-- **Websites Tab**: Block specific root domains, subdomains, or wildcard patterns with instant redirect to a focus hold screen.
-- **Apps Tab**: Scan installed Windows desktop programs or running processes, and prevent distraction apps (games, Discord, media players) from launching.
+- **Websites Tab**: Block specific domains (e.g., `youtube.com`, `reddit.com`), entire categories, or enable **Block All Websites** with custom whitelist exceptions.
+- **Applications Tab**: Scan running processes and installed Windows desktop applications. Distraction apps (Steam, Discord, Telegram, games) are immediately terminated if launched during active sessions.
 
 <p align="center">
   <img src="docs/screenshots/block-editor-websites.png" alt="Website Blocklist" width="48%" />
@@ -140,110 +144,123 @@ Create independent block profiles for different contexts (e.g. *Deep Work*, *Wri
 
 ---
 
-### 3. Focus Schedules & Timers
-- **Weekly Schedules**: Define active time blocks for weekdays and weekends (e.g., Mon–Fri 9:00 AM – 5:00 PM).
-- **Pomodoro Sessions**: Start an on-demand session with customizable focus durations and break intervals.
+### 2. Focus Schedules & Daily Allowances
+- **Automated Recurring Schedules**: Configure multi-day time windows (e.g., Mon–Fri 08:00–17:00). When the scheduled time arrives, enforcement activates and locks automatically.
+- **Daily Usage Allowance**: Grant yourself a limited amount of daily recreation time (e.g. 30 mins) before the profile enters complete lockdown.
+- **Pomodoro & Focus Timers**: Start on-demand focus intervals with custom durations and optional short/long break rewards.
 
 <p align="center">
   <img src="docs/screenshots/block-editor-schedule.png" alt="Schedule Configuration" width="48%" />
-  <img src="docs/screenshots/session-start.png" alt="Pomodoro Session Start" width="48%" />
+  <img src="docs/screenshots/start-session.png" alt="Focus Session Start" width="48%" />
 </p>
 
 ---
 
-### 4. Tamper-Proof Lock Protections
-To prevent impulse unlocking when your willpower dips, Sankalpa provides three enforceable lock mechanisms:
+### 3. Unbreakable Lock Protections
+To prevent giving in to temptation, Sankalpa provides multiple unyielding lock modes:
 
-| Lock Mode | Description |
+| Lock Mode | Behavior |
 | :--- | :--- |
-| **Random Typing Challenge** | Requires typing a complex multi-line randomized phrase with zero typos before unlocking. |
-| **Strict Password Lock** | Requires entering an emergency unlock password set during profile creation. |
-| **Timed Lockout** | Completely forbids unlocking until the scheduled timer runs down to zero. |
+| **Complete / Timed Lock** | Completely locks the block. Cannot be stopped, edited, or turned off until the timer expires. |
+| **Schedule Lock (`Schedule 🔒`)** | Automatically locks the block for the entire duration of configured schedule windows. Toggle switch is disabled. |
+| **Delayed Unlock (`Delay ⏳`)** | Requires waiting out an active 15m, 30m, 1h, or 2h on-screen countdown timer to prevent impulsive unlocks. |
+| **Random Typing Challenge** | Requires correctly typing a complex, randomized 80-character text with zero typos. |
+| **Password Protection** | Requires entering a secure emergency password set when configuring the profile. |
 
 <p align="center">
-  <img src="docs/screenshots/lock-protection.png" alt="Lock Protections" width="48%" />
-  <img src="docs/screenshots/typing-challenge.png" alt="Typing Challenge" width="48%" />
+  <img src="docs/screenshots/editor-locked.png" alt="Schedule Lock" width="48%" />
+  <img src="docs/screenshots/delayed-unlock-prompt-dark.png" alt="Delayed Unlock" width="48%" />
+</p>
+
+---
+
+### 4. Distraction-Free Themes
+Sankalpa includes four tailored themes designed for clarity and eye comfort:
+- **Obsidian Black**: Deep OLED black for zero glare during night sessions.
+- **Dark**: Balanced slate dark mode.
+- **Grey**: Softer neutral contrast.
+- **Light**: High-contrast daylight mode.
+All themes support 6 vibrant accent palettes (Emerald, Indigo, Violet, Amber, Rose, Slate).
+
+<p align="center">
+  <img src="docs/screenshots/main-window.png" alt="Dark Theme" width="48%" />
+  <img src="docs/screenshots/main-window-light.png" alt="Light Theme" width="48%" />
 </p>
 
 ---
 
 ### 5. Companion Browser Extension
-The Sankalpa extension communicates directly with the local service to provide in-browser countdown widgets and instant domain enforcement across Chrome, Brave, Edge, and Firefox.
+- Compatible with **Chrome**, **Microsoft Edge**, **Brave**, **Firefox**, **Vivaldi**, and **Opera**.
+- Zero-latency page redirection to an inspiring focus hold screen.
+- Real-time countdown timer directly in the browser toolbar.
+- Incognito/InPrivate tamper detection with autonomous browser termination fallback.
 
 <p align="center">
-  <img src="docs/screenshots/extension-popup.png" alt="Browser Extension Popup" width="380" />
+  <img src="docs/screenshots/extension-dialog.png" alt="Extension Dialog" width="48%" />
+  <img src="docs/screenshots/blocked-screen.png" alt="Focus Blocked Screen" width="48%" />
 </p>
+
+---
+
+## 🛡️ Security Architecture & Anti-Tamper Hardening
+
+1. **Strict Uninstall Protection (`UninstallGuard`)**:
+   - `sankalpa-cli check-uninstall` inspects both the live service and offline SQLite database/system hosts file.
+   - If an active block session, schedule, or locked profile is active, Windows Settings / Add-Remove Programs (`unins000.exe`) and standalone uninstallers strictly refuse uninstallation.
+2. **Autonomous Browser Termination**:
+   - Browsers opened in Incognito without extension permission or unextended secondary browsers are detected, granted a 60-second grace countdown with Windows toast alerts, and automatically terminated if compliance is not met.
+3. **Named Pipe Client Authentication**:
+   - Default-deny IPC server (`\\.\pipe\BlockerControl`) verifies caller tokens via Windows Impersonation (`stream.RunAsClient`).
+   - Administrative commands and emergency unlocks require Administrator or `LocalSystem` credentials.
+4. **Monotonic Timers & Reboot Immunity**:
+   - Session timers and schedule states are stored in an encrypted/system-protected local SQLite database. Changing system clock or rebooting will not bypass active sessions.
 
 ---
 
 ## 🔒 Privacy Guarantee
 
-- **100% Offline & Local**: Sankalpa does not connect to external servers or send telemetry data.
-- **No Cloud Accounts**: No logins, email registrations, or remote tracking.
-- **Your Data Remains Yours**: All profiles, rules, and local statistics are stored exclusively on your hard drive in `%LocalAppData%\Sankalpa\data\`.
-
-Review our complete [Privacy Policy](packaging/browser-extension/PRIVACY_POLICY.md).
-
----
-
-## 🛡️ Security Architecture & Hardening
-
-Sankalpa incorporates defense-in-depth protections designed to ensure focus blocks cannot be tampered with or accidentally bypassed:
-
-1. **Named Pipe Client Authentication & Emergency Unlock Authorization**:
-   - The named pipe server (`\\.\pipe\BlockerControl`) extracts the caller's Windows token via impersonation (`stream.RunAsClient(...)`).
-   - Default-deny policy: unauthenticated callers are rejected from all commands except `PING`.
-   - `EMERGENCYUNLOCK` is strictly restricted to elevated Administrators and `LocalSystem`, or legitimate standard users who possess an administrative emergency recovery token (`EMERGENCY_UNLOCK`) in the protected installation directory.
-   - Read the complete audit and matrix in [Command Authorization Documentation](docs/COMMAND_AUTHORIZATION.md).
-2. **Heartbeat Replay & Stale Cache Mitigation**:
-   - The native messaging bridge (`Blocker.NativeHost.exe`) explicitly flags cached payloads with `"cached": true` and `"serviceConnected": false` when the background service is unavailable.
-   - The browser extension only refreshes heartbeat timestamps on fresh live payloads.
-   - During extended service outages, the extension's intended 10-minute fail-open timeout triggers reliably, preventing permanent lockouts while immediately resuming enforcement upon service reconnection.
-3. **Robust Singleton Mutex Failure Handling**:
-   - Service singleton mutex management correctly handles `AbandonedMutexException` (recognizing thread ownership), prevents duplicate instances from launching upon unexpected OS exceptions, and releases the handle only when acquired.
-4. **Verified Service Lockdown & DACL Enforcement**:
-   - Eliminates fragile shell wrappers in favor of direct `sc.exe` execution with timeout detection and exit-code validation.
-   - Post-execution security descriptor query (`sc.exe sdshow`) verifies that the lockdown SDDL is actively applied before setting `IsServiceLockedDown`.
-5. **Continuous Security Auditing**:
-   - Comprehensive matrix covering all 24 exposed IPC commands with caller privilege classification and lock enforcement rules.
-
----
-
-## 🧪 Isolated Simulation Test Suite
-
-Sankalpa includes a reproducible, zero-impact simulation environment that exercises all security fixes, IPC authorization rules, mutex contention, and extension fail-open timeouts without modifying host DNS, Windows services, or system hosts files:
-
-```powershell
-# 1. Setup the isolated test environment
-.\tests\Simulation\setup.ps1
-
-# 2. Run the full security regression, simulation, and extension suites
-.\tests\Simulation\run-tests.ps1
-
-# 3. Clean up disposable simulation fixtures
-.\tests\Simulation\cleanup.ps1
-```
-
-For full details on the 12 simulation scenarios and mocking strategy, see the [Simulation Environment Documentation](tests/Simulation/README.md).
+- **100% Offline & Local**: Zero network telemetry, zero analytical trackers, zero third-party calls.
+- **No Accounts Required**: No email, cloud login, or subscriptions.
+- **Your Data Remains on Your Machine**: All profiles, rules, and logs reside locally in `%LocalAppData%\Sankalpa\data\`.
+- Complete [Privacy Policy](packaging/browser-extension/PRIVACY_POLICY.md).
 
 ---
 
 ## 💻 Command Line Interface (CLI)
 
-Sankalpa includes a dedicated command-line utility (`sankalpa-cli.exe`) for automation and power users:
+Sankalpa includes `sankalpa-cli.exe` in the application directory for scripting and advanced users:
 
 ```powershell
-# Show system status and active blocking profiles
+# Check current protection status and active blocks
 sankalpa-cli status
 
-# List all configured profiles
+# List all configured profiles and lock modes
 sankalpa-cli list
 
-# Manually start a profile session for 45 minutes
+# Start a profile manually for 45 minutes
 sankalpa-cli start --profile "Deep Work" --duration 45m
 
-# Stop an active session (if not locked)
+# Stop an active session (if unlocked)
 sankalpa-cli stop --profile "Deep Work"
+
+# Verify whether uninstallation is safe or blocked by active rules
+sankalpa-cli check-uninstall
+```
+
+---
+
+## 🧪 Testing & Verification
+
+Sankalpa contains a comprehensive automated test suite with **over 660 unit, integration, and security tests**:
+
+```powershell
+# Run the complete test suite
+dotnet test Blocker.sln
+
+# Run isolated security simulation scenarios
+.\tests\Simulation\setup.ps1
+.\tests\Simulation\run-tests.ps1
+.\tests\Simulation\cleanup.ps1
 ```
 
 ---
@@ -265,16 +282,11 @@ sankalpa-cli stop --profile "Deep Work"
    ```powershell
    dotnet build Blocker.sln -c Release
    ```
-3. Build the 1-click Windows installer:
+3. Compile the Inno Setup installer:
    ```powershell
-   powershell -ExecutionPolicy Bypass -File packaging\windows-installer\build-installer.ps1 -Version "1.0.0"
+   powershell -ExecutionPolicy Bypass -File packaging\windows-installer\build-installer.ps1 -Version "1.2.0"
    ```
-   The compiled installer is generated in `packaging\dist\Sankalpa-Setup-1.0.0.exe`.
-
-4. Package the companion extension:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File packaging\browser-extension\package-extension.ps1
-   ```
+   The installer executable will be generated at `packaging\dist\Sankalpa-Setup-1.2.0.exe`.
 
 ---
 
