@@ -175,7 +175,7 @@ public partial class MainWindow : Window
         {
             if (profile.IsLockedFromToggling)
             {
-                cb.IsChecked = true;
+                cb.IsChecked = profile.IsToggleChecked;
                 return;
             }
             // Keep checkbox visual state in sync with actual profile state
@@ -220,12 +220,12 @@ public partial class MainWindow : Window
     {
         try
         {
-            bool isLocked = (_viewModel.IsSessionActive && _viewModel.ActiveSessionLocked &&
-                profile != null && profile.Name.Equals(_viewModel.ActiveSessionProfile, StringComparison.OrdinalIgnoreCase)) ||
-                (profile != null && profile.LockedNow);
+            bool isSessionLocked = _viewModel.IsSessionActive && _viewModel.ActiveSessionLocked &&
+                profile != null && profile.Name.Equals(_viewModel.ActiveSessionProfile, StringComparison.OrdinalIgnoreCase);
+            bool isProfileLocked = (profile != null && profile.LockedNow);
 
             var existingNames = _viewModel.Profiles.Select(p => p.Name).ToList();
-            var dlg = new BlockEditorDialog(profile, isLocked, existingNames, _viewModel.IsServiceElevated, initialTab);
+            var dlg = new BlockEditorDialog(profile, isSessionLocked, isProfileLocked, existingNames, _viewModel.IsServiceElevated, initialTab);
             if (IsLoaded && IsVisible)
             {
                 try { dlg.Owner = this; } catch { }

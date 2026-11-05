@@ -19,15 +19,8 @@ for d in TARGET_DIRS:
     os.makedirs(d, exist_ok=True)
 os.makedirs(STAGING_DIR, exist_ok=True)
 
-# 1. Stop service so it releases locks
+# 1. Stop service so it releases locks cleanly without triggering emergency wipe
 print("\nChecking and stopping SankalpaService...")
-try:
-    with open(os.path.join(RELEASE_DIR, "EMERGENCY_UNLOCK"), "w") as f:
-        f.write("DEPLOY")
-    time.sleep(1.5)
-except Exception:
-    pass
-
 subprocess.run(["sc.exe", "stop", "SankalpaService"], capture_output=True)
 for _ in range(10):
     res = subprocess.run(["sc.exe", "query", "SankalpaService"], capture_output=True, text=True)

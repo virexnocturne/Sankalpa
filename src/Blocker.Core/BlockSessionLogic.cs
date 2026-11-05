@@ -25,9 +25,14 @@ public static class BlockSessionLogic
 
     public static TimeSpan GetRemainingTime(BlockSession? session, DateTime nowUtc)
     {
-        if (session == null || !IsActive(session, nowUtc))
+        if (session == null || session.EndedUtc != null || session.DurationSeconds <= 0)
         {
             return TimeSpan.Zero;
+        }
+
+        if (HasClockMovedBackwards(session, nowUtc))
+        {
+            return TimeSpan.FromSeconds(session.DurationSeconds);
         }
 
         DateTime endUtc = session.StartUtc.AddSeconds(session.DurationSeconds);
@@ -76,7 +81,15 @@ public static class BlockSessionLogic
         DateTime nowUtc,
         bool emergencyUnlockPresent)
     {
-        if (session == null || !IsActive(session, nowUtc))
+        if (session == null || session.EndedUtc != null || session.DurationSeconds <= 0)
+        {
+            return (true, TimeSpan.Zero, "No active session.");
+        }
+
+        bool clockMovedBackwards = HasClockMovedBackwards(session, nowUtc);
+        bool isActive = IsActive(session, nowUtc);
+
+        if (!isActive && !clockMovedBackwards)
         {
             return (true, TimeSpan.Zero, "No active session.");
         }

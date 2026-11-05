@@ -145,4 +145,108 @@ public class ScheduleLogicTests
         };
         Assert.Equal("Mon-Fri 08:00-14:00", ScheduleLogic.FormatSummary(rules));
     }
+
+    [Theory]
+    [InlineData(0, "00:00")]
+    [InlineData(480, "08:00")]
+    [InlineData(720, "12:00")]
+    [InlineData(1020, "17:00")]
+    [InlineData(1439, "23:59")]
+    public void FormatMinute_24Hour_ReturnsExpectedFormat(int minuteOfDay, string expected)
+    {
+        Assert.Equal(expected, ScheduleLogic.FormatMinute(minuteOfDay, "24h"));
+    }
+
+    [Theory]
+    [InlineData(0, "12:00 AM")]
+    [InlineData(480, "8:00 AM")]
+    [InlineData(720, "12:00 PM")]
+    [InlineData(1020, "5:00 PM")]
+    [InlineData(1439, "11:59 PM")]
+    public void FormatMinute_12Hour_ReturnsExpectedFormat(int minuteOfDay, string expected)
+    {
+        Assert.Equal(expected, ScheduleLogic.FormatMinute(minuteOfDay, "12h"));
+    }
+
+    [Theory]
+    [InlineData("08:00", 480)]
+    [InlineData("17:00", 1020)]
+    [InlineData("00:00", 0)]
+    [InlineData("0:00", 0)]
+    [InlineData("8:00", 480)]
+    [InlineData("23:59", 1439)]
+    public void TryParseMinute_24HourInputs_ParsesCorrectly(string input, int expectedMinute)
+    {
+        bool success = ScheduleLogic.TryParseMinute(input, out int minute);
+        Assert.True(success);
+        Assert.Equal(expectedMinute, minute);
+    }
+
+    [Theory]
+    [InlineData("8:00 AM", 480)]
+    [InlineData("5:00 PM", 1020)]
+    [InlineData("12:00 PM", 720)]
+    [InlineData("12:00 AM", 0)]
+    [InlineData("8am", 480)]
+    [InlineData("5pm", 1020)]
+    [InlineData("8 am", 480)]
+    [InlineData("5 pm", 1020)]
+    [InlineData("12am", 0)]
+    [InlineData("12pm", 720)]
+    [InlineData("8:30 PM", 1230)]
+    [InlineData("8:30pm", 1230)]
+    [InlineData("8:00 a.m.", 480)]
+    [InlineData("5:00 p.m.", 1020)]
+    public void TryParseMinute_12HourInputs_ParsesCorrectly(string input, int expectedMinute)
+    {
+        bool success = ScheduleLogic.TryParseMinute(input, out int minute);
+        Assert.True(success);
+        Assert.Equal(expectedMinute, minute);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("not-a-time")]
+    [InlineData("25:00")]
+    [InlineData("12:60")]
+    [InlineData("-1:00")]
+    [InlineData("24:00")]
+    public void TryParseMinute_InvalidInputs_ReturnsFalse(string? input)
+    {
+        bool success = ScheduleLogic.TryParseMinute(input, out int minute);
+        Assert.False(success);
+        Assert.Equal(0, minute);
+    }
+
+    [Fact]
+    public void FormatSummary_12HourAnd24Hour_ProducesCorrectFormatting()
+    {
+        var rules = new List<ScheduleRule>
+        {
+            new() { Days = DaysOfWeek.Weekdays, StartMinute = 480, EndMinute = 1020 },
+            new() { Days = DaysOfWeek.Weekend, StartMinute = 540, EndMinute = 720 }
+        };
+
+        string summary24 = ScheduleLogic.FormatSummary(rules, "24h");
+        Assert.Equal("Mon-Fri 08:00-17:00, Weekends 09:00-12:00", summary24);
+
+        string summary12 = ScheduleLogic.FormatSummary(rules, "12h");
+        Assert.Equal("Mon-Fri 8:00 AM-5:00 PM, Weekends 9:00 AM-12:00 PM", summary12);
+    }
+
+    [Fact]
+    public void FormatSingleRule_12HourAnd24Hour_FormatsCorrectly()
+    {
+        var rule = new ScheduleRule
+        {
+            Days = DaysOfWeek.Mon | DaysOfWeek.Wed | DaysOfWeek.Fri,
+            StartMinute = 480,
+            EndMinute = 1020
+        };
+
+        Assert.Equal("Mon, Wed, Fri 08:00-17:00", ScheduleLogic.FormatSingleRule(rule, "24h"));
+        Assert.Equal("Mon, Wed, Fri 8:00 AM-5:00 PM", ScheduleLogic.FormatSingleRule(rule, "12h"));
+    }
 }

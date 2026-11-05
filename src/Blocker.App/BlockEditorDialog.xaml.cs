@@ -28,6 +28,10 @@ public class ScheduleRowItem : ViewModelBase
     private bool _sun = false;
     private string _fromText = "08:00";
     private string _toText = "17:00";
+    private string _fromAmPm = "AM";
+    private string _toAmPm = "PM";
+    private bool _is12Hour = false;
+    private bool _isEditable = true;
     private string? _error;
 
     public bool Mon { get => _mon; set => SetProperty(ref _mon, value); }
@@ -37,6 +41,35 @@ public class ScheduleRowItem : ViewModelBase
     public bool Fri { get => _fri; set => SetProperty(ref _fri, value); }
     public bool Sat { get => _sat; set => SetProperty(ref _sat, value); }
     public bool Sun { get => _sun; set => SetProperty(ref _sun, value); }
+
+    public bool IsEditable { get => _isEditable; set => SetProperty(ref _isEditable, value); }
+
+    public bool Is12Hour
+    {
+        get => _is12Hour;
+        set
+        {
+            if (SetProperty(ref _is12Hour, value)) Validate();
+        }
+    }
+
+    public string FromAmPm
+    {
+        get => _fromAmPm;
+        set
+        {
+            if (SetProperty(ref _fromAmPm, value)) Validate();
+        }
+    }
+
+    public string ToAmPm
+    {
+        get => _toAmPm;
+        set
+        {
+            if (SetProperty(ref _toAmPm, value)) Validate();
+        }
+    }
 
     public string FromText
     {
@@ -57,6 +90,16 @@ public class ScheduleRowItem : ViewModelBase
     }
 
     public string? Error { get => _error; set => SetProperty(ref _error, value); }
+
+    public void ToggleFromAmPm()
+    {
+        FromAmPm = string.Equals(FromAmPm, "AM", StringComparison.OrdinalIgnoreCase) ? "PM" : "AM";
+    }
+
+    public void ToggleToAmPm()
+    {
+        ToAmPm = string.Equals(ToAmPm, "AM", StringComparison.OrdinalIgnoreCase) ? "PM" : "AM";
+    }
 
     public DaysOfWeek GetDays()
     {
@@ -92,9 +135,12 @@ public class ScheduleRowItem : ViewModelBase
             return false;
         }
 
-        if (!TryParseMinute(FromText, out int startMin) || !TryParseMinute(ToText, out int endMin))
+        if (!TryParseTime(FromText, FromAmPm, Is12Hour, out int startMin) ||
+            !TryParseTime(ToText, ToAmPm, Is12Hour, out int endMin))
         {
-            error = "Invalid time format. Use HH:mm (e.g. 08:00).";
+            error = Is12Hour
+                ? "Invalid time format. Enter time like 8:00."
+                : "Invalid time format. Use HH:mm (e.g. 08:00).";
             return false;
         }
 
@@ -113,7 +159,8 @@ public class ScheduleRowItem : ViewModelBase
 
     private void Validate()
     {
-        if (TryParseMinute(FromText, out int startMin) && TryParseMinute(ToText, out int endMin))
+        if (TryParseTime(FromText, FromAmPm, Is12Hour, out int startMin) &&
+            TryParseTime(ToText, ToAmPm, Is12Hour, out int endMin))
         {
             if (startMin == endMin)
             {
@@ -130,27 +177,71 @@ public class ScheduleRowItem : ViewModelBase
         }
     }
 
-    private static bool TryParseMinute(string s, out int minutes)
+    public static (string timeText, string amPm) MinutesTo12Hour(int totalMinutes)
+    {
+        int totalH = (totalMinutes / 60) % 24;
+        int m = totalMinutes % 60;
+        string amPm = totalH >= 12 ? "PM" : "AM";
+        int h12 = totalH % 12;
+        if (h12 == 0) h12 = 12;
+        return ($"{h12}:{m:D2}", amPm);
+    }
+
+    public static bool TryParseTime(string? s, string? amPm, bool is12Hour, out int minutes)
     {
         minutes = 0;
         if (string.IsNullOrWhiteSpace(s)) return false;
         s = s.Trim();
-        if (DateTime.TryParse(s, System.Globalization.CultureInfo.CurrentCulture, System.Globalization.DateTimeStyles.NoCurrentDateDefault, out DateTime dt) ||
-            DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.NoCurrentDateDefault, out dt))
+
+        if (is12Hour)
         {
-            minutes = dt.Hour * 60 + dt.Minute;
+            bool hasAm = s.IndexOf("AM", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool hasPm = s.IndexOf("PM", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            string cleanStr = s.Replace("AM", "", StringComparison.OrdinalIgnoreCase)
+                               .Replace("PM", "", StringComparison.OrdinalIgnoreCase)
+                               .Trim();
+
+            var parts = cleanStr.Split(':');
+            if (parts.Length != 2 || !int.TryParse(parts[0].Trim(), out int h) || !int.TryParse(parts[1].Trim(), out int m))
+            {
+                return false;
+            }
+
+            if (h < 1 || h > 12 || m < 0 || m > 59)
+            {
+                return false;
+            }
+
+            bool isPm;
+            if (hasAm) isPm = false;
+            else if (hasPm) isPm = true;
+            else isPm = string.Equals(amPm?.Trim(), "PM", StringComparison.OrdinalIgnoreCase);
+
+            int hour24 = h % 12;
+            if (isPm) hour24 += 12;
+
+            minutes = hour24 * 60 + m;
             return true;
         }
-        var parts = s.Split(':');
-        if (parts.Length == 2 && int.TryParse(parts[0], out int h) && int.TryParse(parts[1], out int m))
+        else
         {
-            if (h >= 0 && h < 24 && m >= 0 && m < 60)
+            var parts = s.Split(':');
+            if (parts.Length == 2 && int.TryParse(parts[0].Trim(), out int h) && int.TryParse(parts[1].Trim(), out int m))
             {
-                minutes = h * 60 + m;
-                return true;
+                if (h >= 0 && h < 24 && m >= 0 && m < 60)
+                {
+                    minutes = h * 60 + m;
+                    return true;
+                }
             }
+            return false;
         }
-        return false;
+    }
+
+    private static bool TryParseMinute(string s, out int minutes)
+    {
+        return TryParseTime(s, "AM", false, out minutes);
     }
 }
 
@@ -192,6 +283,8 @@ public partial class BlockEditorDialog : Window
     public bool IsLockedMode { get; private set; }
     public Visibility RemoveButtonVisibility => IsLockedMode ? Visibility.Collapsed : Visibility.Visible;
     private readonly bool _isLockedMode;
+    private readonly bool _isLockedInActiveSession;
+    private readonly bool _isProfileLocked;
 
     public int SelectedTabIndex
     {
@@ -211,13 +304,24 @@ public partial class BlockEditorDialog : Window
     public Visibility LockVisibility => LockSectionBorder?.Visibility ?? Visibility.Collapsed;
 
     public BlockEditorDialog(ProfileViewModel? profile, int initialTab)
-        : this(profile, false, null, true, initialTab)
+        : this(profile, false, false, null, true, initialTab)
+    {
+    }
+
+    public BlockEditorDialog(
+        ProfileViewModel? profile,
+        bool isLockedInActiveSession,
+        IEnumerable<string>? existingNames,
+        bool isElevated = true,
+        int initialTab = 0)
+        : this(profile, isLockedInActiveSession, profile?.LockedNow == true, existingNames, isElevated, initialTab)
     {
     }
 
     public BlockEditorDialog(
         ProfileViewModel? profile = null,
         bool isLockedInActiveSession = false,
+        bool isProfileLocked = false,
         IEnumerable<string>? existingNames = null,
         bool isElevated = true,
         int initialTab = 0)
@@ -229,7 +333,9 @@ public partial class BlockEditorDialog : Window
         _existingNames = existingNames;
         _isElevated = isElevated;
         _hasExistingPassword = profile?.LockMode == LockMode.Password;
-        _isLockedMode = isLockedInActiveSession || (profile != null && profile.LockedNow);
+        _isLockedInActiveSession = isLockedInActiveSession;
+        _isProfileLocked = isProfileLocked || (profile != null && profile.LockedNow);
+        _isLockedMode = _isLockedInActiveSession || _isProfileLocked;
         IsLockedMode = _isLockedMode;
 
         AppsListBox.ItemsSource = Apps;
@@ -271,16 +377,17 @@ public partial class BlockEditorDialog : Window
                 }
                 ExceptionPatternErrorTextBlock.Visibility = Visibility.Collapsed;
                 rbUnlocked.IsEnabled = false;
-                rbTimedLock.IsEnabled = false;
-                rbLocked.IsEnabled = false;
                 rbTyping.IsEnabled = false;
                 rbPassword.IsEnabled = false;
                 if (rbDelayedUnlock != null) rbDelayedUnlock.IsEnabled = false;
                 if (DelayedUnlockBorder != null) DelayedUnlockBorder.IsEnabled = false;
                 if (rbPomodoro != null) rbPomodoro.IsEnabled = false;
-                TimedLockBorder.IsEnabled = false;
                 if (PomodoroBorder != null) PomodoroBorder.IsEnabled = false;
-                if (ActiveLockedNoticeBorder != null) ActiveLockedNoticeBorder.Visibility = Visibility.Visible;
+
+                // Complete Lock controls: disabled whenever _isLockedMode is true
+                rbTimedLock.IsEnabled = false;
+                TimedLockBorder.IsEnabled = false;
+                rbTimedLock.ToolTip = "Complete lock cannot be initiated or altered while this block is locked.";
                 if (TimedLockDurationInput != null) TimedLockDurationInput.IsEnabled = false;
                 if (TimedLockUnitComboBox != null) TimedLockUnitComboBox.IsEnabled = false;
                 if (StartTimedLockNowButton != null)
@@ -293,13 +400,36 @@ public partial class BlockEditorDialog : Window
                     StartPomodoroLockNowButton.IsEnabled = false;
                     StartPomodoroLockNowButton.Visibility = Visibility.Collapsed;
                 }
-                if (profile.BlockAllWebsites)
+
+                // Daily Allowance controls: disabled whenever _isLockedMode is true
+                AllowanceCheckBox.IsEnabled = false;
+                AllowanceMinutesInput.IsEnabled = false;
+                if (BtnAllowance15m != null) BtnAllowance15m.IsEnabled = false;
+                if (BtnAllowance30m != null) BtnAllowance30m.IsEnabled = false;
+                if (BtnAllowance45m != null) BtnAllowance45m.IsEnabled = false;
+                if (BtnAllowance60m != null) BtnAllowance60m.IsEnabled = false;
+                if (rbAllowanceInSchedule != null) rbAllowanceInSchedule.IsEnabled = false;
+                if (rbAllowance24x7 != null) rbAllowance24x7.IsEnabled = false;
+                string allowanceLockTip = "Allowance settings cannot be modified while this block is locked.";
+                AllowanceCheckBox.ToolTip = allowanceLockTip;
+                if (AllowanceMinutesInput != null) AllowanceMinutesInput.ToolTip = allowanceLockTip;
+                if (AllowanceConfigPanel != null) AllowanceConfigPanel.ToolTip = allowanceLockTip;
+                if (AllowanceLockedNoticeTextBlock != null) AllowanceLockedNoticeTextBlock.Visibility = Visibility.Visible;
+
+                // Schedule controls: disabled when _isLockedMode is true
+                if (AddScheduleRowButton != null)
                 {
-                    BlockAllWebsitesCheckBox.IsEnabled = false;
+                    AddScheduleRowButton.IsEnabled = false;
+                    AddScheduleRowButton.ToolTip = "Schedule rules cannot be added while this block is locked.";
+                }
+                if (ScheduleLockedNoticeBorder != null)
+                {
+                    ScheduleLockedNoticeBorder.Visibility = Visibility.Visible;
                 }
 
-                if (isLockedInActiveSession)
+                if (_isLockedInActiveSession)
                 {
+                    if (ActiveLockedNoticeBorder != null) ActiveLockedNoticeBorder.Visibility = Visibility.Visible;
                     if (CompleteLockScheduleNoticeBorder != null)
                     {
                         CompleteLockScheduleNoticeBorder.Visibility = Visibility.Visible;
@@ -309,6 +439,24 @@ public partial class BlockEditorDialog : Window
                         ScheduleContentPanel.IsEnabled = false;
                         ScheduleContentPanel.Opacity = 0.6;
                     }
+                }
+                else
+                {
+                    if (ActiveLockedNoticeBorder != null) ActiveLockedNoticeBorder.Visibility = Visibility.Collapsed;
+                    if (CompleteLockScheduleNoticeBorder != null)
+                    {
+                        CompleteLockScheduleNoticeBorder.Visibility = Visibility.Collapsed;
+                    }
+                    if (ScheduleContentPanel != null)
+                    {
+                        ScheduleContentPanel.IsEnabled = true;
+                        ScheduleContentPanel.Opacity = 1.0;
+                    }
+                }
+
+                if (profile.BlockAllWebsites)
+                {
+                    BlockAllWebsitesCheckBox.IsEnabled = false;
                 }
             }
 
@@ -342,13 +490,28 @@ public partial class BlockEditorDialog : Window
             BlockAllWebsitesCheckBox.IsChecked = profile.BlockAllWebsites;
             SystemWideCheckBox.IsChecked = profile.SystemWide;
 
+            bool is24H = string.Equals(UiSettingsStore.Load().TimeFormat, "24h", StringComparison.OrdinalIgnoreCase);
             foreach (var rule in profile.Schedule)
             {
                 var row = new ScheduleRowItem
                 {
-                    FromText = $"{rule.StartMinute / 60:D2}:{rule.StartMinute % 60:D2}",
-                    ToText = $"{rule.EndMinute / 60:D2}:{rule.EndMinute % 60:D2}"
+                    Is12Hour = !is24H,
+                    IsEditable = !_isLockedMode
                 };
+                if (is24H)
+                {
+                    row.FromText = $"{rule.StartMinute / 60:D2}:{rule.StartMinute % 60:D2}";
+                    row.ToText = $"{rule.EndMinute / 60:D2}:{rule.EndMinute % 60:D2}";
+                }
+                else
+                {
+                    var (fromTime, fromAmPm) = ScheduleRowItem.MinutesTo12Hour(rule.StartMinute);
+                    var (toTime, toAmPm) = ScheduleRowItem.MinutesTo12Hour(rule.EndMinute);
+                    row.FromAmPm = fromAmPm;
+                    row.FromText = fromTime;
+                    row.ToAmPm = toAmPm;
+                    row.ToText = toTime;
+                }
                 row.SetDays(rule.Days);
                 ScheduleRows.Add(row);
             }
@@ -370,7 +533,7 @@ public partial class BlockEditorDialog : Window
             }
 
             // Lock mode selection
-            if (isLockedInActiveSession)
+            if (_isLockedInActiveSession)
             {
                 rbTimedLock.IsChecked = true;
                 if (TimedLockBorder != null) TimedLockBorder.Visibility = Visibility.Visible;
@@ -379,9 +542,6 @@ public partial class BlockEditorDialog : Window
             {
                 switch (profile.LockMode)
                 {
-                    case LockMode.Locked:
-                        rbLocked.IsChecked = true;
-                        break;
                     case LockMode.TypingChallenge:
                         rbTyping.IsChecked = true;
                         break;
@@ -391,8 +551,10 @@ public partial class BlockEditorDialog : Window
                         break;
                     case LockMode.DelayedUnlock:
                         if (rbDelayedUnlock != null) rbDelayedUnlock.IsChecked = true;
+                        if (DelayedUnlockBorder != null) DelayedUnlockBorder.Visibility = Visibility.Visible;
                         SetDelayedUnlockPreset(profile.DelayedUnlockMinutes > 0 ? profile.DelayedUnlockMinutes : 15);
                         break;
+                    case LockMode.Locked:
                     default:
                         rbUnlocked.IsChecked = true;
                         break;
@@ -509,16 +671,9 @@ public partial class BlockEditorDialog : Window
 
     private void UpdateScheduleEmptyState()
     {
-        if (NoScheduleTextBlock == null || rbLocked == null || LockedHintTextBlock == null) return;
+        if (NoScheduleTextBlock == null) return;
         bool hasRules = ScheduleRows.Count > 0;
         NoScheduleTextBlock.Visibility = hasRules ? Visibility.Collapsed : Visibility.Visible;
-        rbLocked.IsEnabled = hasRules;
-        LockedHintTextBlock.Visibility = hasRules ? Visibility.Collapsed : Visibility.Visible;
-
-        if (!hasRules && rbLocked.IsChecked == true)
-        {
-            rbUnlocked.IsChecked = true;
-        }
     }
 
     #region Applications
@@ -934,6 +1089,7 @@ public partial class BlockEditorDialog : Window
 
     private void AddScheduleRow_Click(object sender, RoutedEventArgs e)
     {
+        if (_isLockedMode) return;
         bool is24H = string.Equals(UiSettingsStore.Load().TimeFormat, "24h", StringComparison.OrdinalIgnoreCase);
         var row = new ScheduleRowItem
         {
@@ -944,11 +1100,33 @@ public partial class BlockEditorDialog : Window
             Fri = true,
             Sat = false,
             Sun = false,
-            FromText = is24H ? "08:00" : "8:00 AM",
-            ToText = is24H ? "17:00" : "5:00 PM"
+            Is12Hour = !is24H,
+            IsEditable = !_isLockedMode,
+            FromAmPm = "AM",
+            ToAmPm = "PM",
+            FromText = is24H ? "08:00" : "8:00",
+            ToText = is24H ? "17:00" : "5:00"
         };
         ScheduleRows.Add(row);
         ScheduleErrorTextBlock.Visibility = Visibility.Collapsed;
+    }
+
+    private void ToggleFromAmPm_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement elem && elem.DataContext is ScheduleRowItem row)
+        {
+            if (!row.IsEditable) return;
+            row.ToggleFromAmPm();
+        }
+    }
+
+    private void ToggleToAmPm_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement elem && elem.DataContext is ScheduleRowItem row)
+        {
+            if (!row.IsEditable) return;
+            row.ToggleToAmPm();
+        }
     }
 
     private void RemoveScheduleRow_Click(object sender, RoutedEventArgs e)
@@ -1006,6 +1184,16 @@ public partial class BlockEditorDialog : Window
                 ? Visibility.Visible
                 : Visibility.Collapsed;
         }
+        if (DelayedUnlockBorder != null)
+        {
+            DelayedUnlockBorder.Visibility = rbDelayedUnlock?.IsChecked == true
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+        if (rbDelayedUnlock?.IsChecked == true)
+        {
+            UpdateDelayedPresetButtonStyles();
+        }
         UpdateScheduleEmptyState();
     }
 
@@ -1021,7 +1209,7 @@ public partial class BlockEditorDialog : Window
 
     private void QuickLockDuration_Click(object sender, RoutedEventArgs e)
     {
-        if (_isLockedMode) return;
+        if (_isLockedInActiveSession) return;
         if (sender is Button btn && btn.Tag is string tagStr && TimedLockDurationInput != null && TimedLockUnitComboBox != null)
         {
             switch (tagStr)
@@ -1089,8 +1277,9 @@ public partial class BlockEditorDialog : Window
     {
         if (BtnDelayed15m == null || BtnDelayed30m == null || BtnDelayed45m == null || BtnDelayed60m == null) return;
 
-        var secStyle = (Style)FindResource("SecondaryButton");
-        var priStyle = (Style)FindResource("PrimaryButton");
+        var secStyle = TryFindResource("SecondaryButton") as Style ?? FindResource("SecondaryButton") as Style;
+        var priStyle = TryFindResource("PrimaryButton") as Style ?? FindResource("PrimaryButton") as Style;
+        if (secStyle == null || priStyle == null) return;
 
         BtnDelayed15m.Style = _selectedDelayedMinutes == 15 ? priStyle : secStyle;
         BtnDelayed30m.Style = _selectedDelayedMinutes == 30 ? priStyle : secStyle;
@@ -1100,7 +1289,7 @@ public partial class BlockEditorDialog : Window
 
     private void StartTimedLockNow_Click(object sender, RoutedEventArgs e)
     {
-        if (_isLockedMode) return;
+        if (_isLockedInActiveSession) return;
         SaveButton_Click(sender, e);
     }
 
@@ -1151,9 +1340,13 @@ public partial class BlockEditorDialog : Window
 
         // 3. Lock validation
         LockMode lockMode = _isLockedMode && _originalProfile != null ? _originalProfile.LockMode : LockMode.None;
+        if (lockMode == LockMode.Locked)
+        {
+            lockMode = LockMode.None;
+        }
         StartTimedLockMinutes = 0;
 
-        if (!_isLockedMode)
+        if (!_isLockedInActiveSession)
         {
             if (rbTimedLock.IsChecked == true)
             {
@@ -1194,16 +1387,6 @@ public partial class BlockEditorDialog : Window
                 StartTimedLockMinutes = (focus * cycles) + (pbreak * Math.Max(0, cycles - 1));
                 lockMode = LockMode.None;
             }
-            else if (rbLocked.IsChecked == true)
-            {
-                if (rules.Count == 0)
-                {
-                    LockErrorTextBlock.Text = "Locked mode requires at least one schedule rule.";
-                    LockErrorTextBlock.Visibility = Visibility.Visible;
-                    return;
-                }
-                lockMode = LockMode.Locked;
-            }
             else if (rbTyping.IsChecked == true)
             {
                 lockMode = LockMode.TypingChallenge;
@@ -1235,6 +1418,10 @@ public partial class BlockEditorDialog : Window
             else if (rbDelayedUnlock != null && rbDelayedUnlock.IsChecked == true)
             {
                 lockMode = LockMode.DelayedUnlock;
+            }
+            else
+            {
+                lockMode = LockMode.None;
             }
         }
         LockErrorTextBlock.Visibility = Visibility.Collapsed;

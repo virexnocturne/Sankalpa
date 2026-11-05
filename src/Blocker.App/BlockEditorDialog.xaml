@@ -12,6 +12,7 @@
         Foreground="{DynamicResource TextPrimary}">
 
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <local:StringNotEmptyToVisibilityConverter x:Key="StringNotEmptyToVis" />
         <!-- Toggle button style for day buttons -->
         <Style x:Key="DayToggleButtonStyle" TargetType="{x:Type ToggleButton}">
@@ -33,7 +34,6 @@
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="DayBorder" Property="Background" Value="{DynamicResource Accent}" />
                                 <Setter TargetName="DayBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
-                                <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="False">
                                 <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
@@ -41,6 +41,18 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="DayBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
                             </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsEnabled" Value="False" />
+                                    <Condition Property="IsChecked" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="DayBorder" Property="Background" Value="{DynamicResource Accent}" />
+                                <Setter TargetName="DayBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
+                            </MultiTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -450,6 +462,22 @@
                                 </Grid>
                             </Border>
 
+                            <!-- Schedule Locked Notice (when block is locked) -->
+                            <Border x:Name="ScheduleLockedNoticeBorder" Style="{StaticResource LockBannerStyle}"
+                                    Margin="0,0,0,12" Visibility="Collapsed">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Path Grid.Column="0" Style="{StaticResource Icon}" Data="{StaticResource IconLock}"
+                                          Stroke="{DynamicResource Warning}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="Schedule rules cannot be added, removed, or modified while this block is locked."
+                                               FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Warning}" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+
                             <StackPanel x:Name="ScheduleContentPanel">
                             <Grid Margin="0,0,0,12">
                                 <Grid.ColumnDefinitions>
@@ -462,7 +490,7 @@
                                     <TextBlock Text="Automatically enables block enforcement during configured time windows."
                                                FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0" />
                                 </StackPanel>
-                                <Button Grid.Column="1" Content="+ Add schedule row" Click="AddScheduleRow_Click"
+                                <Button x:Name="AddScheduleRowButton" Grid.Column="1" Content="+ Add schedule row" Click="AddScheduleRow_Click"
                                         Padding="14,5" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
                             </Grid>
 
@@ -495,13 +523,13 @@
 
                                                 <!-- Days of Week Toggle Buttons -->
                                                 <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <ToggleButton Content="M" IsChecked="{Binding Mon}" Style="{StaticResource DayToggleButtonStyle}" />
-                                                    <ToggleButton Content="T" IsChecked="{Binding Tue}" Style="{StaticResource DayToggleButtonStyle}" />
-                                                    <ToggleButton Content="W" IsChecked="{Binding Wed}" Style="{StaticResource DayToggleButtonStyle}" />
-                                                    <ToggleButton Content="T" IsChecked="{Binding Thu}" Style="{StaticResource DayToggleButtonStyle}" />
-                                                    <ToggleButton Content="F" IsChecked="{Binding Fri}" Style="{StaticResource DayToggleButtonStyle}" />
-                                                    <ToggleButton Content="S" IsChecked="{Binding Sat}" Style="{StaticResource DayToggleButtonStyle}" />
-                                                    <ToggleButton Content="S" IsChecked="{Binding Sun}" Style="{StaticResource DayToggleButtonStyle}" />
+                                                    <ToggleButton Content="M" ToolTip="Monday" IsChecked="{Binding Mon}" IsEnabled="{Binding IsEditable}" Style="{StaticResource DayToggleButtonStyle}" />
+                                                    <ToggleButton Content="T" ToolTip="Tuesday" IsChecked="{Binding Tue}" IsEnabled="{Binding IsEditable}" Style="{StaticResource DayToggleButtonStyle}" />
+                                                    <ToggleButton Content="W" ToolTip="Wednesday" IsChecked="{Binding Wed}" IsEnabled="{Binding IsEditable}" Style="{StaticResource DayToggleButtonStyle}" />
+                                                    <ToggleButton Content="T" ToolTip="Thursday" IsChecked="{Binding Thu}" IsEnabled="{Binding IsEditable}" Style="{StaticResource DayToggleButtonStyle}" />
+                                                    <ToggleButton Content="F" ToolTip="Friday" IsChecked="{Binding Fri}" IsEnabled="{Binding IsEditable}" Style="{StaticResource DayToggleButtonStyle}" />
+                                                    <ToggleButton Content="S" ToolTip="Saturday" IsChecked="{Binding Sat}" IsEnabled="{Binding IsEditable}" Style="{StaticResource DayToggleButtonStyle}" />
+                                                    <ToggleButton Content="S" ToolTip="Sunday" IsChecked="{Binding Sun}" IsEnabled="{Binding IsEditable}" Style="{StaticResource DayToggleButtonStyle}" />
                                                 </StackPanel>
 
                                                 <!-- Time Range -->
@@ -509,11 +537,26 @@
                                                     <TextBlock Text="From:" FontSize="{DynamicResource FontSize12}" VerticalAlignment="Center" Margin="0,0,6,0"
                                                                Foreground="{DynamicResource TextSecondary}" />
                                                     <TextBox Text="{Binding FromText, UpdateSourceTrigger=PropertyChanged}"
+                                                             IsEnabled="{Binding IsEditable}"
                                                              Style="{StaticResource TimePickerTextBox}" FontSize="{DynamicResource FontSize12}" />
+                                                    <Button Content="{Binding FromAmPm}" Click="ToggleFromAmPm_Click"
+                                                            IsEnabled="{Binding IsEditable}"
+                                                            Visibility="{Binding Is12Hour, Converter={StaticResource BoolToVis}}"
+                                                            Style="{StaticResource SecondaryButton}" Padding="6,2" MinWidth="34" Height="28"
+                                                            FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" Margin="4,0,0,0"
+                                                            ToolTip="Click to toggle AM/PM" />
+
                                                     <TextBlock Text="To:" FontSize="{DynamicResource FontSize12}" VerticalAlignment="Center" Margin="10,0,6,0"
                                                                Foreground="{DynamicResource TextSecondary}" />
                                                     <TextBox Text="{Binding ToText, UpdateSourceTrigger=PropertyChanged}"
+                                                             IsEnabled="{Binding IsEditable}"
                                                              Style="{StaticResource TimePickerTextBox}" FontSize="{DynamicResource FontSize12}" />
+                                                    <Button Content="{Binding ToAmPm}" Click="ToggleToAmPm_Click"
+                                                            IsEnabled="{Binding IsEditable}"
+                                                            Visibility="{Binding Is12Hour, Converter={StaticResource BoolToVis}}"
+                                                            Style="{StaticResource SecondaryButton}" Padding="6,2" MinWidth="34" Height="28"
+                                                            FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" Margin="4,0,0,0"
+                                                            ToolTip="Click to toggle AM/PM" />
                                                 </StackPanel>
 
                                                 <!-- Remove Button -->
@@ -572,10 +615,10 @@
                                             </StackPanel>
                                             <!-- Quick Presets -->
                                             <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right">
-                                                <Button Content="15m" Click="AllowanceQuick_Click" Tag="15" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" Margin="0,0,4,0" />
-                                                <Button Content="30m" Click="AllowanceQuick_Click" Tag="30" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" Margin="0,0,4,0" />
-                                                <Button Content="45m" Click="AllowanceQuick_Click" Tag="45" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" Margin="0,0,4,0" />
-                                                <Button Content="60m" Click="AllowanceQuick_Click" Tag="60" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" />
+                                                <Button x:Name="BtnAllowance15m" Content="15m" Click="AllowanceQuick_Click" Tag="15" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" Margin="0,0,4,0" />
+                                                <Button x:Name="BtnAllowance30m" Content="30m" Click="AllowanceQuick_Click" Tag="30" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" Margin="0,0,4,0" />
+                                                <Button x:Name="BtnAllowance45m" Content="45m" Click="AllowanceQuick_Click" Tag="45" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" Margin="0,0,4,0" />
+                                                <Button x:Name="BtnAllowance60m" Content="60m" Click="AllowanceQuick_Click" Tag="60" Style="{StaticResource SecondaryButton}" Padding="8,4" FontSize="{DynamicResource FontSize12}" />
                                             </StackPanel>
                                         </Grid>
 
@@ -586,6 +629,11 @@
                                             <RadioButton x:Name="rbAllowance24x7" GroupName="AllowanceScope" Content="24/7 across entire day"
                                                          FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextPrimary}" />
                                         </StackPanel>
+
+                                        <!-- Locked Notice -->
+                                        <TextBlock x:Name="AllowanceLockedNoticeTextBlock" Text="Allowance settings cannot be modified while this block is locked."
+                                                   FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource Warning}"
+                                                   Margin="0,8,0,0" Visibility="Collapsed" />
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
@@ -797,11 +845,6 @@
                                     </StackPanel>
                                 </Border>
 
-                                <RadioButton x:Name="rbLocked" GroupName="LockMode" Content="Locked during schedule"
-                                             Checked="LockMode_Changed" Margin="0,0,0,4"
-                                             FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimary}" />
-                                <TextBlock x:Name="LockedHintTextBlock" Text="Requires at least one schedule rule." FontSize="{DynamicResource FontSize12}"
-                                           Foreground="{DynamicResource TextSecondary}" Margin="28,0,0,10" Visibility="Collapsed" />
 
                                 <RadioButton x:Name="rbTyping" GroupName="LockMode" Content="Typing challenge (requires typing an 80-character text to unlock)"
                                              Checked="LockMode_Changed" Margin="0,0,0,10"

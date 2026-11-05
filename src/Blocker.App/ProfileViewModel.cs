@@ -180,7 +180,14 @@ public class ProfileViewModel : ViewModelBase
         {
             IsDirty = true;
             OnPropertyChanged(nameof(ScheduleSummary));
+            OnPropertyChanged(nameof(ScheduleColText));
             OnPropertyChanged(nameof(StateChipText));
+            OnPropertyChanged(nameof(HasSchedule));
+            OnPropertyChanged(nameof(IsLockedFromToggling));
+            OnPropertyChanged(nameof(CanToggle));
+            OnPropertyChanged(nameof(CanDelete));
+            OnPropertyChanged(nameof(IsToggleChecked));
+            OnPropertyChanged(nameof(OnOffText));
         };
 
         BeginEditNameCommand = new RelayCommand(() => BeginEditName());
@@ -212,10 +219,10 @@ public class ProfileViewModel : ViewModelBase
     }
 
     public Thickness CardStripeThickness => (IsActive || Enabled) ? new Thickness(4, 0, 0, 0) : new Thickness(0);
-    public string ScheduleColText => Schedule.Count > 0 ? $"Scheduled blocks ({Schedule.Count})" : "Blocked at all times";
+    public string ScheduleColText => Schedule.Count == 0 ? "Blocked at all times" : ScheduleSummary;
     public string LockColText => (IsSessionRunning && IsSessionLocked)
         ? "Complete Lock 🔒"
-        : (IsActive && Schedule.Count > 0 && LockedNow)
+        : (Schedule.Count > 0 && (LockedNow || IsActive))
             ? "Schedule 🔒"
             : LockMode switch
             {
@@ -277,6 +284,7 @@ public class ProfileViewModel : ViewModelBase
             {
                 OnPropertyChanged(nameof(StateChipText));
                 OnPropertyChanged(nameof(ScheduleSummary));
+                OnPropertyChanged(nameof(ScheduleColText));
             }
         }
     }
@@ -305,15 +313,7 @@ public class ProfileViewModel : ViewModelBase
 
     public string ScheduleSummary => ScheduleLogic.FormatSummary(Schedule.ToList(), TimeFormat);
 
-    public string LockLabel => (Schedule.Count > 0 && IsActive && LockedNow)
-        ? "Locked during schedule"
-        : LockMode switch
-        {
-            LockMode.Locked => "Locked during schedule",
-            LockMode.TypingChallenge => "Type to unlock",
-            LockMode.Password => "Password protected",
-            _ => "Unlocked"
-        };
+    public string LockLabel => LockColText;
 
     public string StateChipText
     {
@@ -352,9 +352,15 @@ public class ProfileViewModel : ViewModelBase
     public string StateChipBackground => IsActive ? "#166534" : (Enabled ? "#1E293B" : "#262626");
     public string StateChipForeground => IsActive ? "#4ADE80" : (Enabled ? "#93C5FD" : "#9CA3AF");
 
-    public bool IsLockedFromToggling => (IsSessionRunning && IsSessionLocked) || (IsActive && LockedNow);
+    public bool IsChallengeLock => LockMode == LockMode.DelayedUnlock
+                                || LockMode == LockMode.Password
+                                || LockMode == LockMode.TypingChallenge;
+
+    public bool IsLockedFromToggling => (IsSessionRunning && IsSessionLocked)
+        || (!IsChallengeLock && ((IsActive && LockMode == LockMode.Locked) || (IsActive && Schedule.Count > 0 && LockedNow)));
+
     public bool CanToggle => !IsLockedFromToggling;
-    public bool CanDelete => !IsLockedFromToggling && !IsActive;
+    public bool CanDelete => !IsLockedFromToggling && !IsActive && !Enabled;
     public bool HasPasswordLock => LockMode == LockMode.Password;
     public bool HasTypingChallenge => LockMode == LockMode.TypingChallenge;
     public bool IsToggleChecked => IsLockedFromToggling || Enabled;
@@ -415,6 +421,12 @@ public class ProfileViewModel : ViewModelBase
                 OnPropertyChanged(nameof(LockColText));
                 OnPropertyChanged(nameof(HasPasswordLock));
                 OnPropertyChanged(nameof(HasTypingChallenge));
+                OnPropertyChanged(nameof(IsChallengeLock));
+                OnPropertyChanged(nameof(IsLockedFromToggling));
+                OnPropertyChanged(nameof(CanToggle));
+                OnPropertyChanged(nameof(CanDelete));
+                OnPropertyChanged(nameof(IsToggleChecked));
+                OnPropertyChanged(nameof(OnOffText));
             }
         }
     }
@@ -519,6 +531,7 @@ public class ProfileViewModel : ViewModelBase
 
     public void NotifyStateChanged()
     {
+        OnPropertyChanged(nameof(IsChallengeLock));
         OnPropertyChanged(nameof(IsLockedFromToggling));
         OnPropertyChanged(nameof(CanToggle));
         OnPropertyChanged(nameof(CanDelete));
@@ -534,6 +547,8 @@ public class ProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(LockColText));
         OnPropertyChanged(nameof(HasPasswordLock));
         OnPropertyChanged(nameof(HasTypingChallenge));
+        OnPropertyChanged(nameof(ScheduleColText));
+        OnPropertyChanged(nameof(ScheduleSummary));
     }
 
     public Profile ToModel()

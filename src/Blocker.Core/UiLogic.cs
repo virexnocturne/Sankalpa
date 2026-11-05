@@ -4,45 +4,50 @@ public static class UiLogic
 {
     public static string FormatCountdown(TimeSpan remaining)
     {
-        if (remaining <= TimeSpan.Zero)
+        if (remaining <= TimeSpan.Zero || remaining.Ticks <= 0)
         {
             return "00:00";
         }
 
         if (remaining.TotalDays >= 365)
         {
-            int years = (int)(remaining.TotalDays / 365);
-            int days = (int)(remaining.TotalDays % 365);
+            int years = Math.Max(0, (int)(remaining.TotalDays / 365));
+            int days = Math.Max(0, (int)(remaining.TotalDays % 365));
             return days > 0 ? $"{years}y {days}d" : $"{years}y";
         }
 
         if (remaining.TotalDays >= 30)
         {
-            int months = (int)(remaining.TotalDays / 30);
-            int days = (int)(remaining.TotalDays % 30);
+            int months = Math.Max(0, (int)(remaining.TotalDays / 30));
+            int days = Math.Max(0, (int)(remaining.TotalDays % 30));
             return days > 0 ? $"{months}mo {days}d" : $"{months}mo";
         }
 
         if (remaining.TotalDays >= 7)
         {
-            int weeks = (int)(remaining.TotalDays / 7);
-            int days = (int)(remaining.TotalDays % 7);
+            int weeks = Math.Max(0, (int)(remaining.TotalDays / 7));
+            int days = Math.Max(0, (int)(remaining.TotalDays % 7));
             return days > 0 ? $"{weeks}w {days}d" : $"{weeks}w";
         }
 
         if (remaining.TotalDays >= 1)
         {
-            int days = (int)remaining.TotalDays;
-            int hours = remaining.Hours;
+            int days = Math.Max(0, (int)remaining.TotalDays);
+            int hours = Math.Max(0, remaining.Hours);
             return hours > 0 ? $"{days}d {hours}h" : $"{days}d";
         }
 
         if (remaining.TotalHours >= 1)
         {
-            return $"{(int)remaining.TotalHours:D2}:{remaining.Minutes:D2}:{remaining.Seconds:D2}";
+            int hours = Math.Max(0, (int)remaining.TotalHours);
+            int minutes = Math.Max(0, remaining.Minutes);
+            int seconds = Math.Max(0, remaining.Seconds);
+            return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
         }
 
-        return $"{remaining.Minutes:D2}:{remaining.Seconds:D2}";
+        int m = Math.Max(0, remaining.Minutes);
+        int s = Math.Max(0, remaining.Seconds);
+        return $"{m:D2}:{s:D2}";
     }
 
     public static string FormatDurationDescription(long minutes)
@@ -58,7 +63,11 @@ public static class UiLogic
 
     public static string FormatCountdown(long totalSeconds)
     {
-        return FormatCountdown(TimeSpan.FromSeconds(Math.Max(0, totalSeconds)));
+        if (totalSeconds <= 0)
+        {
+            return "00:00";
+        }
+        return FormatCountdown(TimeSpan.FromSeconds(totalSeconds));
     }
 
     public static string FormatTime(DateTime dateTime, string timeFormat = "24h")

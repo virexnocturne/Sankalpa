@@ -1609,7 +1609,7 @@ public class MainViewModel : ViewModelBase
     {
         try
         {
-            if (profile.IsLockedFromToggling)
+            if (profile.IsLockedFromToggling && !profile.IsChallengeLock)
             {
                 ErrorMessage = $"Block '{profile.Name}' is locked and cannot be turned off.";
                 return false;
@@ -1674,7 +1674,7 @@ public class MainViewModel : ViewModelBase
                 string? unlockPassword = null;
                 string? delayedUnlockToken = null;
 
-                if (profile.LockedNow)
+                if (profile.LockedNow || profile.IsChallengeLock)
                 {
                     if (profile.LockMode == LockMode.Locked)
                     {
@@ -1760,6 +1760,10 @@ public class MainViewModel : ViewModelBase
                         }
 
                         var timerWin = new CoolDownTimerWindow(profile.Name, durationSec);
+                        if (owner != null && owner.IsLoaded && owner.IsVisible)
+                        {
+                            try { timerWin.Owner = owner; } catch { }
+                        }
                         bool? timerResult = timerWin.ShowDialog();
 
                         if (timerResult != true || !timerWin.Completed)

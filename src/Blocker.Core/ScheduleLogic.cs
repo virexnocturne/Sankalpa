@@ -272,14 +272,15 @@ public static class ScheduleLogic
     public static string FormatSingleRule(ScheduleRule rule, string timeFormat)
     {
         string daysStr = FormatDays(rule.Days);
-        string timeStr = $"{FormatTimeMinute(rule.StartMinute, timeFormat)}-{FormatTimeMinute(rule.EndMinute, timeFormat)}";
+        string timeStr = $"{FormatMinute(rule.StartMinute, timeFormat)}-{FormatMinute(rule.EndMinute, timeFormat)}";
         return $"{daysStr} {timeStr}";
     }
 
-    public static string FormatTimeMinute(int minute, string timeFormat = "24h")
+    public static string FormatMinute(int minuteOfDay, string timeFormat = "24h")
     {
-        int hours = (minute / 60) % 24;
-        int mins = minute % 60;
+        int normalized = ((minuteOfDay % 1440) + 1440) % 1440;
+        int hours = normalized / 60;
+        int mins = normalized % 60;
         if (string.Equals(timeFormat, "12h", StringComparison.OrdinalIgnoreCase))
         {
             int h12 = hours % 12;
@@ -288,6 +289,64 @@ public static class ScheduleLogic
             return $"{h12}:{mins:D2} {ampm}";
         }
         return $"{hours:D2}:{mins:D2}";
+    }
+
+    public static string FormatTimeMinute(int minute, string timeFormat = "24h") => FormatMinute(minute, timeFormat);
+
+    public static bool TryParseMinute(string? input, out int minuteOfDay)
+    {
+        minuteOfDay = 0;
+        if (string.IsNullOrWhiteSpace(input)) return false;
+
+        string s = input.Trim();
+
+        // Normalize a.m. / p.m. with dots to am / pm
+        if (s.IndexOf('.') >= 0)
+        {
+            s = s.Replace("a.m.", "am", StringComparison.OrdinalIgnoreCase)
+                 .Replace("p.m.", "pm", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Try invariant culture
+        if (DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.NoCurrentDateDefault, out DateTime dtInv))
+        {
+            minuteOfDay = dtInv.Hour * 60 + dtInv.Minute;
+            return true;
+        }
+
+        // Try current culture
+        if (DateTime.TryParse(s, System.Globalization.CultureInfo.CurrentCulture, System.Globalization.DateTimeStyles.NoCurrentDateDefault, out DateTime dtCur))
+        {
+            minuteOfDay = dtCur.Hour * 60 + dtCur.Minute;
+            return true;
+        }
+
+        // Try specific exact formats with InvariantCulture
+        string[] formats =
+        {
+            "h:mm tt", "hh:mm tt", "h:m tt", "hh:m tt", "h tt", "hh tt",
+            "h:mmtt", "hh:mmtt", "htt", "hhtt",
+            "H:mm", "HH:mm", "H:m", "HH:m"
+        };
+
+        if (DateTime.TryParseExact(s, formats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime dtExact))
+        {
+            minuteOfDay = dtExact.Hour * 60 + dtExact.Minute;
+            return true;
+        }
+
+        // Fallback manual 24-hour HH:mm parser
+        var parts = s.Split(':');
+        if (parts.Length == 2 && int.TryParse(parts[0], out int h) && int.TryParse(parts[1], out int m))
+        {
+            if (h >= 0 && h < 24 && m >= 0 && m < 60)
+            {
+                minuteOfDay = h * 60 + m;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static string FormatDays(DaysOfWeek days)

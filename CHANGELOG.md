@@ -4,6 +4,24 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FIX-2026-11-05-02] Delayed Unlock Presets & Challenge Toggle Workflow (v1.2.1)
+- **Timestamp**: 2026-11-05 13:50 IST
+- **Component**: Desktop App (BlockEditorDialog.xaml.cs, ProfileViewModel.cs, MainViewModel.cs, MainWindow.xaml.cs), Windows Installer (Sankalpa-Setup-1.2.1.exe)
+- **Status**: **SOLVED & VERIFIED IN LIVE OS**
+- **Problems Identified**:
+  1. **Delayed Unlock Presets Hidden**: In the Block Editor's Lock Protection section, selecting 'Delayed Unlock' failed to display preset duration buttons because DelayedUnlockBorder.Visibility was not toggled in LockMode_Changed.
+  2. **Deadlock on Unlocking Challenge Blocks**: Blocks protected by Delayed Unlock, Password, or Typing Challenge had their toggle switch disabled (CanToggle = false) and guarded by IsLockedFromToggling, creating a deadlock where users could never trigger the challenge or cooldown timer to turn off the block.
+- **Changes Applied**:
+  - **Presets Visibility Handler**: Added visibility synchronization and preset button styling logic for DelayedUnlockBorder in BlockEditorDialog.xaml.cs.
+  - **Challenge Lock Delineation**: Differentiated hard locks (Complete Timed Locks and active Schedule windows) from challenge-based locks (DelayedUnlock, Password, TypingChallenge) in ProfileViewModel.cs.
+  - **Interactive Toggle-to-Unlock**: Enabled the toggle switch for challenge-protected blocks, allowing users to initiate the challenge/timer flow directly from the switch while keeping active schedule windows non-bypassable and keeping the block editor in additive-only mode when active.
+- **Verification**:
+  - All 713 automated tests passed (88 in Sankalpa.Security.Tests, 625 in Sankalpa.Tests).
+  - Deployed self-contained release to 'Sankalpa dev' and 'dist/Sankalpa-Release'.
+  - Built Windows Installer Sankalpa-Setup-1.2.1.exe.
+
+---
+
 ### [FIX-2026-11-05-01] Schedule Lock Enforcer, Delayed Unlock & Desktop UI Polishing (v1.2.0)
 - **Timestamp**: 2026-11-05 10:40 IST
 - **Component**: Core Engine (ProfileStateLogic.cs, CommandHandler.cs, DelayedUnlockManager.cs), Desktop App (MainWindow.xaml, MainViewModel.cs, BlockEditorDialog.xaml, ProfileViewModel.cs, DelayedUnlockPromptDialog.xaml, CoolDownTimerWindow.xaml), Extension (manifest.json), Installer & Packaging (uild-installer.ps1, Sankalpa.iss), Tests (ProfileStateLogicTests.cs, DelayedUnlockTests.cs)

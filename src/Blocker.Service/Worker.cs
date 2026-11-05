@@ -96,6 +96,7 @@ public class Worker : BackgroundService
                         _logger.LogWarning("{Message}", warnMsg);
 
                         session.StartUtc = nowUtc;
+                        _db.UpdateSessionStartUtc(session.Id, nowUtc);
                         remainingSeconds = session.DurationSeconds;
                     }
                     else
@@ -437,16 +438,19 @@ public class Worker : BackgroundService
             if (!_trackedSessions.ContainsKey(dbSession.Id))
             {
                 DateTime nowUtc = DateTime.UtcNow;
-                double remainingSeconds;
                 if (nowUtc < dbSession.StartUtc)
                 {
-                    remainingSeconds = dbSession.DurationSeconds;
+                    string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    string warnMsg = $"[{timestamp}] [WARNING] System clock moved backwards into the past (StartUtc: {dbSession.StartUtc:O}, NowUtc: {nowUtc:O}). Adjusting StartUtc.";
+                    Console.WriteLine(warnMsg);
+                    _logger.LogWarning("{Message}", warnMsg);
+
+                    _db.UpdateSessionStartUtc(dbSession.Id, nowUtc);
+                    dbSession.StartUtc = nowUtc;
                 }
-                else
-                {
-                    TimeSpan elapsed = nowUtc - dbSession.StartUtc;
-                    remainingSeconds = dbSession.DurationSeconds - elapsed.TotalSeconds;
-                }
+
+                TimeSpan elapsed = nowUtc - dbSession.StartUtc;
+                double remainingSeconds = Math.Max(0, dbSession.DurationSeconds - elapsed.TotalSeconds);
 
                 if (remainingSeconds > 0)
                 {
@@ -474,7 +478,9 @@ public class Worker : BackgroundService
             int sId = kvp.Key;
             var tracked = kvp.Value;
 
-            if (!dbSessionIds.Contains(sId))
+            // Check if the session was explicitly ended or removed from the database
+            var currentDbSession = _db.GetSessionById(sId);
+            if (currentDbSession == null || currentDbSession.EndedUtc != null)
             {
                 string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                 string msg = $"[{ts}] Active session for '{tracked.Profile?.Name}' has been stopped.";
@@ -484,10 +490,27 @@ public class Worker : BackgroundService
                 continue;
             }
 
+            tracked.Session = currentDbSession;
+
+            DateTime nowUtc = DateTime.UtcNow;
+
+            // Check backwards clock manipulation on tracked session
+            if (nowUtc < tracked.Session.StartUtc)
+            {
+                string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                string warnMsg = $"[{ts}] [WARNING] System clock moved backwards into the past (StartUtc: {tracked.Session.StartUtc:O}, NowUtc: {nowUtc:O}). Adjusting StartUtc.";
+                Console.WriteLine(warnMsg);
+                _logger.LogWarning("{Message}", warnMsg);
+
+                _db.UpdateSessionStartUtc(sId, nowUtc);
+                tracked.Session.StartUtc = nowUtc;
+                tracked.BaseSystemTime = nowUtc;
+            }
+
             TimeSpan monotonicElapsed = tracked.Stopwatch.Elapsed;
             TimeSpan remaining = tracked.InitialRemaining - monotonicElapsed;
 
-            TimeSpan systemElapsed = DateTime.UtcNow - tracked.BaseSystemTime;
+            TimeSpan systemElapsed = nowUtc - tracked.BaseSystemTime;
             double driftSeconds = Math.Abs((systemElapsed - monotonicElapsed).TotalSeconds);
             if (driftSeconds > 5.0)
             {
@@ -495,9 +518,16 @@ public class Worker : BackgroundService
                 string warnMsg = $"[{ts}] [WARNING] System clock jump detected for profile '{tracked.Profile?.Name}'! Drift is {driftSeconds:F1}s compared to monotonic clock.";
                 Console.WriteLine(warnMsg);
                 _logger.LogWarning("{Message}", warnMsg);
+
+                // Re-anchor base system time to avoid log spam every second
+                tracked.BaseSystemTime = nowUtc;
             }
 
-            if (remaining <= TimeSpan.Zero)
+            // Expiry check: wall-clock Utc >= StartUtc + DurationSeconds AND monotonic elapsed remaining <= TimeSpan.Zero
+            bool wallClockExpired = nowUtc >= tracked.Session.StartUtc.AddSeconds(tracked.Session.DurationSeconds);
+            bool monotonicExpired = remaining <= TimeSpan.Zero;
+
+            if (wallClockExpired && monotonicExpired)
             {
                 _db.EndSession(sId);
                 string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");

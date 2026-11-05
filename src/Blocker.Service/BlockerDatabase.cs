@@ -16,6 +16,8 @@ public class BlockerDatabase : IBlockStore
     private DnsConfig? _cachedDnsConfig;
     private List<BlockSession>? _cachedActiveSessions;
     private bool _hasLoadedActiveSessions;
+    private DateTime _lastActiveSessionsFetchUtc = DateTime.MinValue;
+    private static readonly TimeSpan ActiveSessionsCacheTtl = TimeSpan.FromMilliseconds(500);
 
     public void InvalidateCache()
     {
@@ -25,6 +27,7 @@ public class BlockerDatabase : IBlockStore
             _cachedDnsConfig = null;
             _cachedActiveSessions = null;
             _hasLoadedActiveSessions = false;
+            _lastActiveSessionsFetchUtc = DateTime.MinValue;
         }
     }
 
@@ -524,6 +527,7 @@ public class BlockerDatabase : IBlockStore
                     _cachedProfiles = null;
                     _cachedActiveSessions = null;
                     _hasLoadedActiveSessions = false;
+                    _lastActiveSessionsFetchUtc = DateTime.MinValue;
                 }
 
                 return deleted;
@@ -542,22 +546,27 @@ public class BlockerDatabase : IBlockStore
     {
         lock (_cacheLock)
         {
-            if (_hasLoadedActiveSessions && _cachedActiveSessions != null)
+            var nowUtc = DateTime.UtcNow;
+            bool cacheExpired = !_hasLoadedActiveSessions
+                || _cachedActiveSessions == null
+                || (nowUtc - _lastActiveSessionsFetchUtc) >= ActiveSessionsCacheTtl;
+
+            if (cacheExpired)
             {
-                var now = DateTime.UtcNow;
-                var valid = _cachedActiveSessions
-                    .Where(s => includeUnendedExpired ? s.EndedUtc == null : s.IsActive(now))
-                    .ToList();
-                return valid;
+                _cachedActiveSessions = LoadUnendedSessionsFromDb();
+                _hasLoadedActiveSessions = true;
+                _lastActiveSessionsFetchUtc = nowUtc;
             }
 
-            var sessions = LoadUnendedSessionsFromDb();
-            _cachedActiveSessions = sessions;
-            _hasLoadedActiveSessions = true;
-
-            var nowUtc = DateTime.UtcNow;
-            return sessions
-                .Where(s => includeUnendedExpired ? s.EndedUtc == null : s.IsActive(nowUtc))
+            return (_cachedActiveSessions ?? new List<BlockSession>())
+                .Where(s =>
+                {
+                    if (s.EndedUtc != null) return false;
+                    if (includeUnendedExpired) return true;
+                    // If system clock moved backwards into the past, session is still unended and active
+                    if (nowUtc < s.StartUtc) return true;
+                    return s.IsActive(nowUtc);
+                })
                 .ToList();
         }
     }
@@ -646,7 +655,7 @@ public class BlockerDatabase : IBlockStore
         lock (_cacheLock)
         {
             var existingSession = GetActiveSession(profileId);
-            if (existingSession != null && existingSession.Locked && existingSession.IsActive(DateTime.UtcNow))
+            if (existingSession != null && existingSession.Locked && (existingSession.IsActive(DateTime.UtcNow) || DateTime.UtcNow < existingSession.StartUtc))
             {
                 throw new InvalidOperationException($"Cannot start session: a locked session is currently active for profile {profileId}.");
             }
@@ -683,6 +692,7 @@ public class BlockerDatabase : IBlockStore
 
             _cachedActiveSessions = null;
             _hasLoadedActiveSessions = false;
+            _lastActiveSessionsFetchUtc = DateTime.MinValue;
 
             return session;
         }
@@ -724,6 +734,7 @@ public class BlockerDatabase : IBlockStore
 
         _cachedActiveSessions = null;
         _hasLoadedActiveSessions = false;
+        _lastActiveSessionsFetchUtc = DateTime.MinValue;
     }
 
     public void EndSession(int sessionId)
@@ -741,6 +752,26 @@ public class BlockerDatabase : IBlockStore
 
             _cachedActiveSessions = null;
             _hasLoadedActiveSessions = false;
+            _lastActiveSessionsFetchUtc = DateTime.MinValue;
+        }
+    }
+
+    public void UpdateSessionStartUtc(int sessionId, DateTime newStartUtc)
+    {
+        lock (_cacheLock)
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "UPDATE BlockSessions SET StartUtc = @startUtc WHERE Id = @id AND EndedUtc IS NULL;";
+            cmd.Parameters.AddWithValue("@startUtc", newStartUtc.ToString("O"));
+            cmd.Parameters.AddWithValue("@id", sessionId);
+            cmd.ExecuteNonQuery();
+
+            _cachedActiveSessions = null;
+            _hasLoadedActiveSessions = false;
+            _lastActiveSessionsFetchUtc = DateTime.MinValue;
         }
     }
 
