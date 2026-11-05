@@ -257,7 +257,8 @@ public partial class MainWindow : Window
                         blockAllWebsites: dlg.ResultBlockAllWebsites,
                         systemWide: dlg.ResultSystemWide,
                         allowance: dlg.ResultAllowance,
-                        additiveOnly: dlg.IsLockedMode);
+                        additiveOnly: dlg.IsLockedMode,
+                        delayedUnlockMinutes: dlg.ResultDelayedUnlockMinutes);
 
                     if (dlg.StartTimedLockMinutes > 0 && string.IsNullOrEmpty(_viewModel.ErrorMessage))
                     {

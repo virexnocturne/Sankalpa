@@ -395,7 +395,7 @@
                                                 <ColumnDefinition Width="1.5*" />
                                                 <!-- Col 2: Lock Status -->
                                                 <ColumnDefinition Width="1.1*" />
-                                                <!-- Col 3: Action Buttons (Reserved width to fix shift when Stop button appears) -->
+                                                <!-- Col 3: Action Buttons -->
                                                 <ColumnDefinition Width="144" />
                                             </Grid.ColumnDefinitions>
 
@@ -452,14 +452,8 @@
                                                            Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
                                             </Button>
 
-                                            <!-- Col 3: Actions (Stop, Edit, Delete) -->
+                                            <!-- Col 3: Actions (Edit, Delete) -->
                                             <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                                <!-- Stop button (when session active) -->
-                                                <Button Content="Stop"
-                                                        Command="{Binding DataContext.StopSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                        Style="{StaticResource DangerButton}"
-                                                        Padding="12,3" FontSize="{DynamicResource FontSize12}" Margin="0,0,6,0"
-                                                        Visibility="{Binding IsSessionRunning, Converter={StaticResource BoolToVis}}" />
 
                                                 <!-- Edit button -->
                                                 <Button Content="Edit"

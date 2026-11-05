@@ -137,6 +137,33 @@ public static class DevRenderTester
         // 13. Password unlock dialog
         RenderPasswordUnlockDialog(Path.Combine(outputDir, "password-unlock.png"));
 
+        // 14. Delayed Unlock Prompt (Dark & Light)
+        ThemeManager.SetThemeMode(AppThemeMode.Dark);
+        RenderDelayedUnlockPromptDialog(Path.Combine(outputDir, "delayed-unlock-prompt-dark.png"));
+        ThemeManager.SetThemeMode(AppThemeMode.Light);
+        RenderDelayedUnlockPromptDialog(Path.Combine(outputDir, "delayed-unlock-prompt-light.png"));
+        ThemeManager.SetThemeMode(AppThemeMode.Dark);
+
+        // 15. Delayed Unlock Commitment Timer (Dark/Black, Light/White, Grey)
+        ThemeManager.SetDesignTheme(DesignThemeType.Classic);
+        ThemeManager.SetThemeMode(AppThemeMode.Dark);
+        RenderCoolDownTimerWindow(Path.Combine(outputDir, "delayed-unlock-timer-dark.png"));
+
+        ThemeManager.SetThemeMode(AppThemeMode.Light);
+        RenderCoolDownTimerWindow(Path.Combine(outputDir, "delayed-unlock-timer-white.png"));
+
+        ThemeManager.SetDesignTheme(DesignThemeType.Obsidian);
+        ThemeManager.SetThemeMode(AppThemeMode.Dark);
+        RenderCoolDownTimerWindow(Path.Combine(outputDir, "delayed-unlock-timer-grey.png"));
+        ThemeManager.SetDesignTheme(DesignThemeType.Classic);
+        ThemeManager.SetThemeMode(AppThemeMode.Dark);
+
+        // 16. Block Editor - Delayed Unlock Tab (Dark & Light)
+        RenderBlockEditorCustom(Path.Combine(outputDir, "block-editor-delayed-unlock-dark.png"), LockMode.DelayedUnlock, withSchedule: false, tab: "Lock");
+        ThemeManager.SetThemeMode(AppThemeMode.Light);
+        RenderBlockEditorCustom(Path.Combine(outputDir, "block-editor-delayed-unlock-light.png"), LockMode.DelayedUnlock, withSchedule: false, tab: "Lock");
+        ThemeManager.SetThemeMode(AppThemeMode.Dark);
+
         Console.WriteLine("[RenderTest] All screenshots rendered successfully.");
         return 0;
     }
@@ -580,5 +607,17 @@ public static class DevRenderTester
         var dlg = new PasswordUnlockDialog("Deep Work");
         dlg.PasswordInput.Password = "supersecret";
         SaveWindowToPng(dlg, filePath, 440, 260);
+    }
+
+    private static void RenderDelayedUnlockPromptDialog(string filePath)
+    {
+        var dlg = new DelayedUnlockPromptDialog("Social Media Detox", 15);
+        SaveWindowToPng(dlg, filePath, 460, 290);
+    }
+
+    private static void RenderCoolDownTimerWindow(string filePath)
+    {
+        var win = new CoolDownTimerWindow("Social Media Detox", 900);
+        SaveWindowToPng(win, filePath, 480, 360);
     }
 }

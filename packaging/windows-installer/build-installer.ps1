@@ -11,7 +11,7 @@
 
 param(
     [switch]$SkipDotnetBuild = $false,
-    [string]$Version = "1.0.0"
+    [string]$Version = "1.1.1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -59,6 +59,16 @@ if (-not $SkipDotnetBuild) {
     Write-Host ""
     Write-Host "Building self-contained win-x64 Release binaries..." -ForegroundColor Cyan
     
+    # Temporarily stop SankalpaService if running to prevent file locks in staging
+    $serviceWasRunning = $false
+    $svc = Get-Service -Name "SankalpaService" -ErrorAction SilentlyContinue
+    if ($svc -and $svc.Status -eq "Running") {
+        Write-Host "Temporarily stopping SankalpaService to unlock release binaries..." -ForegroundColor Yellow
+        & sc.exe stop SankalpaService | Out-Null
+        $serviceWasRunning = $true
+        Start-Sleep -Seconds 2
+    }
+
     # Ensure staging directory exists
     if (-not (Test-Path $StagingDir)) {
         New-Item -ItemType Directory -Path $StagingDir -Force | Out-Null
@@ -92,6 +102,16 @@ if (-not $SkipDotnetBuild) {
     $licensesDest = Join-Path $StagingDir "licenses"
     if (Test-Path $licensesSrc) {
         Copy-Item -Path $licensesSrc -Destination $StagingDir -Recurse -Force
+    }
+
+    $extSrc = Join-Path $RepoRoot "extension"
+    if (Test-Path $extSrc) {
+        Copy-Item -Path $extSrc -Destination $StagingDir -Recurse -Force
+    }
+
+    if ($serviceWasRunning) {
+        Write-Host "Restarting SankalpaService..." -ForegroundColor Yellow
+        & sc.exe start SankalpaService | Out-Null
     }
 
     Write-Host "Release binaries compiled and staged into $StagingDir" -ForegroundColor Green

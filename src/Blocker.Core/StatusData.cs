@@ -31,6 +31,10 @@ public class ProfileStatusItem
     public bool LockedNow { get; set; }
     public LockMode LockMode { get; set; }
     public string ScheduleSummary { get; set; } = string.Empty;
+    public bool IsSessionRunning { get; set; }
+    public bool IsSessionLocked { get; set; }
+    public long SessionRemainingSeconds { get; set; }
+    public string SessionRemainingFormatted { get; set; } = "00:00";
 }
 
 public class StatusData

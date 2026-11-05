@@ -455,19 +455,14 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="8" />
-                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
                                     <TextBlock Text="AUTOMATED SCHEDULE" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
                                                Foreground="{DynamicResource TextSecondary}" />
                                     <TextBlock Text="Automatically enables block enforcement during configured time windows."
                                                FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0" />
                                 </StackPanel>
-                                <Button x:Name="QuickFillWeekdaysButton" Grid.Column="1" Content="Weekdays 08:00-17:00" Click="QuickFillWeekdays_Click"
-                                        Style="{StaticResource SecondaryButton}" Padding="12,5" FontSize="{DynamicResource FontSize12}"
-                                        FontFamily="{DynamicResource FontMono}" />
-                                <Button Grid.Column="3" Content="+ Add schedule row" Click="AddScheduleRow_Click"
+                                <Button Grid.Column="1" Content="+ Add schedule row" Click="AddScheduleRow_Click"
                                         Padding="14,5" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
                             </Grid>
 
@@ -815,6 +810,51 @@
                                 <RadioButton x:Name="rbPassword" GroupName="LockMode" Content="Password protected"
                                              Checked="LockMode_Changed" Margin="0,0,0,10"
                                              FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimary}" />
+
+                                <RadioButton x:Name="rbDelayedUnlock" GroupName="LockMode" Content="Delayed Unlock (Must wait out an active timer in front of screen to unlock)"
+                                             Checked="LockMode_Changed" Margin="0,0,0,10"
+                                             FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimary}" />
+
+                                <!-- Delayed Unlock Configuration Panel -->
+                                <Border x:Name="DelayedUnlockBorder" Background="{DynamicResource SurfaceRaised}"
+                                        BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                        CornerRadius="{DynamicResource RadiusCard}" Padding="14" Margin="24,0,0,12" Visibility="Collapsed">
+                                    <StackPanel>
+                                        <TextBlock Text="WAIT DURATION PRESETS" FontSize="{DynamicResource FontSize12}" FontWeight="Bold"
+                                                   Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,8" />
+
+                                        <Grid Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button x:Name="BtnDelayed15m" Grid.Column="0" Content="15 mins" Style="{StaticResource PrimaryButton}" Click="DelayedUnlockPreset_Click" Tag="15" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
+                                            <Button x:Name="BtnDelayed30m" Grid.Column="2" Content="30 mins" Style="{StaticResource SecondaryButton}" Click="DelayedUnlockPreset_Click" Tag="30" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
+                                            <Button x:Name="BtnDelayed45m" Grid.Column="4" Content="45 mins" Style="{StaticResource SecondaryButton}" Click="DelayedUnlockPreset_Click" Tag="45" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
+                                            <Button x:Name="BtnDelayed60m" Grid.Column="6" Content="1 hour" Style="{StaticResource SecondaryButton}" Click="DelayedUnlockPreset_Click" Tag="60" Padding="0,5" FontSize="{DynamicResource FontSize12}" />
+                                        </Grid>
+
+                                        <!-- Explanation Banner -->
+                                        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                                                BorderThickness="1" CornerRadius="{DynamicResource RadiusButton}" Padding="12,8">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                    <Path Style="{StaticResource Icon}" Data="{StaticResource IconClock}" Width="14" Height="14"
+                                                          Stroke="{DynamicResource Accent}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                    <TextBlock Text="Active Presence Required" FontWeight="SemiBold" FontSize="{DynamicResource FontSize12}"
+                                                               Foreground="{DynamicResource Accent}" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                                <TextBlock Text="When unlocking this block, you must keep the timer open in the foreground for the entire duration. If you close the timer, minimize it, or switch to another app, the unlock will be immediately cancelled."
+                                                           FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
 
                             <!-- Password Fields (shown only when Password mode is selected) -->

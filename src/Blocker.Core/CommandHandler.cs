@@ -56,6 +56,8 @@ public static class CommandHandler
                 "RENAMEPROFILE" => HandleRenameProfile(request, store),
                 "ADDWEBSITE" => HandleAddWebsite(request, store),
                 "GETDNSCHALLENGE" => HandleGetDnsChallenge(store),
+                "REQUESTDELAYEDUNLOCK" => HandleRequestDelayedUnlock(request, store),
+                "CANCELDELAYEDUNLOCK" => HandleCancelDelayedUnlock(request),
                 _ => Response.Fail($"Unknown command: '{request.Command}'.")
             };
         }
@@ -112,12 +114,26 @@ public static class CommandHandler
             existing = store.GetProfileByName(trimmedName);
         }
 
-        var activeSession = store.GetActiveSession();
+        var activeSession = store.GetActiveSession(existing?.Id);
         bool isLockedSession = (activeSession != null && activeSession.Locked && existing != null && existing.Id == activeSession.ProfileId);
 
         // Parse LockMode if specified
         string? lockModeStr = GetArg(request, "lock_mode") ?? GetArg(request, "lockMode") ?? GetArg(request, "mode");
         LockMode targetLockMode = lockModeStr != null ? ParseLockMode(lockModeStr) : (existing?.LockMode ?? LockMode.None);
+        if (existing != null && DelayedUnlockManager.IsDelayedUnlockActive(existing.Name))
+        {
+            return Response.Fail($"Refused: Cannot modify profile '{trimmedName}' while an active delayed unlock timer is running.");
+        }
+        string? delayedMinStr = GetArg(request, "delayed_unlock_minutes") ?? GetArg(request, "delayedUnlockMinutes");
+        int targetDelayedMinutes = 15;
+        if (!string.IsNullOrWhiteSpace(delayedMinStr) && int.TryParse(delayedMinStr, out int dm))
+        {
+            targetDelayedMinutes = dm >= 15 ? dm : 15;
+        }
+        else if (existing != null)
+        {
+            targetDelayedMinutes = existing.DelayedUnlockMinutes;
+        }
 
         // Parse Schedule if specified
         string? schedStr = GetArg(request, "schedule");
@@ -155,7 +171,8 @@ public static class CommandHandler
 
         if (existing != null)
         {
-            bool isLockedNow = ProfileStateLogic.IsProfileLockedNow(existing, activeSession, DateTime.Now);
+            var activeSessions = store.GetActiveSessions();
+            bool isLockedNow = ProfileStateLogic.IsProfileLockedNowWithSessions(existing, activeSessions, DateTime.Now);
 
             // Switching away from Password mode counts as protected operation
             if (existing.LockMode == LockMode.Password && targetLockMode != LockMode.Password)
@@ -274,9 +291,9 @@ public static class CommandHandler
             rawWebRules = existing?.WebRules != null ? new List<WebRule>(existing.WebRules) : new List<WebRule>();
         }
 
-        if (rawWebRules.Count > 200)
+        if (rawWebRules.Count > 500)
         {
-            return Response.Fail("A profile cannot have more than 200 website rules.");
+            return Response.Fail("A profile cannot have more than 500 website rules.");
         }
 
         var normalizedWebRules = new List<WebRule>();
@@ -378,7 +395,8 @@ public static class CommandHandler
             Allowance = targetAllowance,
             LockMode = targetLockMode,
             PasswordSalt = finalSalt,
-            PasswordHash = finalHash
+            PasswordHash = finalHash,
+            DelayedUnlockMinutes = targetDelayedMinutes
         };
 
         var saved = store.SaveProfile(profile);
@@ -516,7 +534,7 @@ public static class CommandHandler
             return Response.Fail($"Profile '{name}' not found.");
         }
 
-        var activeSession = store.GetActiveSession();
+        var activeSession = store.GetActiveSession(profile.Id);
         if (activeSession != null && activeSession.Locked && activeSession.ProfileId == profile.Id)
         {
             return Response.Fail($"Cannot delete profile '{name}' while an active LOCKED session is using it.");
@@ -773,7 +791,12 @@ public static class CommandHandler
             return Response.Fail($"Profile '{name}' not found.");
         }
 
-        var activeSession = store.GetActiveSession();
+        var activeSession = store.GetActiveSession(profile.Id);
+        if (activeSession != null && activeSession.Locked && activeSession.ProfileId == profile.Id)
+        {
+            return Response.Fail($"Cannot disable profile '{name}' while an active LOCKED session is running for it.");
+        }
+
         var unlockErr = VerifyUnlock(profile, request, activeSession);
         if (unlockErr != null)
         {
@@ -801,6 +824,45 @@ public static class CommandHandler
 
         string challenge = TypingChallengeManager.GenerateChallenge(profile.Name);
         return Response.Success(challenge);
+    }
+
+    private static Response HandleRequestDelayedUnlock(Request request, IBlockStore store)
+    {
+        string? name = GetArg(request, "name");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return Response.Fail("Missing required argument: 'name'.");
+        }
+
+        var profile = store.GetProfileByName(name);
+        if (profile == null)
+        {
+            return Response.Fail($"Profile '{name}' not found.");
+        }
+
+        int durationSeconds = profile.DelayedUnlockMinutes > 0 ? profile.DelayedUnlockMinutes * 60 : 900;
+        string token = DelayedUnlockManager.StartDelayedUnlock(profile.Name, durationSeconds);
+
+        var data = new Dictionary<string, string>
+        {
+            ["token"] = token,
+            ["duration_seconds"] = durationSeconds.ToString(),
+            ["minutes"] = profile.DelayedUnlockMinutes.ToString()
+        };
+        return Response.Success(System.Text.Json.JsonSerializer.Serialize(data));
+    }
+
+    private static Response HandleCancelDelayedUnlock(Request request)
+    {
+        string? name = GetArg(request, "name");
+        string? token = GetArg(request, "token");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return Response.Fail("Missing required argument: 'name'.");
+        }
+
+        bool cancelled = DelayedUnlockManager.CancelDelayedUnlock(name, token);
+        return Response.Success(cancelled ? "Delayed unlock cancelled." : "No active delayed unlock timer found.");
     }
 
     private static Response HandleStartSession(Request request, IBlockStore store)
@@ -842,14 +904,6 @@ public static class CommandHandler
             return Response.Fail("Duration must be greater than zero.");
         }
 
-        var activeSession = store.GetActiveSession();
-        if (activeSession != null)
-        {
-            var remaining = BlockSessionLogic.GetRemainingTime(activeSession, DateTime.UtcNow);
-            var activeProf = store.GetProfileById(activeSession.ProfileId);
-            return Response.Fail($"A session is already active: Profile '{activeProf?.Name}', remaining {UiLogic.FormatCountdown(remaining)}. Stop it first or wait for completion.");
-        }
-
         var profile = store.GetProfileByName(profileName);
         if (profile == null)
         {
@@ -868,6 +922,13 @@ public static class CommandHandler
             }
         }
 
+        var existingSession = store.GetActiveSession(profile.Id);
+        if (existingSession != null && existingSession.IsActive(DateTime.UtcNow))
+        {
+            var remaining = BlockSessionLogic.GetRemainingTime(existingSession, DateTime.UtcNow);
+            return Response.Fail($"A session is already active: Profile '{profile.Name}', remaining {UiLogic.FormatCountdown(remaining)}. Stop it first or wait for completion.");
+        }
+
         var session = store.StartSession(profile.Id, totalSeconds, locked);
         return Response.Success($"Session started: Profile='{profile.Name}', Duration={totalSeconds}s, Locked={locked}");
     }
@@ -877,10 +938,10 @@ public static class CommandHandler
         bool emergency = store.IsEmergencyUnlockPresent();
         if (emergency)
         {
-            var session = store.GetActiveSession();
-            if (session != null)
+            var sessions = store.GetActiveSessions();
+            foreach (var s in sessions)
             {
-                store.EndSession(session.Id);
+                store.EndSession(s.Id);
             }
             store.DisableAllProfiles();
             store.CleanHosts();
@@ -888,34 +949,69 @@ public static class CommandHandler
             return Response.Success("Emergency unlock processed: active session stopped and all profiles disabled.");
         }
 
-        var activeSession = store.GetActiveSession();
-        if (activeSession == null)
+        string? profileNameOrId = GetArg(request, "profile") ?? GetArg(request, "name") ?? GetArg(request, "profile_id");
+        BlockSession? targetSession = null;
+        Profile? targetProfile = null;
+
+        var activeSessions = store.GetActiveSessions();
+        if (activeSessions.Count == 0)
         {
             return Response.Success("No active session to stop.");
         }
 
+        if (!string.IsNullOrWhiteSpace(profileNameOrId))
+        {
+            targetProfile = int.TryParse(profileNameOrId, out int pid)
+                ? store.GetProfileById(pid)
+                : store.GetProfileByName(profileNameOrId);
+
+            if (targetProfile != null)
+            {
+                targetSession = activeSessions.FirstOrDefault(s => s.ProfileId == targetProfile.Id);
+                if (targetSession == null)
+                {
+                    return Response.Fail($"Profile '{targetProfile.Name}' does not have an active session to stop.");
+                }
+            }
+            else
+            {
+                return Response.Fail($"Profile '{profileNameOrId}' not found.");
+            }
+        }
+        else
+        {
+            if (activeSessions.Count == 1)
+            {
+                targetSession = activeSessions[0];
+                targetProfile = store.GetProfileById(targetSession.ProfileId);
+            }
+            else
+            {
+                return Response.Fail("Multiple sessions are active. Please specify which profile to stop with 'profile=<name>'.");
+            }
+        }
+
         bool isElevated = clientIdentity.IsAdministrator || clientIdentity.IsLocalSystem;
 
-        if (activeSession.Locked && !isElevated)
+        if (targetSession.Locked && !isElevated)
         {
-            var (canStop, remaining, reason) = BlockSessionLogic.EvaluateStopRequest(activeSession, DateTime.UtcNow, false);
+            var (canStop, remaining, reason) = BlockSessionLogic.EvaluateStopRequest(targetSession, DateTime.UtcNow, false);
             if (!canStop)
             {
                 return Response.Fail($"Stop refused: {reason}");
             }
         }
 
-        var profile = store.GetProfileById(activeSession.ProfileId);
-        if (profile != null && !isElevated)
+        if (targetProfile != null && !isElevated)
         {
-            var unlockError = VerifyUnlock(profile, request, activeSession);
+            var unlockError = VerifyUnlock(targetProfile, request, targetSession);
             if (unlockError != null)
             {
                 return unlockError;
             }
         }
 
-        store.EndSession(activeSession.Id);
+        store.EndSession(targetSession.Id);
         store.CleanHosts();
         return Response.Success("Session stopped successfully.");
     }
@@ -923,7 +1019,7 @@ public static class CommandHandler
     private static Response HandleGetStatus(IBlockStore store)
     {
         var allProfiles = store.ListProfiles();
-        var session = store.GetActiveSession();
+        var sessions = store.GetActiveSessions();
         DateTime localNow = DateTime.Now;
 
         var activeProfileNames = new List<string>();
@@ -931,14 +1027,26 @@ public static class CommandHandler
 
         foreach (var p in allProfiles)
         {
-            bool isActive = ProfileStateLogic.IsProfileActive(p, session, localNow, out string reason);
-            bool isLockedNow = ProfileStateLogic.IsProfileLockedNow(p, session, localNow);
+            bool isActive = ProfileStateLogic.IsProfileActiveWithSessions(p, sessions, localNow, out string reason);
+            bool isLockedNow = ProfileStateLogic.IsProfileLockedNowWithSessions(p, sessions, localNow);
             DateTime? nextChange = ScheduleLogic.NextChange(p.Schedule, localNow);
             string schedSummary = ScheduleLogic.FormatSummary(p.Schedule);
 
             if (isActive)
             {
                 activeProfileNames.Add(p.Name);
+            }
+
+            var pSession = sessions.FirstOrDefault(s => s.ProfileId == p.Id);
+            bool isSessionRunning = (pSession != null);
+            bool isSessionLocked = (pSession != null && pSession.Locked);
+            long sessionRemainingSeconds = 0;
+            string sessionRemainingFormatted = "00:00";
+            if (pSession != null)
+            {
+                var rem = BlockSessionLogic.GetRemainingTime(pSession, DateTime.UtcNow);
+                sessionRemainingSeconds = Math.Max(0, (long)rem.TotalSeconds);
+                sessionRemainingFormatted = UiLogic.FormatCountdown(rem);
             }
 
             profileStatuses.Add(new ProfileStatusItem
@@ -951,11 +1059,15 @@ public static class CommandHandler
                 NextChangeLocal = nextChange,
                 LockedNow = isLockedNow,
                 LockMode = p.LockMode,
-                ScheduleSummary = schedSummary
+                ScheduleSummary = schedSummary,
+                IsSessionRunning = isSessionRunning,
+                IsSessionLocked = isSessionLocked,
+                SessionRemainingSeconds = sessionRemainingSeconds,
+                SessionRemainingFormatted = sessionRemainingFormatted
             });
         }
 
-        var (unionApps, unionDomains) = ProfileStateLogic.ComputeActiveUnion(allProfiles, session, localNow);
+        var (unionApps, unionDomains) = ProfileStateLogic.ComputeActiveUnionWithSessions(allProfiles, sessions, localNow);
 
         var status = new StatusData
         {
@@ -970,17 +1082,20 @@ public static class CommandHandler
             ProfileStatuses = profileStatuses
         };
 
-        if (session != null)
+        if (sessions.Count > 0)
         {
-            var sessionProfile = store.GetProfileById(session.ProfileId);
-            TimeSpan remaining = BlockSessionLogic.GetRemainingTime(session, DateTime.UtcNow);
+            var primarySession = sessions.OrderByDescending(s => BlockSessionLogic.GetRemainingTime(s, DateTime.UtcNow)).First();
+            var sessionProfile = store.GetProfileById(primarySession.ProfileId);
+            TimeSpan remaining = BlockSessionLogic.GetRemainingTime(primarySession, DateTime.UtcNow);
 
             status.Active = true;
             status.Profile = sessionProfile?.Name ?? "Manual";
-            status.Locked = session.Locked;
+            status.Locked = sessions.Any(s => s.Locked);
             status.RemainingSeconds = (long)remaining.TotalSeconds;
             status.RemainingFormatted = UiLogic.FormatCountdown(remaining);
-            status.Message = $"Active session for profile '{sessionProfile?.Name}'.";
+            status.Message = sessions.Count == 1
+                ? $"Active session for profile '{sessionProfile?.Name}'."
+                : $"{sessions.Count} active sessions running ({string.Join(", ", sessions.Select(s => store.GetProfileById(s.ProfileId)?.Name).Where(n => n != null))}).";
         }
         else if (activeProfileNames.Count > 0)
         {
@@ -1106,6 +1221,20 @@ public static class CommandHandler
             return null; // Not locked right now
         }
 
+        if (activeSession != null && activeSession.Locked && activeSession.ProfileId == profile.Id)
+        {
+            var remaining = BlockSessionLogic.GetRemainingTime(activeSession, DateTime.UtcNow);
+            return Response.Fail($"Refused: Profile '{profile.Name}' has an active locked session ({UiLogic.FormatCountdown(remaining)} remaining).");
+        }
+
+        if ((profile.LockMode == LockMode.None || profile.LockMode == LockMode.Locked) &&
+            profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, DateTime.Now))
+        {
+            var nextChange = ScheduleLogic.NextChange(profile.Schedule, DateTime.Now);
+            string timeStr = nextChange.HasValue ? nextChange.Value.ToString("HH:mm") : "the window ends";
+            return Response.Fail($"Refused: Profile '{profile.Name}' is locked until {timeStr}.");
+        }
+
         switch (profile.LockMode)
         {
             case LockMode.None:
@@ -1158,6 +1287,25 @@ public static class CommandHandler
                 }
 
                 PasswordSecurity.RecordSuccessfulAttempt(profile.Name);
+                return null;
+            }
+
+
+            case LockMode.DelayedUnlock:
+            {
+                string? token = GetArg(request, "delayed_unlock_token")
+                             ?? GetArg(request, "unlock_token")
+                             ?? GetArg(request, "token");
+                if (string.IsNullOrEmpty(token))
+                {
+                    return Response.Fail($"Refused: Profile '{profile.Name}' requires waiting out an active delayed unlock timer. Start the timer first.");
+                }
+
+                if (!DelayedUnlockManager.ValidateUnlock(profile.Name, token, out var err))
+                {
+                    return Response.Fail($"Refused: {err ?? "Invalid or incomplete delayed unlock timer."}");
+                }
+
                 return null;
             }
 

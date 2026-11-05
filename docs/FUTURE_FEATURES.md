@@ -31,25 +31,6 @@ This document tracks planned features, enhancements, and long-term architectural
   - **Strict Whitelist Engine**: A dedicated mode in `Worker.cs` that checks active processes against an allowed list, terminating or minimizing any non-whitelisted executable.
   - **Fail-Safes**: Monotonic timer tracking across reboots, emergency challenge support, and graceful recovery when duration elapses.
 
----
-
-### 2. Sankalpa Browser Extension Enhancements
-
-- **Priority**: `High`
-- **Reason for Priority Rating**: **Quality of life and complete user experience.** Users should not need to switch back and forth to the desktop app for daily block management tasks; the extension should offer complete, seamless control directly within the browser.
-- **Category**: Companion Extension & UI/UX
-- **Description**:
-  Expand the Chrome/Edge companion extension from an active-only status widget into a comprehensive in-browser control center:
-  1. **Rename Blocks from Extension**: Allow users to rename active and inactive block profiles directly from the extension popup interface.
-  2. **Manage Inactive Blocks**: Display inactive block profiles alongside active blocks in the extension, giving users the ability to inspect them and add new websites directly to inactive blocks before starting a session.
-  3. **In-Browser Block Configuration**: Quick-toggle rules, domain additions, and block settings without having to open the main desktop GUI.
-- **Proposed Implementation Details**:
-  - Add inline editing or modal dialogs in `popup.js` / `popup.html` for renaming blocks via the `RENAMEPROFILE` pipe command.
-  - Expand extension state storage and heartbeat payloads to synchronize full profile rule lists and metadata for inactive profiles.
-  - Handle asynchronous responses and user feedback toasts within the extension popup.
-
----
-
 ### 3. Comprehensive Statistics, Screentime & Distraction Insights
 
 - **Priority**: `High`
@@ -68,27 +49,6 @@ This document tracks planned features, enhancements, and long-term architectural
   - **Service Event Aggregation**: Expand `BlockEvent` storage in `blocker.db` to record timestamps and source identifiers for attempted app/web blocks.
   - **Interactive Charts in WPF**: Embed a lightweight charting component or interactive vector SVG/Canvas dashboard in `Sankalpa.exe` with date-range filters (Today, This Week, Past 30 Days).
   - **Summary Cards in Extension**: Display quick summary metrics (e.g., "5 blocks avoided today", "Top site: 42m") directly inside the extension popup header.
-
----
-
-### 4. Block Card Quick-Actions & Navigation Ergonomics
-
-- **Priority**: `High`
-- **Reason for Priority Rating**: Direct interaction efficiency and daily usability. Eliminates unnecessary friction and extra clicks by routing users straight to the specific configuration window they want to edit.
-- **Category**: UI/UX & Interaction Design
-- **Description**:
-  Enhance the block profile cards on the main dashboard with instant-access touchpoints:
-  1. **Split-Target Count Badges with Spacing**:
-     - Provide visual spacing/separation between `0 apps` and `0 sites` on the card instead of combining them into a single non-clickable text string.
-     - Clicking on `[X apps]` immediately opens the `BlockEditorDialog` routed directly to the **Applications** tab.
-     - Clicking on `[Y sites]` immediately opens the `BlockEditorDialog` routed directly to the **Websites** tab.
-  2. **Double-Click Quick Rename**:
-     - Double-clicking the block title directly on its dashboard card switches the label into an inline editable `TextBox` (or opens a focused rename prompt).
-     - Pressing `Enter` or clicking outside commits the rename via `RENAMEPROFILE`, while `Escape` cancels without changes.
-- **Proposed Implementation Details**:
-  - In `MainWindow.xaml`, split the profile summary text into two distinct clickable pills/links with a margin spacer (e.g., `Margin="0,0,8,0"`).
-  - Expand `BlockEditorDialog(profile, initialTab: 0|1|2|3)` routing so clicking the apps badge passes the Apps tab index directly.
-  - Add `MouseDoubleClick` handler or `IsEditing` boolean toggle to `ProfileViewModel` / `MainWindow.xaml` to bind title switching smoothly without disrupting lock states.
 
 ---
 
@@ -131,55 +91,23 @@ This document tracks planned features, enhancements, and long-term architectural
 
 ### 7. Delayed Unlock & "Cool-Down" Commitment Timer
 
+- **Status**: `Completed`
 - **Priority**: `Medium`
 - **Reason for Priority Rating**: Addresses psychological craving spikes: digital impulses typically peak and fade within 10–15 minutes. A forced delay prevents impulsive, emotion-driven unlocks while providing a legitimate exit for genuine emergencies.
 - **Category**: Commitment & Friction Psychology
 - **Description**:
-  When a user requests to stop an active locked session or disable a strict block, provide a "Cool-Down Unlock" mechanism that enforces a mandatory waiting period (e.g., 10 minutes, 30 minutes, or 1 hour) before the block is released.
-- **Proposed Implementation Details**:
-  - Add `UnlockRequestedAtUtc` and `CooldownDurationSeconds` to `BlockSession` tracking in the database.
-  - The background service continues enforcing all process and DNS blocks normally during the cool-down period.
-  - Allow the user to cancel their unlock request at any point during the countdown to immediately resume their focus streak.
-  - Present an active cool-down timer in the desktop UI and browser extension with an encouraging "Return to Focus" button.
+  When a user requests to stop an active locked session or disable a strict block, provide a "Cool-Down Unlock" mechanism that enforces a mandatory waiting period before the block is released.
+- **Implementation Details**:
+  - Implemented `LockMode.DelayedUnlock = 4` with presets: 15 mins, 30 mins, 45 mins, 1 hour (no custom inputs).
+  - Pre-commitment confirmation dialog (`DelayedUnlockPromptDialog`) warning the user of the active presence requirement.
+  - Dedicated foreground Active Timer Window (`CoolDownTimerWindow`) with strict anti-bypass event hooks:
+    - Minimizing window cancels unlock.
+    - Overlaying or focusing another app (`Deactivated`) cancels unlock.
+    - Closing window cancels unlock.
+  - Clear `"Changed My Mind — Keep Me Focused"` button to reward restraint and preserve streaks.
+  - Backend validation via `DelayedUnlockManager` and cryptographically generated session tokens.
 
----
 
-### 8. Complete UI Analysis & Consistency Overhaul
-
-- **Priority**: `Medium`
-- **Reason for Priority Rating**: Features are still actively being added and the UI is not yet bloated. Detailed design overhaul can follow once the feature surface area stabilizes.
-- **Category**: UI/UX & Design System
-- **Description**:
-  A comprehensive review and audit of the desktop GUI (`Sankalpa.exe`) and companion extension interfaces to ensure visual consistency, intuitive navigation, and effortless usability across all dialogs and workflows.
-  *(Open-ended item: specific design details, flow diagrams, and ergonomics requirements will be expanded later as core features settle).*
-- **Proposed Implementation Details**:
-  - Audit and harmonize visual tokens (typography, color palettes, card spacing, iconography) between WPF views and the browser extension.
-  - Streamline multi-step user workflows (creating a block, configuring complex schedules, locking, and recovery).
-  - Ensure uniform keyboard accessibility, tab indices, and high-DPI scaling across varying display resolutions.
-
----
-
-### 9. Uninstall Protection (Anti-Removal Guard)
-
-- **Priority**: `Low`
-- **Reason for Priority Rating**: **Sankalpa is still in active development.** Introducing strict uninstallation locking or tamper-proof removal guards at this stage increases the risk of locking developers or testers out of their own machines during rapid development, debugging, and continuous build deployments.
-- **Category**: Security & Tamper Resistance
-- **Description**:
-  Prevent users from bypassing active locked sessions by uninstalling the application, stopping/deleting the Windows service, or running emergency unlock scripts.
-- **Proposed Implementation Details**:
-  1. **Emergency Unlock Safeguard**:
-     - Require a master password or complex typing challenge before `sankalpa-cli emergency-unlock` or `CommandHandler.HandleEmergencyUnlock` can execute.
-     - Optionally reject all emergency unlock attempts entirely if an active locked session is running.
-  2. **Uninstaller Guard (`uninstall-service.bat` / Installer)**:
-     - Check service state and database for active locked sessions before permitting service removal.
-     - Block uninstallation when a block session with strict locking is currently active.
-  3. **Windows Installer Integration**:
-     - Package Sankalpa with an official installer (e.g., Inno Setup or WiX MSI) that registers in Windows *Add or Remove Programs*.
-     - Hook uninstallation checks to require confirmation, password authentication, or session expiry before uninstall routines can proceed.
-  4. **File-System ACL Hardening**:
-     - Apply NTFS DACLs to the installation folder and SQLite database directory to prevent manual file deletion while the service is operational.
-
----
 
 ### 10. Safe Mode Enforcer (`SafeBoot` Registry Integration)
 

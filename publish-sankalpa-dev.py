@@ -5,17 +5,40 @@ import sys
 import time
 
 REPO_ROOT = r"C:\Users\virex\.gemini\antigravity\scratch\Blocker"
-OUTPUT_DIR = r"C:\Users\virex\.gemini\antigravity\scratch\Sankalpa dev"
+DEV_DIR = r"C:\Users\virex\.gemini\antigravity\scratch\Sankalpa dev"
+RELEASE_DIR = os.path.join(REPO_ROOT, "dist", "Sankalpa-Release")
 STAGING_DIR = os.path.join(REPO_ROOT, "dist", "staging")
 
-print(f"=== Publishing Sankalpa Latest to: {OUTPUT_DIR} ===")
+TARGET_DIRS = [DEV_DIR, RELEASE_DIR]
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+print(f"=== Publishing Sankalpa to Dev & Release Targets ===")
+print(f"Dev Target:     {DEV_DIR}")
+print(f"Release Target: {RELEASE_DIR}")
+
+for d in TARGET_DIRS:
+    os.makedirs(d, exist_ok=True)
 os.makedirs(STAGING_DIR, exist_ok=True)
 
 # 1. Stop service so it releases locks
-print("Checking and stopping SankalpaService...")
+print("\nChecking and stopping SankalpaService...")
+try:
+    with open(os.path.join(RELEASE_DIR, "EMERGENCY_UNLOCK"), "w") as f:
+        f.write("DEPLOY")
+    time.sleep(1.5)
+except Exception:
+    pass
+
 subprocess.run(["sc.exe", "stop", "SankalpaService"], capture_output=True)
+for _ in range(10):
+    res = subprocess.run(["sc.exe", "query", "SankalpaService"], capture_output=True, text=True)
+    if "STOPPED" in res.stdout:
+        break
+    time.sleep(0.5)
+
+# Terminate running UI / NativeHost instances before copying
+for proc in ["Sankalpa", "Blocker.NativeHost", "Blocker.Service", "sankalpa-cli"]:
+    subprocess.run(["taskkill.exe", "/F", "/T", "/IM", f"{proc}.exe"], capture_output=True)
+time.sleep(0.5)
 
 # 2. Publish all projects into STAGING_DIR first
 projects = [
@@ -43,93 +66,83 @@ for name, proj_path in projects:
     else:
         print(f"SUCCESS: {name} published.")
 
-# 3. Terminate running UI / NativeHost instances before copying
+# 3. Ensure processes are stopped again if dotnet publish restarted anything
 for proc in ["Sankalpa", "Blocker.NativeHost", "Blocker.Service", "sankalpa-cli"]:
     subprocess.run(["taskkill.exe", "/F", "/T", "/IM", f"{proc}.exe"], capture_output=True)
 time.sleep(0.5)
 
-# 4. Copy from STAGING_DIR to OUTPUT_DIR with atomic rename fallback for locked files
-print("\n--- Deploying Staged Binaries to Sankalpa dev ---")
-for item in os.listdir(STAGING_DIR):
-    src_file = os.path.join(STAGING_DIR, item)
-    dest_file = os.path.join(OUTPUT_DIR, item)
-    if os.path.isfile(src_file):
-        try:
-            shutil.copy2(src_file, dest_file)
-        except PermissionError:
-            # File is currently held open by another process: rename old file and place new one
-            old_file = dest_file + f".old_{int(time.time())}"
+# 4. Deploy staged binaries to both targets
+for target_dir in TARGET_DIRS:
+    print(f"\n--- Deploying Staged Binaries to: {target_dir} ---")
+    for item in os.listdir(STAGING_DIR):
+        src_file = os.path.join(STAGING_DIR, item)
+        dest_file = os.path.join(target_dir, item)
+        if os.path.isfile(src_file):
             try:
-                os.rename(dest_file, old_file)
                 shutil.copy2(src_file, dest_file)
-                print(f"Replaced locked file {item} (old renamed to {os.path.basename(old_file)})")
-            except Exception as e:
-                print(f"Warning: Could not replace {item}: {e}")
+            except PermissionError:
+                old_file = dest_file + f".old_{int(time.time())}"
+                try:
+                    os.rename(dest_file, old_file)
+                    shutil.copy2(src_file, dest_file)
+                    print(f"Replaced locked file {item} (old renamed to {os.path.basename(old_file)})")
+                except Exception as e:
+                    print(f"Warning: Could not replace {item}: {e}")
 
-# 5. Copy Assets, Licenses, Config & Extension
-print("\n--- Copying Assets, Licenses, Config & Extension ---")
-assets_src = os.path.join(REPO_ROOT, "src", "Blocker.App", "Assets")
-assets_dest = os.path.join(OUTPUT_DIR, "Assets")
-if os.path.exists(assets_src):
-    if os.path.exists(assets_dest):
-        shutil.rmtree(assets_dest)
-    shutil.copytree(assets_src, assets_dest)
-    print("Assets copied.")
+    # Copy Assets
+    assets_src = os.path.join(REPO_ROOT, "src", "Blocker.App", "Assets")
+    assets_dest = os.path.join(target_dir, "Assets")
+    if os.path.exists(assets_src):
+        if os.path.exists(assets_dest):
+            shutil.rmtree(assets_dest)
+        shutil.copytree(assets_src, assets_dest)
+        print(f"Assets copied to {os.path.basename(target_dir)}.")
 
-licenses_src = os.path.join(REPO_ROOT, "licenses")
-licenses_dest = os.path.join(OUTPUT_DIR, "licenses")
-if os.path.exists(licenses_src):
-    if os.path.exists(licenses_dest):
-        shutil.rmtree(licenses_dest)
-    shutil.copytree(licenses_src, licenses_dest)
-    print("Licenses copied.")
+    # Copy Licenses
+    licenses_src = os.path.join(REPO_ROOT, "licenses")
+    licenses_dest = os.path.join(target_dir, "licenses")
+    if os.path.exists(licenses_src):
+        if os.path.exists(licenses_dest):
+            shutil.rmtree(licenses_dest)
+        shutil.copytree(licenses_src, licenses_dest)
+        print(f"Licenses copied to {os.path.basename(target_dir)}.")
 
-ext_src = os.path.join(REPO_ROOT, "extension")
-ext_dest = os.path.join(OUTPUT_DIR, "extension")
-if os.path.exists(ext_src):
-    if os.path.exists(ext_dest):
-        shutil.rmtree(ext_dest)
-    shutil.copytree(ext_src, ext_dest)
-    print("Extension folder copied to Sankalpa dev.")
+    # Copy Extension
+    ext_src = os.path.join(REPO_ROOT, "extension")
+    ext_dest = os.path.join(target_dir, "extension")
+    if os.path.exists(ext_src):
+        if os.path.exists(ext_dest):
+            shutil.rmtree(ext_dest)
+        shutil.copytree(ext_src, ext_dest)
+        print(f"Extension copied to {os.path.basename(target_dir)}.")
 
-# Also copy to dist/Sankalpa-Release so installer builder includes it
-rel_ext_dest = os.path.join(REPO_ROOT, "dist", "Sankalpa-Release", "extension")
-if os.path.exists(ext_src):
-    if os.path.exists(rel_ext_dest):
-        shutil.rmtree(rel_ext_dest)
-    shutil.copytree(ext_src, rel_ext_dest)
-    print("Extension folder copied to dist/Sankalpa-Release.")
+    # Copy Appsettings
+    config_src = os.path.join(REPO_ROOT, "src", "Blocker.Service", "appsettings.json")
+    if os.path.exists(config_src):
+        shutil.copy2(config_src, os.path.join(target_dir, "appsettings.json"))
 
-config_src = os.path.join(REPO_ROOT, "src", "Blocker.Service", "appsettings.json")
-if os.path.exists(config_src):
-    shutil.copy2(config_src, os.path.join(OUTPUT_DIR, "appsettings.json"))
+    # Copy Launchers
+    launcher_cmd = os.path.join(target_dir, "run-sankalpa.cmd")
+    with open(launcher_cmd, "w", encoding="utf-8") as f:
+        f.write("@echo off\r\nstart \"\" \"%~dp0Sankalpa.exe\"\r\n")
 
-launcher_cmd = os.path.join(OUTPUT_DIR, "run-sankalpa.cmd")
-uninstaller_cmd = os.path.join(REPO_ROOT, "packaging", "clean-uninstall.cmd")
-if os.path.exists(uninstaller_cmd):
-    shutil.copy2(uninstaller_cmd, os.path.join(OUTPUT_DIR, "clean-uninstall.cmd"))
-with open(launcher_cmd, "w", encoding="utf-8") as f:
-    f.write("@echo off\r\nstart \"\" \"%~dp0Sankalpa.exe\"\r\n")
+    uninstaller_cmd = os.path.join(REPO_ROOT, "packaging", "clean-uninstall.cmd")
+    if os.path.exists(uninstaller_cmd):
+        shutil.copy2(uninstaller_cmd, os.path.join(target_dir, "clean-uninstall.cmd"))
 
-# 6. Register Native Messaging Host & AUMID
-native_host_exe = os.path.join(OUTPUT_DIR, "Blocker.NativeHost.exe")
+# 5. Register Native Messaging Host & AUMID from Sankalpa dev
+native_host_exe = os.path.join(DEV_DIR, "Blocker.NativeHost.exe")
 if os.path.exists(native_host_exe):
     print("\n--- Registering Native Host & AUMID from Sankalpa dev ---")
     reg_res = subprocess.run([native_host_exe, "--register"], capture_output=True, text=True)
     print(reg_res.stdout)
 
-# 7. Update service path in dist/Sankalpa-Release and restart service
-service_dist_dest = os.path.join(REPO_ROOT, "dist", "Sankalpa-Release", "Blocker.Service.exe")
-if os.path.exists(os.path.dirname(service_dist_dest)):
-    try:
-        shutil.copy2(os.path.join(OUTPUT_DIR, "Blocker.Service.exe"), service_dist_dest)
-    except Exception as e:
-        print(f"Copying service to dist: {e}")
-
-print("Starting SankalpaService...")
+# 6. Restart SankalpaService
+print("\nStarting SankalpaService...")
 subprocess.run(["sc.exe", "start", "SankalpaService"], capture_output=True)
+time.sleep(1.5)
 
-# 8. Clean up staging directory
+# 7. Clean up staging directory
 shutil.rmtree(STAGING_DIR, ignore_errors=True)
 
-print("\n=== Release to 'Sankalpa dev' completed successfully! ===")
+print("\n=== Deployment to 'Sankalpa dev' and 'Sankalpa-Release' completed successfully! ===")

@@ -110,6 +110,11 @@ public class CommandHandlerTests
             return false;
         }
 
+        public List<BlockSession> GetActiveSessions()
+        {
+            return Sessions.Where(s => s.EndedUtc == null && s.IsActive(DateTime.UtcNow)).ToList();
+        }
+
         public BlockSession? GetActiveSession()
         {
             var active = Sessions.LastOrDefault(s => s.EndedUtc == null);
@@ -120,6 +125,15 @@ public class CommandHandlerTests
             return null;
         }
 
+        public BlockSession? GetActiveSession(int? profileId)
+        {
+            if (profileId.HasValue)
+            {
+                return Sessions.LastOrDefault(s => s.ProfileId == profileId.Value && s.EndedUtc == null && s.IsActive(DateTime.UtcNow));
+            }
+            return GetActiveSession();
+        }
+
         public BlockSession? GetSessionById(int id)
         {
             return Sessions.FirstOrDefault(s => s.Id == id);
@@ -127,6 +141,11 @@ public class CommandHandlerTests
 
         public BlockSession StartSession(int profileId, long durationSeconds, bool locked)
         {
+            foreach (var s in Sessions.Where(s => s.ProfileId == profileId && s.EndedUtc == null))
+            {
+                s.EndedUtc = DateTime.UtcNow;
+            }
+
             var session = new BlockSession
             {
                 Id = _nextSessionId++,
@@ -917,10 +936,10 @@ public class CommandHandlerTests
     }
 
     [Fact]
-    public void SaveProfile_RejectsMoreThan200WebRules()
+    public void SaveProfile_RejectsMoreThan500WebRules()
     {
         var store = new FakeBlockStore();
-        var rules = Enumerable.Range(1, 201)
+        var rules = Enumerable.Range(1, 501)
             .Select(i => new WebRule { Pattern = $"example{i}.com", Allow = false })
             .ToList();
 
@@ -936,7 +955,7 @@ public class CommandHandlerTests
 
         var resp = Handle(req, store);
         Assert.False(resp.Ok);
-        Assert.Contains("more than 200", resp.Error);
+        Assert.Contains("more than 500", resp.Error);
     }
 
     [Fact]
@@ -1514,6 +1533,200 @@ public class CommandHandlerTests
         var resp = Handle(req, store);
         Assert.False(resp.Ok);
         Assert.Contains("Invalid domain", resp.Error);
+    }
+
+    
+    [Fact]
+    public void MultiSession_CanStartSessionsOnMultipleProfilesConcurrently()
+    {
+        var store = new FakeBlockStore();
+        var p1 = store.SaveProfile(new Profile { Name = "Profile1", BlockedProcesses = new() { "app1.exe" } });
+        var p2 = store.SaveProfile(new Profile { Name = "Profile2", BlockedProcesses = new() { "app2.exe" } });
+
+        // Start locked session on Profile 1
+        var start1 = Handle(new Request
+        {
+            Command = CommandNames.StartSession,
+            Args = new() { ["profile"] = "Profile1", ["minutes"] = "30", ["locked"] = "true" }
+        }, store);
+        Assert.True(start1.Ok);
+
+        // Start locked session on Profile 2 concurrently
+        var start2 = Handle(new Request
+        {
+            Command = CommandNames.StartSession,
+            Args = new() { ["profile"] = "Profile2", ["minutes"] = "45", ["locked"] = "true" }
+        }, store);
+        Assert.True(start2.Ok);
+
+        // Status reflects both sessions
+        var statusResp = Handle(new Request { Command = "GETSTATUS" }, store);
+        Assert.True(statusResp.Ok);
+        var status = JsonSerializer.Deserialize<StatusData>(statusResp.Data, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(status);
+        Assert.True(status.Active);
+        Assert.True(status.Locked);
+        Assert.Equal(2, status.ProfileStatuses.Count(p => p.IsSessionRunning));
+    }
+
+    [Fact]
+    public void MultiSession_CanAddAndEditOtherProfileWhileLockedSessionIsActive()
+    {
+        var store = new FakeBlockStore();
+        var p1 = store.SaveProfile(new Profile { Name = "LockedProfile", BlockedProcesses = new() { "distraction.exe" } });
+        store.StartSession(p1.Id, 3600, locked: true);
+
+        // Add a brand new profile while p1 is locked
+        var addResp = Handle(new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "ProductiveProfile",
+                ["processes"] = "workapp.exe",
+                ["site"] = "github.com"
+            }
+        }, store);
+        Assert.True(addResp.Ok);
+
+        // Edit the new profile freely
+        var editResp = Handle(new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "ProductiveProfile",
+                ["processes"] = "workapp.exe,slack.exe"
+            }
+        }, store);
+        Assert.True(editResp.Ok);
+
+        // Editing locked profile with non-additive modification is refused
+        var refuseEdit = Handle(new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "LockedProfile",
+                ["processes"] = "different.exe"
+            }
+        }, store);
+        Assert.False(refuseEdit.Ok);
+        Assert.Contains("Cannot edit profile 'LockedProfile' while an active LOCKED session is using it", refuseEdit.Error);
+
+        // Editing locked profile with additive_only is allowed
+        var additiveEdit = Handle(new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "LockedProfile",
+                ["processes"] = "distraction.exe,more_distraction.exe",
+                ["additive_only"] = "true"
+            }
+        }, store);
+        Assert.True(additiveEdit.Ok);
+    }
+
+    [Fact]
+    public void MultiSession_StopSession_TargetsSpecificProfile()
+    {
+        var store = new FakeBlockStore();
+        var pLocked = store.SaveProfile(new Profile { Name = "CompleteLockProfile" });
+        var pUnlocked = store.SaveProfile(new Profile { Name = "FlexibleProfile" });
+
+        store.StartSession(pLocked.Id, 3600, locked: true);
+        store.StartSession(pUnlocked.Id, 1800, locked: false);
+
+        // Stopping without specifying profile fails due to ambiguity
+        var ambiguousStop = Handle(new Request { Command = CommandNames.StopSession }, store);
+        Assert.False(ambiguousStop.Ok);
+        Assert.Contains("Multiple sessions are active", ambiguousStop.Error);
+
+        // Stopping the locked session is refused
+        var stopLocked = Handle(new Request
+        {
+            Command = CommandNames.StopSession,
+            Args = new() { ["profile"] = "CompleteLockProfile" }
+        }, store);
+        Assert.False(stopLocked.Ok);
+        Assert.Contains("Stop refused", stopLocked.Error);
+
+        // Stopping the unlocked session succeeds
+        var stopUnlocked = Handle(new Request
+        {
+            Command = CommandNames.StopSession,
+            Args = new() { ["profile"] = "FlexibleProfile" }
+        }, store);
+        Assert.True(stopUnlocked.Ok);
+
+        // Flexible session is ended, complete lock session remains active
+        var activeSessions = store.GetActiveSessions();
+        Assert.Single(activeSessions);
+        Assert.Equal(pLocked.Id, activeSessions[0].ProfileId);
+    }
+
+    [Fact]
+    public void BulkAdding_500LimitEnforced()
+    {
+        var store = new FakeBlockStore();
+        
+        // 500 rules succeeds
+        var rules500 = Enumerable.Range(1, 500)
+            .Select(i => new WebRule { Pattern = $"valid{i}.com", Allow = false })
+            .ToList();
+
+        var req500 = new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "Bulk500",
+                ["webrules"] = JsonSerializer.Serialize(rules500)
+            }
+        };
+        var resp500 = Handle(req500, store);
+        Assert.True(resp500.Ok);
+
+        // 501 rules is rejected
+        var rules501 = Enumerable.Range(1, 501)
+            .Select(i => new WebRule { Pattern = $"exceed{i}.com", Allow = false })
+            .ToList();
+
+        var req501 = new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "Bulk501",
+                ["webrules"] = JsonSerializer.Serialize(rules501)
+            }
+        };
+        var resp501 = Handle(req501, store);
+        Assert.False(resp501.Ok);
+        Assert.Contains("more than 500 website rules", resp501.Error);
+    }
+
+    [Fact]
+    public void DisableProfile_CannotDisableProfileWithActiveLockedSession()
+    {
+        var store = new FakeBlockStore();
+        var p = store.SaveProfile(new Profile
+        {
+            Name = "LockedSessionProfile",
+            Enabled = true,
+            LockMode = LockMode.None
+        });
+        store.StartSession(p.Id, 1800, locked: true);
+
+        var resp = Handle(new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new() { ["name"] = "LockedSessionProfile" }
+        }, store);
+
+        Assert.False(resp.Ok);
+        Assert.Contains("active LOCKED session", resp.Error);
     }
 
     #endregion

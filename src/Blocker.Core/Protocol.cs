@@ -31,6 +31,8 @@ public static class CommandNames
     public const string RenameProfile = "RenameProfile";
     public const string AddWebsite = "AddWebsite";
     public const string GetDnsChallenge = "GetDnsChallenge";
+    public const string RequestDelayedUnlock = "RequestDelayedUnlock";
+    public const string CancelDelayedUnlock = "CancelDelayedUnlock";
 }
 
 public class ActiveWebRuleDto

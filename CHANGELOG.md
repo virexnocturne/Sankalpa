@@ -4,6 +4,26 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FIX-2026-11-05-01] Schedule Lock Enforcer, Delayed Unlock & Desktop UI Polishing (v1.2.0)
+- **Timestamp**: 2026-11-05 10:40 IST
+- **Component**: Core Engine (ProfileStateLogic.cs, CommandHandler.cs, DelayedUnlockManager.cs), Desktop App (MainWindow.xaml, MainViewModel.cs, BlockEditorDialog.xaml, ProfileViewModel.cs, DelayedUnlockPromptDialog.xaml, CoolDownTimerWindow.xaml), Extension (manifest.json), Installer & Packaging (uild-installer.ps1, Sankalpa.iss), Tests (ProfileStateLogicTests.cs, DelayedUnlockTests.cs)
+- **Status**: **SOLVED & VERIFIED IN LIVE OS**
+- **Problems Identified**:
+  1. **Redundant Stop Button on Locked Blocks**: Profile cards showed a red Stop button on completely locked sessions, which only displayed an error dialog when clicked.
+  2. **Schedule Header Text Clipping**: In the Schedule editor, the Weekdays 8:00 AM-5:00 PM quick-fill button clipped into the section description text.
+  3. **Scheduled Blocks Not Locked During Active Windows**: Scheduled blocks without an explicit custom lock mode remained unlocked during active schedule windows, allowing users to toggle them OFF mid-session.
+- **Changes Applied**:
+  - **Stop Button Removal**: Completely removed the Stop button from the profile card in MainWindow.xaml and removed the refusal dialog in MainViewModel.cs.
+  - **Schedule Preset Removal**: Removed QuickFillWeekdaysButton from BlockEditorDialog.xaml and .cs, giving full horizontal space to the description text and eliminating text clipping.
+  - **Schedule Lock Enforcement**: Updated ProfileStateLogic.cs and CommandHandler.cs to lock any block during its active schedule windows (LockedNow = true, Schedule 🔒), disabling the toggle switch and rejecting modifications or disable requests until the window ends.
+  - **Delayed Unlock**: Integrated cooldown timer verification and dialogs for tamper-resistant unlocking.
+  - **Extension Version 1.2.0**: Synchronized manifest version to 1.2.0.
+- **Verification**:
+  - Full test suite passed: **661 tests passed** (573 in Sankalpa.Tests, 88 in Sankalpa.Security.Tests).
+  - Windows Installer (Sankalpa-Setup-1.2.0.exe) and companion extension (sankalpa-extension-v1.2.0.zip) built and verified.
+
+---
+
 ### [FIX-2026-11-04-03] Strict Uninstall Protection & Companion Extension Synchronization (v1.1.1)
 - **Timestamp**: 2026-11-04 15:50 IST
 - **Component**: Core Engine (`UninstallGuard.cs`), CLI (`Program.cs`, `Blocker.Cli.csproj`), Windows Installer (`Sankalpa.iss`), Maintenance Scripts (`clean-uninstall.cmd`, `publish-sankalpa-dev.py`), Tests (`UninstallGuardTests.cs`)

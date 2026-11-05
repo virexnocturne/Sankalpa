@@ -1,0 +1,67 @@
+<Window x:Class="Blocker.App.CoolDownTimerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Blocker.App"
+        local:WindowHelper.UseThemeTitleBar="True"
+        Title="Commitment Wait Timer"
+        Width="480" Height="360"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        WindowStyle="SingleBorderWindow"
+        Topmost="True"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource TextPrimary}">
+
+    <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1" Padding="28">
+        <Grid>
+            <Grid.RowDefinitions>
+                <!-- 0: Profile Info & Status -->
+                <RowDefinition Height="Auto" />
+                <!-- 1: Timer Box -->
+                <RowDefinition Height="*" />
+                <!-- 2: Warning Callout -->
+                <RowDefinition Height="Auto" />
+                <!-- 3: Action Button -->
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Row 0: Header with Lock & Profile Name -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
+                <Path Style="{StaticResource Icon}" Data="{StaticResource IconClock}" Width="16" Height="16"
+                      Stroke="{DynamicResource Warning}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                <TextBlock x:Name="ProfileNameText" Text="Unlocking 'Focus Block'" FontFamily="{DynamicResource FontTitle}"
+                           FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Row 1: Large Monospace Timer Display -->
+            <Border Grid.Row="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="20,12" VerticalAlignment="Center" HorizontalAlignment="Stretch">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock x:Name="TimerDisplay" Text="15:00"
+                               FontFamily="{DynamicResource FontMono}" FontSize="56" FontWeight="Bold"
+                               Foreground="{DynamicResource Accent}" HorizontalAlignment="Center" />
+                    <TextBlock Text="WAITING OUT THE URGE" FontSize="{DynamicResource FontSize12}" FontWeight="Bold"
+                               Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- Row 2: Warning Friction Notice -->
+            <Border Grid.Row="2" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{DynamicResource RadiusButton}" Padding="10,6" Margin="0,14,0,18">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Path Style="{StaticResource Icon}" Data="{StaticResource IconInfo}" Width="13" Height="13"
+                          Stroke="{DynamicResource TextSecondary}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <TextBlock Text="Closing, minimizing, or clicking away to another app cancels unlock."
+                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+
+            <!-- Row 3: Changed My Mind Button -->
+            <Button Grid.Row="3" x:Name="CancelButton" Content="Changed My Mind — Keep Me Focused"
+                    Style="{StaticResource PrimaryButton}" Padding="22,10"
+                    FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                    Click="CancelButton_Click" HorizontalAlignment="Center" />
+        </Grid>
+    </Border>
+</Window>

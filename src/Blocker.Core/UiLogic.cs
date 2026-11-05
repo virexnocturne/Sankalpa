@@ -183,10 +183,22 @@ public static class UiLogic
 
     public static bool CanStartSession(StatusData? activeStatus, string? profileName, int minutes, out string? error)
     {
-        if (activeStatus != null && activeStatus.Active)
+        if (activeStatus != null)
         {
-            error = "A session is already active. Stop the current session before starting a new one.";
-            return false;
+            if (activeStatus.ProfileStatuses != null && activeStatus.ProfileStatuses.Count > 0)
+            {
+                var pItem = activeStatus.ProfileStatuses.FirstOrDefault(p => string.Equals(p.Name, profileName, StringComparison.OrdinalIgnoreCase));
+                if (pItem != null && pItem.IsSessionRunning)
+                {
+                    error = $"A session is already active for profile '{profileName}'. Stop the current session before starting a new one.";
+                    return false;
+                }
+            }
+            else if (activeStatus.Active)
+            {
+                error = "A session is already active. Stop the current session before starting a new one.";
+                return false;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(profileName))

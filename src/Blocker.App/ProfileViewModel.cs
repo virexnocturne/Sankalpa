@@ -140,6 +140,7 @@ public class ProfileViewModel : ViewModelBase
             WebRules = new ObservableCollection<WebRule>(profile.WebRules ?? new());
             Schedule = new ObservableCollection<ScheduleRule>(profile.Schedule ?? new());
             _allowance = profile.Allowance ?? new();
+            _delayedUnlockMinutes = profile.DelayedUnlockMinutes > 0 ? profile.DelayedUnlockMinutes : 15;
         }
         else
         {
@@ -212,13 +213,31 @@ public class ProfileViewModel : ViewModelBase
 
     public Thickness CardStripeThickness => (IsActive || Enabled) ? new Thickness(4, 0, 0, 0) : new Thickness(0);
     public string ScheduleColText => Schedule.Count > 0 ? $"Scheduled blocks ({Schedule.Count})" : "Blocked at all times";
-    public string LockColText => (IsSessionRunning && IsSessionLocked) ? "Complete Lock 🔒" : LockMode switch
+    public string LockColText => (IsSessionRunning && IsSessionLocked)
+        ? "Complete Lock 🔒"
+        : (IsActive && Schedule.Count > 0 && LockedNow)
+            ? "Schedule 🔒"
+            : LockMode switch
+            {
+                LockMode.Locked => "Schedule 🔒",
+                LockMode.Password => "Password 🔒",
+                LockMode.TypingChallenge => "Challenge 🔒",
+                LockMode.DelayedUnlock => $"Delay ({DelayedUnlockMinutes}m) ⏳",
+                _ => "Unlocked 🔓"
+            };
+
+    private int _delayedUnlockMinutes = 15;
+    public int DelayedUnlockMinutes
     {
-        LockMode.Locked => "Schedule 🔒",
-        LockMode.Password => "Password 🔒",
-        LockMode.TypingChallenge => "Challenge 🔒",
-        _ => "Unlocked 🔓"
-    };
+        get => _delayedUnlockMinutes;
+        set
+        {
+            if (SetProperty(ref _delayedUnlockMinutes, value))
+            {
+                OnPropertyChanged(nameof(LockColText));
+            }
+        }
+    }
 
     public bool BlockAllWebsites
     {
@@ -286,13 +305,15 @@ public class ProfileViewModel : ViewModelBase
 
     public string ScheduleSummary => ScheduleLogic.FormatSummary(Schedule.ToList(), TimeFormat);
 
-    public string LockLabel => LockMode switch
-    {
-        LockMode.Locked => "Locked during schedule",
-        LockMode.TypingChallenge => "Type to unlock",
-        LockMode.Password => "Password protected",
-        _ => "Unlocked"
-    };
+    public string LockLabel => (Schedule.Count > 0 && IsActive && LockedNow)
+        ? "Locked during schedule"
+        : LockMode switch
+        {
+            LockMode.Locked => "Locked during schedule",
+            LockMode.TypingChallenge => "Type to unlock",
+            LockMode.Password => "Password protected",
+            _ => "Unlocked"
+        };
 
     public string StateChipText
     {
@@ -414,6 +435,8 @@ public class ProfileViewModel : ViewModelBase
                 OnPropertyChanged(nameof(CanDelete));
                 OnPropertyChanged(nameof(IsToggleChecked));
                 OnPropertyChanged(nameof(OnOffText));
+                OnPropertyChanged(nameof(LockColText));
+                OnPropertyChanged(nameof(LockLabel));
             }
         }
     }
@@ -450,6 +473,8 @@ public class ProfileViewModel : ViewModelBase
                 OnPropertyChanged(nameof(CanDelete));
                 OnPropertyChanged(nameof(IsToggleChecked));
                 OnPropertyChanged(nameof(OnOffText));
+                OnPropertyChanged(nameof(LockColText));
+                OnPropertyChanged(nameof(LockLabel));
             }
         }
     }

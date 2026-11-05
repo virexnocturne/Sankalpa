@@ -8,7 +8,8 @@ public enum LockMode
     None = 0,
     Locked = 1,
     TypingChallenge = 2,
-    Password = 3
+    Password = 3,
+    DelayedUnlock = 4
 }
 
 public class Profile
@@ -25,6 +26,7 @@ public class Profile
     public List<ScheduleRule> Schedule { get; set; } = new();
     public AllowanceConfig Allowance { get; set; } = new();
     public LockMode LockMode { get; set; } = LockMode.None;
+    public int DelayedUnlockMinutes { get; set; } = 15;
 
     // Password credentials are never serialized across the client protocol
     [JsonIgnore]

@@ -14,8 +14,8 @@ public class BlockerDatabase : IBlockStore
     private readonly object _cacheLock = new();
     private List<Profile>? _cachedProfiles;
     private DnsConfig? _cachedDnsConfig;
-    private BlockSession? _cachedActiveSession;
-    private bool _hasLoadedActiveSession;
+    private List<BlockSession>? _cachedActiveSessions;
+    private bool _hasLoadedActiveSessions;
 
     public void InvalidateCache()
     {
@@ -23,8 +23,8 @@ public class BlockerDatabase : IBlockStore
         {
             _cachedProfiles = null;
             _cachedDnsConfig = null;
-            _cachedActiveSession = null;
-            _hasLoadedActiveSession = false;
+            _cachedActiveSessions = null;
+            _hasLoadedActiveSessions = false;
         }
     }
 
@@ -98,7 +98,8 @@ public class BlockerDatabase : IBlockStore
                 PasswordHash TEXT NULL,
                 WebRulesJson TEXT NOT NULL DEFAULT '[]',
                 BlockAllWebsites INTEGER NOT NULL DEFAULT 0,
-                SystemWide INTEGER NOT NULL DEFAULT 0
+                SystemWide INTEGER NOT NULL DEFAULT 0,
+                DelayedUnlockMinutes INTEGER NOT NULL DEFAULT 15
             );
 
             CREATE TABLE IF NOT EXISTS BlockSessions (
@@ -163,7 +164,8 @@ public class BlockerDatabase : IBlockStore
             ["WebRulesJson"] = "TEXT NOT NULL DEFAULT '[]'",
             ["BlockAllWebsites"] = "INTEGER NOT NULL DEFAULT 0",
             ["SystemWide"] = "INTEGER NOT NULL DEFAULT 0",
-            ["AllowanceJson"] = "TEXT NOT NULL DEFAULT '{}'"
+            ["AllowanceJson"] = "TEXT NOT NULL DEFAULT '{}'",
+            ["DelayedUnlockMinutes"] = "INTEGER NOT NULL DEFAULT 15"
         };
 
         foreach (var (colName, colDef) in requiredCols)
@@ -329,7 +331,10 @@ public class BlockerDatabase : IBlockStore
             SystemWide = reader.GetInt32(11) != 0,
             Allowance = reader.FieldCount > 12 && !reader.IsDBNull(12)
                 ? JsonSerializer.Deserialize<AllowanceConfig>(reader.GetString(12)) ?? new AllowanceConfig()
-                : new AllowanceConfig()
+                : new AllowanceConfig(),
+            DelayedUnlockMinutes = reader.FieldCount > 13 && !reader.IsDBNull(13)
+                ? reader.GetInt32(13)
+                : 15
         };
     }
 
@@ -370,7 +375,7 @@ public class BlockerDatabase : IBlockStore
         connection.Open();
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, BlockedProcessesJson, BlockedDomainsJson, Enabled, ScheduleJson, LockMode, PasswordSalt, PasswordHash, WebRulesJson, BlockAllWebsites, SystemWide, AllowanceJson FROM Profiles ORDER BY Id ASC;";
+        cmd.CommandText = "SELECT Id, Name, BlockedProcessesJson, BlockedDomainsJson, Enabled, ScheduleJson, LockMode, PasswordSalt, PasswordHash, WebRulesJson, BlockAllWebsites, SystemWide, AllowanceJson, DelayedUnlockMinutes FROM Profiles ORDER BY Id ASC;";
 
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -397,8 +402,8 @@ public class BlockerDatabase : IBlockStore
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-        INSERT INTO Profiles (Name, BlockedProcessesJson, BlockedDomainsJson, Enabled, ScheduleJson, LockMode, PasswordSalt, PasswordHash, WebRulesJson, BlockAllWebsites, SystemWide, AllowanceJson)
-        VALUES (@name, @procJson, @domJson, @enabled, @schedJson, @lockMode, @salt, @hash, @rulesJson, @blockAll, @systemWide, @allowanceJson)
+        INSERT INTO Profiles (Name, BlockedProcessesJson, BlockedDomainsJson, Enabled, ScheduleJson, LockMode, PasswordSalt, PasswordHash, WebRulesJson, BlockAllWebsites, SystemWide, AllowanceJson, DelayedUnlockMinutes)
+        VALUES (@name, @procJson, @domJson, @enabled, @schedJson, @lockMode, @salt, @hash, @rulesJson, @blockAll, @systemWide, @allowanceJson, @delayedUnlockMinutes)
         ON CONFLICT(Name) DO UPDATE SET 
             BlockedProcessesJson = excluded.BlockedProcessesJson,
             BlockedDomainsJson = excluded.BlockedDomainsJson,
@@ -410,7 +415,8 @@ public class BlockerDatabase : IBlockStore
             WebRulesJson = excluded.WebRulesJson,
             BlockAllWebsites = excluded.BlockAllWebsites,
             SystemWide = excluded.SystemWide,
-            AllowanceJson = excluded.AllowanceJson;
+            AllowanceJson = excluded.AllowanceJson,
+            DelayedUnlockMinutes = excluded.DelayedUnlockMinutes;
         """;
         cmd.Parameters.AddWithValue("@name", profile.Name);
         cmd.Parameters.AddWithValue("@procJson", procJson);
@@ -424,6 +430,7 @@ public class BlockerDatabase : IBlockStore
         cmd.Parameters.AddWithValue("@blockAll", profile.BlockAllWebsites ? 1 : 0);
         cmd.Parameters.AddWithValue("@systemWide", profile.SystemWide ? 1 : 0);
         cmd.Parameters.AddWithValue("@allowanceJson", allowanceJson);
+        cmd.Parameters.AddWithValue("@delayedUnlockMinutes", profile.DelayedUnlockMinutes > 0 ? profile.DelayedUnlockMinutes : 15);
         cmd.ExecuteNonQuery();
 
         lock (_cacheLock)
@@ -515,8 +522,8 @@ public class BlockerDatabase : IBlockStore
                 lock (_cacheLock)
                 {
                     _cachedProfiles = null;
-                    _cachedActiveSession = null;
-                    _hasLoadedActiveSession = false;
+                    _cachedActiveSessions = null;
+                    _hasLoadedActiveSessions = false;
                 }
 
                 return deleted;
@@ -529,62 +536,57 @@ public class BlockerDatabase : IBlockStore
         }
     }
 
-    public BlockSession? GetActiveSession() => GetActiveSession(includeUnendedExpired: false);
+    public List<BlockSession> GetActiveSessions() => GetActiveSessions(includeUnendedExpired: false);
 
-    public BlockSession? GetActiveSession(bool includeUnendedExpired)
+    public List<BlockSession> GetActiveSessions(bool includeUnendedExpired)
     {
         lock (_cacheLock)
         {
-            if (_hasLoadedActiveSession)
+            if (_hasLoadedActiveSessions && _cachedActiveSessions != null)
             {
-                if (_cachedActiveSession != null)
-                {
-                    if (_cachedActiveSession.IsActive(DateTime.UtcNow))
-                    {
-                        return _cachedActiveSession;
-                    }
-                    if (includeUnendedExpired && _cachedActiveSession.EndedUtc == null)
-                    {
-                        return _cachedActiveSession;
-                    }
-                    _cachedActiveSession = null;
-                }
-                if (!includeUnendedExpired)
-                {
-                    return null;
-                }
+                var now = DateTime.UtcNow;
+                var valid = _cachedActiveSessions
+                    .Where(s => includeUnendedExpired ? s.EndedUtc == null : s.IsActive(now))
+                    .ToList();
+                return valid;
             }
-        }
 
-        var session = LoadUnendedSessionFromDb();
-        lock (_cacheLock)
-        {
-            _cachedActiveSession = session;
-            _hasLoadedActiveSession = true;
+            var sessions = LoadUnendedSessionsFromDb();
+            _cachedActiveSessions = sessions;
+            _hasLoadedActiveSessions = true;
 
-            if (session != null && (includeUnendedExpired || session.IsActive(DateTime.UtcNow)))
-            {
-                return session;
-            }
-            return null;
+            var nowUtc = DateTime.UtcNow;
+            return sessions
+                .Where(s => includeUnendedExpired ? s.EndedUtc == null : s.IsActive(nowUtc))
+                .ToList();
         }
     }
 
-    public BlockSession? GetActiveOrUnendedSession() => GetActiveSession(includeUnendedExpired: true);
+    public BlockSession? GetActiveSession() => GetActiveSession(profileId: null);
 
-    private BlockSession? LoadActiveSessionFromDb()
+    public BlockSession? GetActiveSession(int? profileId)
     {
-        var session = LoadUnendedSessionFromDb();
-        if (session != null && session.IsActive(DateTime.UtcNow))
+        var sessions = GetActiveSessions(includeUnendedExpired: false);
+        if (profileId.HasValue)
         {
-            return session;
+            return sessions.FirstOrDefault(s => s.ProfileId == profileId.Value);
         }
-
-        return null;
+        return sessions.FirstOrDefault();
     }
 
-    private BlockSession? LoadUnendedSessionFromDb()
+    public BlockSession? GetActiveOrUnendedSession(int? profileId = null)
     {
+        var sessions = GetActiveSessions(includeUnendedExpired: true);
+        if (profileId.HasValue)
+        {
+            return sessions.FirstOrDefault(s => s.ProfileId == profileId.Value);
+        }
+        return sessions.FirstOrDefault();
+    }
+
+    private List<BlockSession> LoadUnendedSessionsFromDb()
+    {
+        var list = new List<BlockSession>();
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
 
@@ -593,14 +595,13 @@ public class BlockerDatabase : IBlockStore
         SELECT Id, ProfileId, StartUtc, DurationSeconds, Locked, EndedUtc
         FROM BlockSessions
         WHERE EndedUtc IS NULL
-        ORDER BY Id DESC
-        LIMIT 1;
+        ORDER BY Id DESC;
         """;
 
         using var reader = cmd.ExecuteReader();
-        if (reader.Read())
+        while (reader.Read())
         {
-            return new BlockSession
+            list.Add(new BlockSession
             {
                 Id = reader.GetInt32(0),
                 ProfileId = reader.GetInt32(1),
@@ -608,10 +609,10 @@ public class BlockerDatabase : IBlockStore
                 DurationSeconds = reader.GetInt64(3),
                 Locked = reader.GetInt32(4) != 0,
                 EndedUtc = reader.IsDBNull(5) ? null : DateTime.Parse(reader.GetString(5), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
-            };
+            });
         }
 
-        return null;
+        return list;
     }
 
     public BlockSession? GetSessionById(int id)
@@ -644,13 +645,13 @@ public class BlockerDatabase : IBlockStore
     {
         lock (_cacheLock)
         {
-            var existingSession = GetActiveSession();
+            var existingSession = GetActiveSession(profileId);
             if (existingSession != null && existingSession.Locked && existingSession.IsActive(DateTime.UtcNow))
             {
-                throw new InvalidOperationException("Cannot start session: a locked session is currently active.");
+                throw new InvalidOperationException($"Cannot start session: a locked session is currently active for profile {profileId}.");
             }
 
-            EndActiveSessionInternal();
+            EndActiveSessionInternal(profileId);
 
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
@@ -680,8 +681,8 @@ public class BlockerDatabase : IBlockStore
                 EndedUtc = null
             };
 
-            _cachedActiveSession = session;
-            _hasLoadedActiveSession = true;
+            _cachedActiveSessions = null;
+            _hasLoadedActiveSessions = false;
 
             return session;
         }
@@ -691,22 +692,38 @@ public class BlockerDatabase : IBlockStore
     {
         lock (_cacheLock)
         {
-            EndActiveSessionInternal();
+            EndActiveSessionInternal(null);
         }
     }
 
-    private void EndActiveSessionInternal()
+    public void EndActiveSession(int? profileId)
+    {
+        lock (_cacheLock)
+        {
+            EndActiveSessionInternal(profileId);
+        }
+    }
+
+    private void EndActiveSessionInternal(int? profileId = null)
     {
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "UPDATE BlockSessions SET EndedUtc = @endedUtc WHERE EndedUtc IS NULL;";
+        if (profileId.HasValue)
+        {
+            cmd.CommandText = "UPDATE BlockSessions SET EndedUtc = @endedUtc WHERE ProfileId = @profileId AND EndedUtc IS NULL;";
+            cmd.Parameters.AddWithValue("@profileId", profileId.Value);
+        }
+        else
+        {
+            cmd.CommandText = "UPDATE BlockSessions SET EndedUtc = @endedUtc WHERE EndedUtc IS NULL;";
+        }
         cmd.Parameters.AddWithValue("@endedUtc", DateTime.UtcNow.ToString("O"));
         cmd.ExecuteNonQuery();
 
-        _cachedActiveSession = null;
-        _hasLoadedActiveSession = true;
+        _cachedActiveSessions = null;
+        _hasLoadedActiveSessions = false;
     }
 
     public void EndSession(int sessionId)
@@ -722,8 +739,8 @@ public class BlockerDatabase : IBlockStore
             cmd.Parameters.AddWithValue("@id", sessionId);
             cmd.ExecuteNonQuery();
 
-            _cachedActiveSession = null;
-            _hasLoadedActiveSession = true;
+            _cachedActiveSessions = null;
+            _hasLoadedActiveSessions = false;
         }
     }
 

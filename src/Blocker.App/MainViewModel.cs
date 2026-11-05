@@ -806,13 +806,13 @@ public class MainViewModel : ViewModelBase
         });
         StartBlockCommand = new RelayCommand<ProfileViewModel>(p =>
         {
-            if (p != null && CanStartSession)
+            if (p != null && IsServiceConnected && !p.IsSessionRunning)
             {
                 RequestOpenStartSessionDialog?.Invoke(p);
             }
         });
 
-        StopSessionCommand = new RelayCommand(async () => await StopSessionAsync(), () => IsSessionActive);
+        StopSessionCommand = new RelayCommand<ProfileViewModel?>(async p => await StopSessionAsync(p));
         RetryConnectionCommand = new RelayCommand(async () => await RetryConnectionAsync());
         DeleteBlockCommand = new RelayCommand<ProfileViewModel>(async p => await DeleteBlockAsync(p));
         ToggleDayNightCommand = new RelayCommand(() =>
@@ -1026,7 +1026,7 @@ public class MainViewModel : ViewModelBase
         set => SetProperty(ref _errorMessage, value);
     }
 
-    public bool CanStartSession => IsServiceConnected && !IsSessionActive;
+    public bool CanStartSession => IsServiceConnected;
 
     public bool ShowWebsiteWarningBanner => IsServiceConnected && (!IsServiceElevated || HostsState == HostsState.Error);
 
@@ -1136,7 +1136,7 @@ public class MainViewModel : ViewModelBase
     public RelayCommand<ProfileViewModel> OpenScheduleTabCommand { get; }
     public RelayCommand<object> RenameProfileCommand { get; }
     public RelayCommand<ProfileViewModel> StartBlockCommand { get; }
-    public RelayCommand StopSessionCommand { get; }
+    public RelayCommand<ProfileViewModel?> StopSessionCommand { get; }
     public RelayCommand RetryConnectionCommand { get; }
     public RelayCommand SaveDnsSettingsCommand { get; }
     public RelayCommand LockDnsCommand { get; }
@@ -1419,21 +1419,6 @@ public class MainViewModel : ViewModelBase
         {
             ActiveChips.Clear();
 
-            // If manual session active
-            if (status.RemainingSeconds > 0 && !string.IsNullOrEmpty(status.Profile))
-            {
-                string lockIcon = status.Locked ? " 🔒" : "";
-                ActiveChips.Add(new ActiveBlockChipItem
-                {
-                    Name = status.Profile,
-                    Text = $"{status.Profile} [Manual {status.RemainingFormatted}{lockIcon}]",
-                    IsManual = true,
-                    IsLocked = status.Locked,
-                    BackgroundColor = "#1E293B",
-                    ForegroundColor = "#93C5FD"
-                });
-            }
-
             foreach (var p in Profiles)
             {
                 var item = status.ProfileStatuses.FirstOrDefault(ps => ps.Name.Equals(p.Name, StringComparison.OrdinalIgnoreCase) || ps.Id == p.Id);
@@ -1445,8 +1430,24 @@ public class MainViewModel : ViewModelBase
                     p.NextChangeLocal = item.NextChangeLocal;
                     p.LockedNow = item.LockedNow;
                     p.LockMode = item.LockMode;
+                    p.IsSessionRunning = item.IsSessionRunning;
+                    p.IsSessionLocked = item.IsSessionLocked;
+                    p.SessionRemainingFormatted = item.SessionRemainingFormatted;
 
-                    if (item.IsActive && item.ActiveReason != "Manual")
+                    if (item.IsSessionRunning)
+                    {
+                        string lockIcon = item.IsSessionLocked ? " 🔒" : "";
+                        ActiveChips.Add(new ActiveBlockChipItem
+                        {
+                            Name = item.Name,
+                            Text = $"{item.Name} [Manual {item.SessionRemainingFormatted}{lockIcon}]",
+                            IsManual = true,
+                            IsLocked = item.IsSessionLocked,
+                            BackgroundColor = "#1E293B",
+                            ForegroundColor = "#93C5FD"
+                        });
+                    }
+                    else if (item.IsActive && item.ActiveReason != "Manual")
                     {
                         string chipText = item.NextChangeLocal.HasValue
                             ? $"{item.Name} until {UiLogic.FormatTime(item.NextChangeLocal.Value, TimeFormat)}"
@@ -1463,13 +1464,15 @@ public class MainViewModel : ViewModelBase
                         });
                     }
                 }
-
-                bool isManualForThis = status.RemainingSeconds > 0 &&
-                    (string.Equals(status.Profile, p.Name, StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(status.Profile, p.Id.ToString(), StringComparison.OrdinalIgnoreCase));
-                p.IsSessionRunning = isManualForThis;
-                p.SessionRemainingFormatted = isManualForThis ? status.RemainingFormatted : "00:00";
-                p.IsSessionLocked = isManualForThis && status.Locked;
+                else
+                {
+                    bool isManualForThis = status.RemainingSeconds > 0 &&
+                        (string.Equals(status.Profile, p.Name, StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(status.Profile, p.Id.ToString(), StringComparison.OrdinalIgnoreCase));
+                    p.IsSessionRunning = isManualForThis;
+                    p.SessionRemainingFormatted = isManualForThis ? status.RemainingFormatted : "00:00";
+                    p.IsSessionLocked = isManualForThis && status.Locked;
+                }
 
                 bool canEdit = UiLogic.CanEditProfile(p.ToModel(), status, out string? reason);
                 p.IsReadOnly = !canEdit || p.LockedNow;
@@ -1501,7 +1504,8 @@ public class MainViewModel : ViewModelBase
         bool blockAllWebsites = false,
         bool systemWide = false,
         AllowanceConfig? allowance = null,
-        bool additiveOnly = false)
+        bool additiveOnly = false,
+        int delayedUnlockMinutes = 15)
     {
         try
         {
@@ -1574,6 +1578,7 @@ public class MainViewModel : ViewModelBase
             if (!string.IsNullOrEmpty(currentPassword)) args["current_password"] = currentPassword;
             if (!string.IsNullOrEmpty(unlockText)) args["unlock_text"] = unlockText;
             if (!string.IsNullOrEmpty(unlockPassword)) args["unlock_password"] = unlockPassword;
+            if (lockMode == LockMode.DelayedUnlock) args["delayed_unlock_minutes"] = delayedUnlockMinutes.ToString();
 
             var req = new Request
             {
@@ -1667,6 +1672,7 @@ public class MainViewModel : ViewModelBase
                 // Turning OFF
                 string? unlockText = null;
                 string? unlockPassword = null;
+                string? delayedUnlockToken = null;
 
                 if (profile.LockedNow)
                 {
@@ -1712,11 +1718,72 @@ public class MainViewModel : ViewModelBase
                         }
                         unlockPassword = pwdDlg.ResultPassword;
                     }
+                    else if (profile.LockMode == LockMode.DelayedUnlock)
+                    {
+                        int waitMinutes = profile.DelayedUnlockMinutes > 0 ? profile.DelayedUnlockMinutes : 15;
+                        var promptDlg = new DelayedUnlockPromptDialog(profile.Name, waitMinutes);
+                        if (owner != null) promptDlg.Owner = owner;
+                        if (promptDlg.ShowDialog() != true || !promptDlg.Confirmed)
+                        {
+                            return false;
+                        }
+
+                        var unlockReq = new Request
+                        {
+                            Command = CommandNames.RequestDelayedUnlock,
+                            Args = new() { ["name"] = profile.Name }
+                        };
+                        var unlockRes = await _pipeClient.SendRequestAsync(unlockReq);
+                        if (!unlockRes.Connected || unlockRes.Response?.Ok != true || string.IsNullOrEmpty(unlockRes.Response.Data))
+                        {
+                            ErrorMessage = unlockRes.Response?.Error ?? "Failed to initiate delayed unlock timer.";
+                            return false;
+                        }
+
+                        string token = string.Empty;
+                        int durationSec = waitMinutes * 60;
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(unlockRes.Response.Data);
+                            if (doc.RootElement.TryGetProperty("token", out var tElem))
+                            {
+                                token = tElem.GetString() ?? string.Empty;
+                            }
+                            if (doc.RootElement.TryGetProperty("duration_seconds", out var dElem) && int.TryParse(dElem.GetString(), out int ds))
+                            {
+                                durationSec = ds;
+                            }
+                        }
+                        catch
+                        {
+                            token = unlockRes.Response.Data;
+                        }
+
+                        var timerWin = new CoolDownTimerWindow(profile.Name, durationSec);
+                        bool? timerResult = timerWin.ShowDialog();
+
+                        if (timerResult != true || !timerWin.Completed)
+                        {
+                            var cancelReq = new Request
+                            {
+                                Command = CommandNames.CancelDelayedUnlock,
+                                Args = new() { ["name"] = profile.Name, ["token"] = token }
+                            };
+                            await _pipeClient.SendRequestAsync(cancelReq);
+
+                            string reason = timerWin.CancellationReason ?? "Unlock was cancelled.";
+                            DarkDialogWindow.Show(reason, "Unlock Cancelled");
+                            return false;
+                        }
+
+                        delayedUnlockToken = token;
+                    }
                 }
 
                 var disArgs = new Dictionary<string, string> { ["name"] = profile.Name };
                 if (unlockText != null) disArgs["unlock_text"] = unlockText;
                 if (unlockPassword != null) disArgs["unlock_password"] = unlockPassword;
+                if (delayedUnlockToken != null) disArgs["delayed_unlock_token"] = delayedUnlockToken;
 
                 var req = new Request
                 {
@@ -1982,18 +2049,127 @@ public class MainViewModel : ViewModelBase
         }
     }
 
-    public async Task StopSessionAsync(Window? owner = null)
+    public async Task StopSessionAsync(ProfileViewModel? targetProfile = null, Window? owner = null)
     {
         try
         {
+            if (targetProfile == null)
+            {
+                targetProfile = Profiles.FirstOrDefault(p => p.IsSessionRunning);
+            }
+
+            string? unlockPassword = null;
+            string? challengeText = null;
+            string? delayedUnlockToken = null;
+
+            if (targetProfile != null)
+            {
+                if (targetProfile.IsSessionLocked)
+                {
+                    return;
+                }
+
+                if (targetProfile.LockMode == LockMode.Password)
+                {
+                    var pwdDlg = new PasswordUnlockDialog(targetProfile.Name);
+                    if (owner != null) try { pwdDlg.Owner = owner; } catch { }
+                    if (pwdDlg.ShowDialog() != true) return;
+                    unlockPassword = pwdDlg.ResultPassword;
+                }
+                else if (targetProfile.LockMode == LockMode.TypingChallenge)
+                {
+                    var chReq = new Request
+                    {
+                        Command = CommandNames.GetUnlockChallenge,
+                        Args = new() { ["name"] = targetProfile.Name }
+                    };
+                    var chRes = await _pipeClient.SendRequestAsync(chReq);
+                    if (!chRes.Connected || chRes.Response?.Ok != true || string.IsNullOrEmpty(chRes.Response.Data))
+                    {
+                        ErrorMessage = chRes.Response?.Error ?? "Failed to request unlock challenge.";
+                        return;
+                    }
+
+                    var challengeDlg = new TypingChallengeDialog(chRes.Response.Data);
+                    if (owner != null) try { challengeDlg.Owner = owner; } catch { }
+                    if (challengeDlg.ShowDialog() != true) return;
+                    challengeText = challengeDlg.ResultText;
+                }
+                else if (targetProfile.LockMode == LockMode.DelayedUnlock)
+                {
+                    int waitMinutes = targetProfile.DelayedUnlockMinutes > 0 ? targetProfile.DelayedUnlockMinutes : 15;
+                    var promptDlg = new DelayedUnlockPromptDialog(targetProfile.Name, waitMinutes);
+                    if (owner != null) try { promptDlg.Owner = owner; } catch { }
+                    if (promptDlg.ShowDialog() != true || !promptDlg.Confirmed) return;
+
+                    var unlockReq = new Request
+                    {
+                        Command = CommandNames.RequestDelayedUnlock,
+                        Args = new() { ["name"] = targetProfile.Name }
+                    };
+                    var unlockRes = await _pipeClient.SendRequestAsync(unlockReq);
+                    if (!unlockRes.Connected || unlockRes.Response?.Ok != true || string.IsNullOrEmpty(unlockRes.Response.Data))
+                    {
+                        ErrorMessage = unlockRes.Response?.Error ?? "Failed to initiate delayed unlock timer.";
+                        return;
+                    }
+
+                    string token = string.Empty;
+                    int durationSec = waitMinutes * 60;
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(unlockRes.Response.Data);
+                        if (doc.RootElement.TryGetProperty("token", out var tElem))
+                        {
+                            token = tElem.GetString() ?? string.Empty;
+                        }
+                        if (doc.RootElement.TryGetProperty("duration_seconds", out var dElem) && int.TryParse(dElem.GetString(), out int ds))
+                        {
+                            durationSec = ds;
+                        }
+                    }
+                    catch
+                    {
+                        token = unlockRes.Response.Data;
+                    }
+
+                    var timerWin = new CoolDownTimerWindow(targetProfile.Name, durationSec);
+                    bool? timerResult = timerWin.ShowDialog();
+
+                    if (timerResult != true || !timerWin.Completed)
+                    {
+                        var cancelReq = new Request
+                        {
+                            Command = CommandNames.CancelDelayedUnlock,
+                            Args = new() { ["name"] = targetProfile.Name, ["token"] = token }
+                        };
+                        await _pipeClient.SendRequestAsync(cancelReq);
+
+                        string reason = timerWin.CancellationReason ?? "Unlock was cancelled.";
+                        DarkDialogWindow.Show(reason, "Unlock Cancelled");
+                        return;
+                    }
+
+                    delayedUnlockToken = token;
+                }
+            }
+
             var req = new Request { Command = CommandNames.StopSession };
+            if (targetProfile != null)
+            {
+                req.Args["profile"] = targetProfile.Name;
+            }
+            if (!string.IsNullOrEmpty(unlockPassword)) req.Args["unlock_password"] = unlockPassword;
+            if (!string.IsNullOrEmpty(challengeText)) req.Args["challenge_input"] = challengeText;
+            if (!string.IsNullOrEmpty(delayedUnlockToken)) req.Args["delayed_unlock_token"] = delayedUnlockToken;
+
             var res = await _pipeClient.SendRequestAsync(req);
 
             if (res.Connected && res.Response != null)
             {
                 if (res.Response.Ok)
                 {
-                    StatusMessage = "Session stopped.";
+                    StatusMessage = $"Session stopped for '{targetProfile?.Name ?? "active profile"}'.";
                     ErrorMessage = null;
                     await PollStatusAsync();
                 }

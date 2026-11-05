@@ -1,0 +1,55 @@
+<Window x:Class="Blocker.App.DelayedUnlockPromptDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Blocker.App"
+        local:WindowHelper.UseThemeTitleBar="True"
+        Title="Delayed Unlock"
+        Width="460" Height="290"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="SingleBorderWindow"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource TextPrimary}">
+
+    <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1" Padding="24">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Title Header -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,14">
+                <Path Style="{StaticResource Icon}" Data="{StaticResource IconClock}" Width="20" Height="20"
+                      Stroke="{DynamicResource Warning}" Margin="0,0,10,0" VerticalAlignment="Center" />
+                <TextBlock Text="Commitment Wait Required" FontFamily="{DynamicResource FontTitle}"
+                           FontSize="{DynamicResource FontSizeTitle}" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Prompt Explanation Box -->
+            <Border Grid.Row="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="16" Margin="0,0,0,20">
+                <StackPanel>
+                    <TextBlock x:Name="PromptTextBlock"
+                               Text="To unlock this block, you must wait for 15 minutes with the timer active in the foreground."
+                               FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimary}"
+                               FontWeight="Medium" TextWrapping="Wrap" Margin="0,0,0,10" />
+
+                    <TextBlock Text="• If you close the window, the unlock is cancelled.&#x0a;• If you minimize the window, the unlock is cancelled.&#x0a;• If another app is clicked or overlayed on top, the unlock is cancelled."
+                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}"
+                               TextWrapping="Wrap" LineHeight="18" />
+                </StackPanel>
+            </Border>
+
+            <!-- Action Buttons -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="StartTimerButton" Content="Start Timer" Click="StartTimerButton_Click"
+                        Padding="20,8" MinWidth="110" Margin="0,0,10,0" IsDefault="True" />
+                <Button Content="Stay Focused (Cancel)" Style="{StaticResource SecondaryButton}" Click="CancelButton_Click"
+                        Padding="16,8" MinWidth="120" IsCancel="True" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

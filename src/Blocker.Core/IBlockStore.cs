@@ -12,9 +12,31 @@ public interface IBlockStore
     void DisableAllProfiles();
 
     BlockSession? GetActiveSession();
+    List<BlockSession> GetActiveSessions()
+    {
+        var s = GetActiveSession();
+        return s != null ? new List<BlockSession> { s } : new List<BlockSession>();
+    }
+    BlockSession? GetActiveSession(int? profileId)
+    {
+        if (!profileId.HasValue) return GetActiveSession();
+        return GetActiveSessions().Find(s => s.ProfileId == profileId.Value);
+    }
     BlockSession? GetSessionById(int id);
     BlockSession StartSession(int profileId, long durationSeconds, bool locked);
     void EndActiveSession();
+    void EndActiveSession(int? profileId)
+    {
+        if (!profileId.HasValue)
+        {
+            EndActiveSession();
+        }
+        else
+        {
+            var s = GetActiveSession(profileId.Value);
+            if (s != null) EndSession(s.Id);
+        }
+    }
     void EndSession(int sessionId);
 
     bool IsEmergencyUnlockPresent();

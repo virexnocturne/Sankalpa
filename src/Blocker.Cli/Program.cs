@@ -100,8 +100,26 @@ switch (command)
     case "stop":
     {
         var stopArgs = new Dictionary<string, string>();
+        string? profileName = GetNamedArg(args, "--profile") ?? GetNamedArg(args, "-p");
+        if (profileName == null && args.Length >= 2 && !args[1].StartsWith("-"))
+        {
+            profileName = args[1];
+        }
+        if (!string.IsNullOrEmpty(profileName))
+        {
+            stopArgs["profile"] = profileName;
+        }
+
+        string? unlockToken = GetNamedArg(args, "--unlock-token") ?? GetNamedArg(args, "--token");
+        if (unlockToken != null) stopArgs["unlock_token"] = unlockToken;
+
         if (globalUnlockText != null) stopArgs["unlock_text"] = globalUnlockText;
         if (globalUnlockPassword != null) stopArgs["unlock_password"] = globalUnlockPassword;
+
+        string? textArg = GetNamedArg(args, "--text");
+        if (textArg != null) stopArgs["unlock_text"] = textArg;
+        string? pwdArg = GetNamedArg(args, "--password");
+        if (pwdArg != null) stopArgs["unlock_password"] = pwdArg;
 
         request = new Request { Command = CommandNames.StopSession, Args = stopArgs };
         printSuccess = resp => Console.WriteLine(resp.Data ?? "Session stopped successfully.");

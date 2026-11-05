@@ -182,6 +182,7 @@ public partial class BlockEditorDialog : Window
     public bool ResultBlockAllWebsites { get; private set; }
     public List<ScheduleRule> ResultSchedule { get; private set; } = new();
     public LockMode ResultLockMode { get; private set; } = LockMode.None;
+    public int ResultDelayedUnlockMinutes { get; private set; } = 15;
     public AllowanceConfig ResultAllowance { get; private set; } = new();
     public bool ResultSystemWide { get; private set; }
     public string? ResultPassword { get; private set; }
@@ -247,11 +248,6 @@ public partial class BlockEditorDialog : Window
 
         SelectTabByIndex(initialTab);
         Loaded += (s, e) => SelectTabByIndex(initialTab);
-        bool is24H = string.Equals(UiSettingsStore.Load().TimeFormat, "24h", StringComparison.OrdinalIgnoreCase);
-        if (QuickFillWeekdaysButton != null)
-        {
-            QuickFillWeekdaysButton.Content = FormatScheduleChipText(is24H);
-        }
 
         if (profile != null)
         {
@@ -279,6 +275,8 @@ public partial class BlockEditorDialog : Window
                 rbLocked.IsEnabled = false;
                 rbTyping.IsEnabled = false;
                 rbPassword.IsEnabled = false;
+                if (rbDelayedUnlock != null) rbDelayedUnlock.IsEnabled = false;
+                if (DelayedUnlockBorder != null) DelayedUnlockBorder.IsEnabled = false;
                 if (rbPomodoro != null) rbPomodoro.IsEnabled = false;
                 TimedLockBorder.IsEnabled = false;
                 if (PomodoroBorder != null) PomodoroBorder.IsEnabled = false;
@@ -390,6 +388,10 @@ public partial class BlockEditorDialog : Window
                     case LockMode.Password:
                         rbPassword.IsChecked = true;
                         CurrentPasswordPanel.Visibility = Visibility.Visible;
+                        break;
+                    case LockMode.DelayedUnlock:
+                        if (rbDelayedUnlock != null) rbDelayedUnlock.IsChecked = true;
+                        SetDelayedUnlockPreset(profile.DelayedUnlockMinutes > 0 ? profile.DelayedUnlockMinutes : 15);
                         break;
                     default:
                         rbUnlocked.IsChecked = true;
@@ -646,6 +648,13 @@ public partial class BlockEditorDialog : Window
 
     private void AddBlockedPattern_Click(object sender, RoutedEventArgs e)
     {
+        if (BlockedRules.Count + ExceptionRules.Count >= 500)
+        {
+            BlockedPatternErrorTextBlock.Text = "Maximum limit of 500 website rules reached per block.";
+            BlockedPatternErrorTextBlock.Visibility = Visibility.Visible;
+            return;
+        }
+
         string raw = BlockedPatternInput.Text;
         if (!WebRuleMatcher.TryNormalizePattern(raw, out string norm, out string? err))
         {
@@ -708,6 +717,13 @@ public partial class BlockEditorDialog : Window
         if (_isLockedMode)
         {
             DarkDialogWindow.Show("Exceptions cannot be added while this block is locked.", "Action Refused");
+            return;
+        }
+
+        if (BlockedRules.Count + ExceptionRules.Count >= 500)
+        {
+            ExceptionPatternErrorTextBlock.Text = "Maximum limit of 500 website rules reached per block.";
+            ExceptionPatternErrorTextBlock.Visibility = Visibility.Visible;
             return;
         }
 
@@ -839,11 +855,25 @@ public partial class BlockEditorDialog : Window
             return;
         }
 
+        if (BlockedRules.Count + ExceptionRules.Count >= 500)
+        {
+            MessageBox.Show(this, "Maximum limit of 500 website rules already reached for this block. Remove existing rules before importing new ones.", $"Import {listTitle}", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         int addedCount = 0;
         int alreadyInListCount = 0;
+        int cappedCount = 0;
+        const int maxLimit = 500;
 
         foreach (var pattern in patterns)
         {
+            if (BlockedRules.Count + ExceptionRules.Count >= maxLimit)
+            {
+                cappedCount++;
+                continue;
+            }
+
             if (!targetCollection.Contains(pattern, StringComparer.OrdinalIgnoreCase))
             {
                 targetCollection.Add(pattern);
@@ -862,6 +892,14 @@ public partial class BlockEditorDialog : Window
 
         var summary = new System.Text.StringBuilder();
         summary.AppendLine($"Successfully imported {addedCount} website(s) into {listTitle}.");
+        if (cappedCount > 0)
+        {
+            summary.AppendLine($"• {cappedCount} website(s) were omitted: maximum safe limit of 500 website rules reached per block to keep your app fast.");
+        }
+        if (cappedCount > 0)
+        {
+            summary.AppendLine($"• {cappedCount} website(s) were omitted: maximum safe limit of 500 website rules reached per block to keep your app fast.");
+        }
         if (alreadyInListCount > 0)
         {
             summary.AppendLine($"• {alreadyInListCount} entry/entries were already in your list.");
@@ -893,25 +931,6 @@ public partial class BlockEditorDialog : Window
     #endregion
 
     #region Schedule
-
-    private void QuickFillWeekdays_Click(object sender, RoutedEventArgs e)
-    {
-        bool is24H = string.Equals(UiSettingsStore.Load().TimeFormat, "24h", StringComparison.OrdinalIgnoreCase);
-        var row = new ScheduleRowItem
-        {
-            Mon = true,
-            Tue = true,
-            Wed = true,
-            Thu = true,
-            Fri = true,
-            Sat = false,
-            Sun = false,
-            FromText = is24H ? "08:00" : "8:00 AM",
-            ToText = is24H ? "17:00" : "5:00 PM"
-        };
-        ScheduleRows.Add(row);
-        ScheduleErrorTextBlock.Visibility = Visibility.Collapsed;
-    }
 
     private void AddScheduleRow_Click(object sender, RoutedEventArgs e)
     {
@@ -1050,6 +1069,35 @@ public partial class BlockEditorDialog : Window
         }
     }
 
+    private int _selectedDelayedMinutes = 15;
+
+    private void DelayedUnlockPreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag != null && int.TryParse(btn.Tag.ToString(), out int mins))
+        {
+            SetDelayedUnlockPreset(mins);
+        }
+    }
+
+    private void SetDelayedUnlockPreset(int minutes)
+    {
+        _selectedDelayedMinutes = minutes >= 15 ? minutes : 15;
+        UpdateDelayedPresetButtonStyles();
+    }
+
+    private void UpdateDelayedPresetButtonStyles()
+    {
+        if (BtnDelayed15m == null || BtnDelayed30m == null || BtnDelayed45m == null || BtnDelayed60m == null) return;
+
+        var secStyle = (Style)FindResource("SecondaryButton");
+        var priStyle = (Style)FindResource("PrimaryButton");
+
+        BtnDelayed15m.Style = _selectedDelayedMinutes == 15 ? priStyle : secStyle;
+        BtnDelayed30m.Style = _selectedDelayedMinutes == 30 ? priStyle : secStyle;
+        BtnDelayed45m.Style = _selectedDelayedMinutes == 45 ? priStyle : secStyle;
+        BtnDelayed60m.Style = _selectedDelayedMinutes == 60 ? priStyle : secStyle;
+    }
+
     private void StartTimedLockNow_Click(object sender, RoutedEventArgs e)
     {
         if (_isLockedMode) return;
@@ -1102,17 +1150,12 @@ public partial class BlockEditorDialog : Window
         ScheduleErrorTextBlock.Visibility = Visibility.Collapsed;
 
         // 3. Lock validation
-        LockMode lockMode = LockMode.None;
+        LockMode lockMode = _isLockedMode && _originalProfile != null ? _originalProfile.LockMode : LockMode.None;
         StartTimedLockMinutes = 0;
 
-        if (rbTimedLock.IsChecked == true)
+        if (!_isLockedMode)
         {
-            if (_isLockedMode)
-            {
-                StartTimedLockMinutes = 0;
-                lockMode = LockMode.None;
-            }
-            else
+            if (rbTimedLock.IsChecked == true)
             {
                 if (!int.TryParse(TimedLockDurationInput?.Text?.Trim(), out int val) || val <= 0)
                 {
@@ -1143,15 +1186,7 @@ public partial class BlockEditorDialog : Window
                 }
                 lockMode = LockMode.None;
             }
-        }
-        else if (rbPomodoro?.IsChecked == true)
-        {
-            if (_isLockedMode)
-            {
-                StartTimedLockMinutes = 0;
-                lockMode = LockMode.None;
-            }
-            else
+            else if (rbPomodoro?.IsChecked == true)
             {
                 int focus = int.TryParse(PomoFocusInput?.Text?.Trim(), out int f) && f > 0 ? f : 25;
                 int pbreak = int.TryParse(PomoBreakInput?.Text?.Trim(), out int b) && b > 0 ? b : 5;
@@ -1159,43 +1194,47 @@ public partial class BlockEditorDialog : Window
                 StartTimedLockMinutes = (focus * cycles) + (pbreak * Math.Max(0, cycles - 1));
                 lockMode = LockMode.None;
             }
-        }
-        else if (rbLocked.IsChecked == true)
-        {
-            if (rules.Count == 0)
+            else if (rbLocked.IsChecked == true)
             {
-                LockErrorTextBlock.Text = "Locked mode requires at least one schedule rule.";
-                LockErrorTextBlock.Visibility = Visibility.Visible;
-                return;
-            }
-            lockMode = LockMode.Locked;
-        }
-        else if (rbTyping.IsChecked == true)
-        {
-            lockMode = LockMode.TypingChallenge;
-        }
-        else if (rbPassword.IsChecked == true)
-        {
-            lockMode = LockMode.Password;
-            string newPwd = NewPasswordBox.Password;
-            string confirmPwd = ConfirmPasswordBox.Password;
-
-            if (!string.IsNullOrEmpty(newPwd))
-            {
-                if (newPwd != confirmPwd)
+                if (rules.Count == 0)
                 {
-                    LockErrorTextBlock.Text = "Passwords do not match.";
+                    LockErrorTextBlock.Text = "Locked mode requires at least one schedule rule.";
+                    LockErrorTextBlock.Visibility = Visibility.Visible;
+                    return;
+                }
+                lockMode = LockMode.Locked;
+            }
+            else if (rbTyping.IsChecked == true)
+            {
+                lockMode = LockMode.TypingChallenge;
+            }
+            else if (rbPassword.IsChecked == true)
+            {
+                lockMode = LockMode.Password;
+                string newPwd = NewPasswordBox.Password;
+                string confirmPwd = ConfirmPasswordBox.Password;
+
+                if (!string.IsNullOrEmpty(newPwd))
+                {
+                    if (newPwd != confirmPwd)
+                    {
+                        LockErrorTextBlock.Text = "Passwords do not match.";
+                        LockErrorTextBlock.Visibility = Visibility.Visible;
+                        NewPasswordBox.Focus();
+                        return;
+                    }
+                }
+                else if (!_hasExistingPassword)
+                {
+                    LockErrorTextBlock.Text = "A password is required for Password lock mode.";
                     LockErrorTextBlock.Visibility = Visibility.Visible;
                     NewPasswordBox.Focus();
                     return;
                 }
             }
-            else if (!_hasExistingPassword)
+            else if (rbDelayedUnlock != null && rbDelayedUnlock.IsChecked == true)
             {
-                LockErrorTextBlock.Text = "A password is required for Password lock mode.";
-                LockErrorTextBlock.Visibility = Visibility.Visible;
-                NewPasswordBox.Focus();
-                return;
+                lockMode = LockMode.DelayedUnlock;
             }
         }
         LockErrorTextBlock.Visibility = Visibility.Collapsed;
@@ -1210,6 +1249,7 @@ public partial class BlockEditorDialog : Window
             OnlyWithinSchedule = rbAllowanceInSchedule?.IsChecked == true
         };
         ResultLockMode = lockMode;
+        ResultDelayedUnlockMinutes = _selectedDelayedMinutes;
         ResultBlockAllWebsites = blockAll;
         ResultSystemWide = SystemWideCheckBox.IsChecked == true;
         ResultWebRules = GetCurrentWebRules();

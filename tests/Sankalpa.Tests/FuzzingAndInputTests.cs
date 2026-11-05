@@ -595,7 +595,7 @@ public class FuzzingAndInputTests
 
         var responseOverCap = Handle(requestOverCap, store);
         Assert.False(responseOverCap.Ok);
-        Assert.Contains("cannot have more than 200", responseOverCap.Error);
+        Assert.Contains("cannot have more than 500", responseOverCap.Error);
 
         // 2. Sending within the 200-rule cap (e.g. 100 unique with 100 duplicates = 200 items)
         var validBatch = new List<string>(200);

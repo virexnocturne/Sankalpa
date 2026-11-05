@@ -11,11 +11,17 @@ public class Worker : BackgroundService
     private readonly BlockerDatabase _db;
     private readonly HostsFileManager _hostsManager;
 
-    private BlockSession? _activeSession;
-    private Profile? _activeProfile;
-    private Stopwatch? _sessionStopwatch;
-    private TimeSpan _sessionInitialRemaining = TimeSpan.Zero;
-    private DateTime _sessionBaseSystemTime = DateTime.MinValue;
+    private class TrackedSession
+    {
+        public BlockSession Session { get; set; } = null!;
+        public Profile? Profile { get; set; }
+        public TimeSpan InitialRemaining { get; set; }
+        public Stopwatch Stopwatch { get; set; } = null!;
+        public DateTime BaseSystemTime { get; set; }
+    }
+
+    private readonly ConcurrentDictionary<int, TrackedSession> _trackedSessions = new();
+
 
     private readonly ConcurrentDictionary<string, string?> _originalFileNameCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<int, string?> _pidOriginalFileNameCache = new();
@@ -74,73 +80,78 @@ public class Worker : BackgroundService
     {
         try
         {
-            var session = _db.GetActiveOrUnendedSession();
-            if (session != null)
+            var sessions = _db.GetActiveSessions(includeUnendedExpired: true);
+            if (sessions.Count > 0)
             {
                 DateTime nowUtc = DateTime.UtcNow;
-                double remainingSeconds;
-
-                if (BlockSessionLogic.HasClockMovedBackwards(session, nowUtc))
+                foreach (var session in sessions)
                 {
-                    string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                    string warnMsg = $"[{timestamp}] [WARNING] System clock moved backwards into the past (StartUtc: {session.StartUtc:O}, NowUtc: {nowUtc:O}). Clock manipulation detected.";
-                    Console.WriteLine(warnMsg);
-                    _logger.LogWarning("{Message}", warnMsg);
+                    double remainingSeconds;
 
-                    // Clamp remaining time to session.DurationSeconds and adjust session.StartUtc to DateTime.UtcNow
-                    session.StartUtc = nowUtc;
-                    remainingSeconds = session.DurationSeconds;
-                }
-                else
-                {
-                    TimeSpan elapsedSinceStart = nowUtc - session.StartUtc;
-                    remainingSeconds = session.DurationSeconds - elapsedSinceStart.TotalSeconds;
-                }
-
-                if (remainingSeconds <= 0)
-                {
-                    if (nowUtc >= session.StartUtc.AddSeconds(session.DurationSeconds) && nowUtc >= session.StartUtc)
+                    if (BlockSessionLogic.HasClockMovedBackwards(session, nowUtc))
                     {
-                        _db.EndSession(session.Id);
+                        string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                        string warnMsg = $"[{timestamp}] [WARNING] System clock moved backwards into the past (StartUtc: {session.StartUtc:O}, NowUtc: {nowUtc:O}). Clock manipulation detected.";
+                        Console.WriteLine(warnMsg);
+                        _logger.LogWarning("{Message}", warnMsg);
 
-                        if (session.Locked)
+                        session.StartUtc = nowUtc;
+                        remainingSeconds = session.DurationSeconds;
+                    }
+                    else
+                    {
+                        TimeSpan elapsedSinceStart = nowUtc - session.StartUtc;
+                        remainingSeconds = session.DurationSeconds - elapsedSinceStart.TotalSeconds;
+                    }
+
+                    if (remainingSeconds <= 0)
+                    {
+                        if (nowUtc >= session.StartUtc.AddSeconds(session.DurationSeconds) && nowUtc >= session.StartUtc)
                         {
-                            SecurityHardener.UnlockCurrentProcess(out _);
-                            SecurityHardener.UnlockService(out _);
+                            _db.EndSession(session.Id);
+
+                            string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                            string msg = session.Locked
+                                ? $"[{timestamp}] Previous locked session for Profile {session.ProfileId} completed while the machine was powered down."
+                                : $"[{timestamp}] Previous session for Profile {session.ProfileId} expired during downtime.";
+                            Console.WriteLine(msg);
+                            _logger.LogInformation("{Message}", msg);
                         }
+                    }
+                    else
+                    {
+                        var prof = _db.GetProfileById(session.ProfileId);
+                        _trackedSessions[session.Id] = new TrackedSession
+                        {
+                            Session = session,
+                            Profile = prof,
+                            InitialRemaining = TimeSpan.FromSeconds(remainingSeconds),
+                            Stopwatch = Stopwatch.StartNew(),
+                            BaseSystemTime = DateTime.UtcNow
+                        };
 
                         string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                        string msg = session.Locked
-                            ? $"[{timestamp}] Previous locked session completed while the machine was powered down."
-                            : $"[{timestamp}] Previous session expired during downtime.";
+                        string msg = $"[{timestamp}] Restored active session on startup: Profile='{prof?.Name}', Remaining={remainingSeconds:F0}s (Locked: {session.Locked}).";
                         Console.WriteLine(msg);
                         _logger.LogInformation("{Message}", msg);
                     }
                 }
-                else
+
+                if (_trackedSessions.Values.Any(t => t.Session.Locked) && !SecurityHardener.IsLockedDown)
                 {
-                    _activeSession = session;
-                    _activeProfile = _db.GetProfileById(session.ProfileId);
-                    _sessionInitialRemaining = TimeSpan.FromSeconds(remainingSeconds);
-                    _sessionStopwatch = Stopwatch.StartNew();
-                    _sessionBaseSystemTime = DateTime.UtcNow;
-
-                    if (session.Locked && !SecurityHardener.IsLockedDown)
+                    SecurityHardener.LockdownCurrentProcess(out var secErr);
+                    SecurityHardener.LockdownService(out _);
+                    if (secErr == null)
                     {
-                        SecurityHardener.LockdownCurrentProcess(out var secErr);
-                        SecurityHardener.LockdownService(out _);
-                        if (secErr == null)
-                        {
-                            string secMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Sankalpa process & service DACLs locked down on boot. Terminate and stop access denied.";
-                            Console.WriteLine(secMsg);
-                            _logger.LogInformation("{Message}", secMsg);
-                        }
+                        string secMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Sankalpa process & service DACLs locked down on boot. Terminate and stop access denied.";
+                        Console.WriteLine(secMsg);
+                        _logger.LogInformation("{Message}", secMsg);
                     }
-
-                    string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                    string msg = $"[{timestamp}] Restored active session on startup: Profile='{_activeProfile?.Name}', Remaining={remainingSeconds:F0}s (Locked: {session.Locked}).";
-                    Console.WriteLine(msg);
-                    _logger.LogInformation("{Message}", msg);
+                }
+                else if (!_trackedSessions.Values.Any(t => t.Session.Locked) && SecurityHardener.IsLockedDown)
+                {
+                    SecurityHardener.UnlockCurrentProcess(out _);
+                    SecurityHardener.UnlockService(out _);
                 }
             }
             else
@@ -154,7 +165,8 @@ public class Worker : BackgroundService
             // Enforce active union (scheduled profiles + restored manual session) on startup
             DateTime localNow = DateTime.Now;
             var allProfiles = _db.ListProfiles();
-            var activeProfiles = allProfiles.Where(p => ProfileStateLogic.IsProfileActive(p, _activeSession, localNow, out _)).ToList();
+            var startupSessions = _trackedSessions.Values.Select(t => t.Session).ToList();
+            var activeProfiles = allProfiles.Where(p => ProfileStateLogic.IsProfileActiveWithSessions(p, startupSessions, localNow, out _)).ToList();
 
             var desiredDomains = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var p in activeProfiles)
@@ -210,8 +222,9 @@ public class Worker : BackgroundService
                 // Compute active profile set and enforce union of apps and hosts
                 DateTime localNow = DateTime.Now;
                 var allProfiles = _db.ListProfiles();
-                var activeProfiles = allProfiles.Where(p => ProfileStateLogic.IsProfileActive(p, _activeSession, localNow, out _)).ToList();
-                var (unionApps, _) = ProfileStateLogic.ComputeActiveUnion(allProfiles, _activeSession, localNow);
+                var activeSessions = _trackedSessions.Values.Select(t => t.Session).ToList();
+                var activeProfiles = allProfiles.Where(p => ProfileStateLogic.IsProfileActiveWithSessions(p, activeSessions, localNow, out _)).ToList();
+                var (unionApps, _) = ProfileStateLogic.ComputeActiveUnionWithSessions(allProfiles, activeSessions, localNow);
 
                 // Compute desired domain set: (SystemWide active profiles) UNION (fallback domains)
                 var desiredDomains = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -404,9 +417,7 @@ public class Worker : BackgroundService
                 Console.WriteLine(msg);
                 _logger.LogWarning("{Message}", msg);
 
-                _activeSession = null;
-                _activeProfile = null;
-                _sessionStopwatch = null;
+                _trackedSessions.Clear();
             }
             catch (Exception ex)
             {
@@ -417,113 +428,106 @@ public class Worker : BackgroundService
 
     private void SyncSessionState()
     {
-        var dbSession = _db.GetActiveSession();
+        var dbSessions = _db.GetActiveSessions();
+        var dbSessionIds = dbSessions.Select(s => s.Id).ToHashSet();
 
-        if (_activeSession == null && dbSession != null)
+        // 1. Detect new sessions started externally or via IPC
+        foreach (var dbSession in dbSessions)
         {
-            // A new session was started via CLI / UI
-            DateTime nowUtc = DateTime.UtcNow;
-            double remainingSeconds;
-            if (nowUtc < dbSession.StartUtc)
+            if (!_trackedSessions.ContainsKey(dbSession.Id))
             {
-                remainingSeconds = dbSession.DurationSeconds;
-            }
-            else
-            {
-                TimeSpan elapsed = nowUtc - dbSession.StartUtc;
-                remainingSeconds = dbSession.DurationSeconds - elapsed.TotalSeconds;
-            }
-
-            if (remainingSeconds > 0)
-            {
-                _activeSession = dbSession;
-                _activeProfile = _db.GetProfileById(dbSession.ProfileId);
-                _sessionInitialRemaining = TimeSpan.FromSeconds(remainingSeconds);
-                _sessionStopwatch = Stopwatch.StartNew();
-                _sessionBaseSystemTime = DateTime.UtcNow;
-
-                if (dbSession.Locked && !SecurityHardener.IsLockedDown)
+                DateTime nowUtc = DateTime.UtcNow;
+                double remainingSeconds;
+                if (nowUtc < dbSession.StartUtc)
                 {
-                    SecurityHardener.LockdownCurrentProcess(out var secErr);
-                    SecurityHardener.LockdownService(out _);
-                    if (secErr == null)
-                    {
-                        string secMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Sankalpa process & service DACLs locked down. Terminate and stop access denied.";
-                        Console.WriteLine(secMsg);
-                        _logger.LogInformation("{Message}", secMsg);
-                    }
+                    remainingSeconds = dbSession.DurationSeconds;
+                }
+                else
+                {
+                    TimeSpan elapsed = nowUtc - dbSession.StartUtc;
+                    remainingSeconds = dbSession.DurationSeconds - elapsed.TotalSeconds;
                 }
 
-                string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                string msg = $"[{ts}] Session started: Profile='{_activeProfile?.Name}', Remaining={remainingSeconds:F0}s (Locked: {dbSession.Locked}).";
-                Console.WriteLine(msg);
-                _logger.LogInformation("{Message}", msg);
+                if (remainingSeconds > 0)
+                {
+                    var prof = _db.GetProfileById(dbSession.ProfileId);
+                    _trackedSessions[dbSession.Id] = new TrackedSession
+                    {
+                        Session = dbSession,
+                        Profile = prof,
+                        InitialRemaining = TimeSpan.FromSeconds(remainingSeconds),
+                        Stopwatch = Stopwatch.StartNew(),
+                        BaseSystemTime = DateTime.UtcNow
+                    };
+
+                    string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    string msg = $"[{ts}] Session started: Profile='{prof?.Name}', Remaining={remainingSeconds:F0}s (Locked: {dbSession.Locked}).";
+                    Console.WriteLine(msg);
+                    _logger.LogInformation("{Message}", msg);
+                }
             }
         }
-        else if (_activeSession != null)
-        {
-            var currentInDb = _db.GetSessionById(_activeSession.Id);
-            if (currentInDb == null || currentInDb.EndedUtc != null)
-            {
-                if (SecurityHardener.IsLockedDown)
-                {
-                    SecurityHardener.UnlockCurrentProcess(out _);
-                    SecurityHardener.UnlockService(out _);
-                    string secMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Sankalpa process & service DACLs restored.";
-                    Console.WriteLine(secMsg);
-                    _logger.LogInformation("{Message}", secMsg);
-                }
 
-                // Session was ended via CLI or externally
+        // 2. Check existing tracked sessions for completion or external termination
+        foreach (var kvp in _trackedSessions.ToList())
+        {
+            int sId = kvp.Key;
+            var tracked = kvp.Value;
+
+            if (!dbSessionIds.Contains(sId))
+            {
                 string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                string msg = $"[{ts}] Active session for '{_activeProfile?.Name}' has been stopped.";
+                string msg = $"[{ts}] Active session for '{tracked.Profile?.Name}' has been stopped.";
                 Console.WriteLine(msg);
                 _logger.LogInformation("{Message}", msg);
-
-                _activeSession = null;
-                _activeProfile = null;
-                _sessionStopwatch = null;
-                return;
+                _trackedSessions.TryRemove(sId, out _);
+                continue;
             }
 
-            // Monotonic clock tracking
-            TimeSpan monotonicElapsed = _sessionStopwatch!.Elapsed;
-            TimeSpan remaining = _sessionInitialRemaining - monotonicElapsed;
+            TimeSpan monotonicElapsed = tracked.Stopwatch.Elapsed;
+            TimeSpan remaining = tracked.InitialRemaining - monotonicElapsed;
 
-            // System clock jump / drift detection (> 5 seconds compared to monotonic clock)
-            TimeSpan systemElapsed = DateTime.UtcNow - _sessionBaseSystemTime;
+            TimeSpan systemElapsed = DateTime.UtcNow - tracked.BaseSystemTime;
             double driftSeconds = Math.Abs((systemElapsed - monotonicElapsed).TotalSeconds);
             if (driftSeconds > 5.0)
             {
                 string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                string warnMsg = $"[{ts}] [WARNING] System clock jump detected! Drift is {driftSeconds:F1}s compared to monotonic clock.";
+                string warnMsg = $"[{ts}] [WARNING] System clock jump detected for profile '{tracked.Profile?.Name}'! Drift is {driftSeconds:F1}s compared to monotonic clock.";
                 Console.WriteLine(warnMsg);
                 _logger.LogWarning("{Message}", warnMsg);
             }
 
             if (remaining <= TimeSpan.Zero)
             {
-                if (SecurityHardener.IsLockedDown)
-                {
-                    SecurityHardener.UnlockCurrentProcess(out _);
-                    SecurityHardener.UnlockService(out _);
-                    string secMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Sankalpa process & service DACLs restored.";
-                    Console.WriteLine(secMsg);
-                    _logger.LogInformation("{Message}", secMsg);
-                }
-
-                // Monotonic session timer completed
-                _db.EndSession(_activeSession.Id);
-
+                _db.EndSession(sId);
                 string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                string msg = $"[{ts}] Active session for '{_activeProfile?.Name}' has completed and ended.";
+                string msg = $"[{ts}] Active session for '{tracked.Profile?.Name}' has completed and ended.";
                 Console.WriteLine(msg);
                 _logger.LogInformation("{Message}", msg);
-
-                _activeSession = null;
-                _activeProfile = null;
-                _sessionStopwatch = null;
+                _trackedSessions.TryRemove(sId, out _);
             }
+        }
+
+        // 3. Process & service DACL lockdown maintenance
+        bool anySessionLocked = _trackedSessions.Values.Any(t => t.Session.Locked);
+        if (anySessionLocked && !SecurityHardener.IsLockedDown)
+        {
+            SecurityHardener.LockdownCurrentProcess(out var secErr);
+            SecurityHardener.LockdownService(out _);
+            if (secErr == null)
+            {
+                string secMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Sankalpa process & service DACLs locked down. Terminate and stop access denied.";
+                Console.WriteLine(secMsg);
+                _logger.LogInformation("{Message}", secMsg);
+            }
+        }
+        else if (!anySessionLocked && SecurityHardener.IsLockedDown)
+        {
+            SecurityHardener.UnlockCurrentProcess(out _);
+            SecurityHardener.UnlockService(out _);
+            string secMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Sankalpa process & service DACLs restored.";
+            Console.WriteLine(secMsg);
+            _logger.LogInformation("{Message}", secMsg);
         }
     }
 
@@ -572,8 +576,9 @@ public class Worker : BackgroundService
         List<Profile> allProfiles,
         DateTime localNow)
     {
-        bool isLockedActive = _activeSession != null && _activeSession.Locked;
-        var activeProfiles = allProfiles.Where(p => ProfileStateLogic.IsProfileActive(p, _activeSession, localNow, out _)).ToList();
+        bool isLockedActive = _trackedSessions.Values.Any(t => t.Session.Locked);
+        var activeSessions = _trackedSessions.Values.Select(t => t.Session).ToList();
+        var activeProfiles = allProfiles.Where(p => ProfileStateLogic.IsProfileActiveWithSessions(p, activeSessions, localNow, out _)).ToList();
         var currentPids = new HashSet<int>();
         string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
@@ -702,7 +707,7 @@ public class Worker : BackgroundService
                                 ? "Sankalpa Tamper Protection"
                                 : (activeProfiles
                                     .FirstOrDefault(p => ProcessMatcher.IsBlocked(processName, p.BlockedProcesses, originalFileName))
-                                    ?.Name ?? _activeProfile?.Name ?? "Default");
+                                    ?.Name ?? "Default");
 
                             bool dispatched = ServiceNotificationDispatcher.DispatchNotification("App", processName, matchingProfileName);
 
