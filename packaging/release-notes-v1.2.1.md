@@ -26,9 +26,14 @@ This release resolves two critical UX issues in block locking and unlocking:
 2. **Portable Standalone Executable**:
    - Download **`Sankalpa.exe`** for a standalone portable executable (self-contained win-x64 with .NET 8 runtime).
 
+3. **Browser Companion Extension**:
+   - Download **`sankalpa-extension-v1.2.0.zip`** for manual extraction and loading unpacked in Chrome (`chrome://extensions`), Edge (`edge://extensions`), Brave, or Firefox (`about:debugging`).
+   - Alternatively, open `Sankalpa.exe`, click the extension pill in the status bar, and click **"Open folder"** to load the bundled extension directly.
+
 ---
 
 ### 🔒 Checksums (SHA-256)
 
 - **`Sankalpa-Setup-1.2.1.exe`**: `400F5B780B521CB9B91DFDF573A547A5D6304B0DDF9300E684B020360E11AD9C`
 - **`Sankalpa.exe`**: `C7FB702B56799703E52E9A7B17690D4FF7F138F1E7AC16111E4A94CAF64572C0`
+- **`sankalpa-extension-v1.2.0.zip`**: `E0E27ABF25C9E6D74C63A67180CFD83DFCB68A4340A54620C82D97518862EA3E`
