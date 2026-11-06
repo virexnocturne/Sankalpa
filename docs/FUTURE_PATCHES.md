@@ -278,6 +278,90 @@ This document tracks planned bug fixes, regression repairs, and behavioral patch
 
 ---
 
+### 10. Scheduled Block Deactivates Blocking Outside Scheduled Window Even When Toggled "ON"
+
+- **Status**: `Planned`
+- **Priority**: `High`
+- **Category**: Scheduling Lifecycle, Profile State Machine & User Mental Model Alignment
+- **Affected Components**:
+  - `src/Blocker.Core/ProfileStateLogic.cs` (`IsProfileActive`, `IsProfileActiveWithSessions`, `IsProfileLockedNow`)
+  - `src/Blocker.App/ProfileViewModel.cs` (`CanToggle`, `CanEdit`, `IsActive`)
+  - `src/Blocker.App/MainViewModel.cs` (`ToggleProfile`)
+
+- **Description / Symptoms**:
+  - When a block profile has a configured schedule (e.g., Weekdays 9:00 AM – 5:00 PM), once the scheduled window concludes (e.g., at 5:01 PM), the profile completely stops enforcing its website and application blocks, even though the profile's master toggle switch remains visibly turned "ON" in the dashboard.
+  - Users expect that when a schedule window ends, the block should remain active and enforce blocking rules as long as the toggle is "ON", but become **unlocked and editable** so users can adjust rules or manually switch it "OFF" if they choose.
+  - When the scheduled window arrives again the following day, regardless of whether the user turned the block off or kept it on, the scheduled lock must automatically engage, enforce rules, and enter a strict locked/uneditable state.
+
+- **Root Cause Analysis**:
+  1. In `src/Blocker.Core/ProfileStateLogic.cs` (`IsProfileActive`):
+     ```csharp
+     if (profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, localNow))
+     {
+         activeReason = "Schedule";
+         return true;
+     }
+
+     if (!profile.Enabled)
+     {
+         activeReason = "None";
+         return false;
+     }
+
+     if (profile.Schedule == null || profile.Schedule.Count == 0)
+     {
+         activeReason = "AlwaysOn";
+         return true;
+     }
+
+     activeReason = "None";
+     return false;
+     ```
+  2. Notice that if `profile.Schedule != null && profile.Schedule.Count > 0`, but `ScheduleLogic.IsActive` is `false` (the current time is outside the scheduled window):
+     - Line 29 evaluates `if (profile.Schedule == null || profile.Schedule.Count == 0)`, which is `false`.
+     - Execution falls straight to line 35: `activeReason = "None"; return false;`.
+  3. Consequently, any profile with a defined schedule is forced completely inactive outside its scheduled hours, completely ignoring `profile.Enabled == true`.
+  4. In `IsProfileLockedNow`:
+     ```csharp
+     if (profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, localNow))
+     {
+         return true;
+     }
+     ```
+     During the schedule, the profile is strictly locked. Outside the schedule, `ScheduleLogic.IsActive` is false, meaning the profile is already unlocked—but because `IsProfileActive` returned false, no blocking rules are applied!
+
+- **Proposed Fix**:
+  1. **Decouple Schedule Enforcement from Manual State**:
+     - In `ProfileStateLogic.cs`, if `profile.Enabled == true`, the profile should remain active (`activeReason = "AlwaysOn"` or `"Manual"`) even when outside of its scheduled window:
+       ```csharp
+       // 1. If currently inside active schedule window -> strictly active
+       if (profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, localNow))
+       {
+           activeReason = "Schedule";
+           return true;
+       }
+
+       // 2. If manually disabled outside schedule -> inactive
+       if (!profile.Enabled)
+       {
+           activeReason = "None";
+           return false;
+       }
+
+       // 3. If enabled (whether schedule is configured or not) -> active outside schedule window
+       activeReason = "AlwaysOn";
+       return true;
+       ```
+  2. **Differentiate Lock State from Active State**:
+     - When outside the schedule window:
+       - Because `ScheduleLogic.IsActive == false`, `IsProfileLockedNow` evaluates to `false` (assuming `LockMode == None` or challenge-based).
+       - The block remains **Active** (rules enforced), **Unlocked** (toggle switch enabled), and **Editable** (user can click Edit or toggle it off).
+  3. **Guaranteed Next-Day Automatic Schedule Activation**:
+     - When the clock enters the scheduled window tomorrow, `ScheduleLogic.IsActive` becomes `true`.
+     - Line 1 evaluates first: `activeReason = "Schedule"; return true;` regardless of whether `profile.Enabled` was toggled off, and `IsProfileLockedNow` returns `true`, locking the block down automatically.
+
+---
+
 ## ✅ Resolved & Verified Patches (Shipped)
 
 ### 1. Scheduled Block in Extension Does Not Show "Locked" Badge During Active Schedule
