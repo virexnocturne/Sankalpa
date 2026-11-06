@@ -121,6 +121,24 @@ public class MainViewModel : ViewModelBase
 
     public bool IsBlocksViewActive => !_isSettingsViewActive && !_isMeditationViewActive;
 
+    private bool _isShortcutsExpanded;
+    public bool IsShortcutsExpanded
+    {
+        get => _isShortcutsExpanded;
+        set
+        {
+            if (SetProperty(ref _isShortcutsExpanded, value))
+            {
+                OnPropertyChanged(nameof(ShortcutsToggleText));
+                _uiSettings.IsKeyboardShortcutsExpanded = value;
+                UiSettingsStore.Save(_uiSettings);
+            }
+        }
+    }
+
+    public string ShortcutsToggleText => IsShortcutsExpanded ? "Collapse shortcuts" : "Expand shortcuts (10)";
+    public ICommand ToggleShortcutsExpandedCommand { get; }
+
     public string Theme
     {
         get => _theme;
@@ -761,6 +779,8 @@ public class MainViewModel : ViewModelBase
         _accentColor = _uiSettings.AccentColor;
         _cardDensity = _uiSettings.CardDensity;
         _timeFormat = _uiSettings.TimeFormat;
+        _isShortcutsExpanded = _uiSettings.IsKeyboardShortcutsExpanded;
+        ToggleShortcutsExpandedCommand = new RelayCommand(() => IsShortcutsExpanded = !IsShortcutsExpanded);
 
         // Commands
         Meditation = new MeditationViewModel(_pipeClient);

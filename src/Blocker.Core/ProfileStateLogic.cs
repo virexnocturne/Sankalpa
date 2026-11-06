@@ -26,14 +26,8 @@ public static class ProfileStateLogic
             return false;
         }
 
-        if (profile.Schedule == null || profile.Schedule.Count == 0)
-        {
-            activeReason = "AlwaysOn";
-            return true;
-        }
-
-        activeReason = "None";
-        return false;
+        activeReason = "AlwaysOn";
+        return true;
     }
 
     public static bool IsProfileActiveWithSessions(Profile profile, IEnumerable<BlockSession>? activeSessions, DateTime localNow, out string activeReason)

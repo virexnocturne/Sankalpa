@@ -1174,7 +1174,55 @@
                     <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                             BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="20" Margin="0,0,0,24">
                         <StackPanel>
-                            <!-- Ctrl + B -->
+                            <!-- Clickable Expander Header -->
+                            <Button Command="{Binding ToggleShortcutsExpandedCommand}"
+                                    Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="Transparent">
+                                            <ContentPresenter />
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="System Navigation &amp; Productivity Hotkeys" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
+                                        <TextBlock Text="Quick reference for global shortcuts across Sankalpa."
+                                                   FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                                    </StackPanel>
+                                    <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                            BorderThickness="1" CornerRadius="{DynamicResource RadiusButton}" Padding="10,6" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding ShortcutsToggleText}" FontSize="{DynamicResource FontSize12}"
+                                                       Foreground="{DynamicResource Accent}" FontWeight="SemiBold" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                            <Path Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Fill="{DynamicResource Accent}">
+                                                <Path.Style>
+                                                    <Style TargetType="Path">
+                                                        <Setter Property="Data" Value="{DynamicResource IconChevronDown}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsShortcutsExpanded}" Value="True">
+                                                                <Setter Property="Data" Value="{DynamicResource IconChevronUp}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Path.Style>
+                                            </Path>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Button>
+
+                            <!-- Collapsible Shortcuts List -->
+                            <StackPanel Visibility="{Binding IsShortcutsExpanded, Converter={StaticResource BoolToVis}}" Margin="0,16,0,0">
+                                <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,16" />
+
+                                <!-- Ctrl + B -->
                             <Grid Margin="0,0,0,12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -1381,6 +1429,7 @@
                                                Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
                                 </Border>
                             </Grid>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

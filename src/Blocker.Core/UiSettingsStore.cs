@@ -29,6 +29,7 @@ public class UiSettings
     public string MeditationLockMode { get; set; } = "Locked";
     public string MeditationSoundscape { get; set; } = "Rain";
     public string? MeditationPasswordHash { get; set; }
+    public bool IsKeyboardShortcutsExpanded { get; set; } = false;
 
     // Backward compatibility helper properties for legacy extension sync callers if needed
     [JsonIgnore]
@@ -307,3 +308,4 @@ public static class UiSettingsStore
         }
     }
 }
+

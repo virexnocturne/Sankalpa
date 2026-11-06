@@ -190,6 +190,8 @@ public partial class ZenShieldWindow : Window
 
     private bool _isAllowedAppMode;
 
+    private bool _isSnippingActive;
+
     private IntPtr _lastAllowedAppHwnd = IntPtr.Zero;
 
     private readonly HashSet<string> _allowedAppProcessNames = new(StringComparer.OrdinalIgnoreCase);
@@ -502,6 +504,10 @@ public partial class ZenShieldWindow : Window
             try
             {
                 _keyboardHook = new LowLevelKeyboardHook();
+                _keyboardHook.OnSnippingRequested = () =>
+                {
+                    Dispatcher.InvokeAsync(YieldTopmostForSnipping);
+                };
                 _keyboardHook.Start();
             }
             catch (Exception ex)
@@ -1174,10 +1180,20 @@ public partial class ZenShieldWindow : Window
                     return;
                 }
 
-                if (string.Equals(procName, "SnippingTool", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(procName, "ScreenClippingHost", StringComparison.OrdinalIgnoreCase))
+                bool isClippingProc = string.Equals(procName, "SnippingTool", StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(procName, "ScreenClippingHost", StringComparison.OrdinalIgnoreCase);
+
+                if (isClippingProc)
                 {
+                    if (!_isSnippingActive || Topmost)
+                    {
+                        YieldTopmostForSnipping();
+                    }
                     return;
+                }
+                else if (_isSnippingActive)
+                {
+                    RestoreTopmostAfterSnipping();
                 }
 
                 if (_isAllowedAppMode &&
@@ -1212,6 +1228,53 @@ public partial class ZenShieldWindow : Window
         catch (Exception ex)
         {
             Debug.WriteLine($"[ZenShield] Watchdog error: {ex.Message}");
+        }
+    }
+
+    private void YieldTopmostForSnipping()
+    {
+        _isSnippingActive = true;
+        if (Topmost)
+        {
+            Topmost = false;
+            var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (handle != IntPtr.Zero)
+            {
+                SetWindowPos(handle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
+            foreach (var backdrop in _secondaryBackdrops)
+            {
+                backdrop.Topmost = false;
+                var secH = new System.Windows.Interop.WindowInteropHelper(backdrop).Handle;
+                if (secH != IntPtr.Zero)
+                {
+                    SetWindowPos(secH, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                }
+            }
+        }
+    }
+
+    private void RestoreTopmostAfterSnipping()
+    {
+        _isSnippingActive = false;
+        if (!_isAllowedAppMode && !Topmost)
+        {
+            Topmost = true;
+            var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (handle != IntPtr.Zero)
+            {
+                SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                SetForegroundWindow(handle);
+            }
+            foreach (var backdrop in _secondaryBackdrops)
+            {
+                backdrop.Topmost = true;
+                var secH = new System.Windows.Interop.WindowInteropHelper(backdrop).Handle;
+                if (secH != IntPtr.Zero)
+                {
+                    SetWindowPos(secH, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                }
+            }
         }
     }
 

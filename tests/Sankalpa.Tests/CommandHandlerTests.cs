@@ -1108,13 +1108,16 @@ public class CommandHandlerTests
         var data = JsonSerializer.Deserialize<ActiveWebRulesResponse>(resp.Data!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         Assert.NotNull(data);
 
-        // Not currently active, so activeProfiles should be empty
-        Assert.Empty(data.ActiveProfiles);
+        // Under Patch 10: Profile is enabled, so it remains active (blocking) outside the schedule window, but unlocked & editable
+        var activeProf = Assert.Single(data.ActiveProfiles);
+        Assert.Equal("OffScheduleBlock", activeProf.Name);
+        Assert.True(activeProf.Active);
+        Assert.False(activeProf.Locked);
 
-        // In allProfiles, it should be inactive and not locked
+        // In allProfiles, it should be active and not locked
         var summaryProfile = Assert.Single(data.AllProfiles);
         Assert.Equal("OffScheduleBlock", summaryProfile.Name);
-        Assert.False(summaryProfile.Active);
+        Assert.True(summaryProfile.Active);
         Assert.False(summaryProfile.Locked);
     }
 

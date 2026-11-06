@@ -117,6 +117,12 @@ public sealed class LowLevelKeyboardHook : IDisposable
         }
     }
 
+    /// <summary>
+    /// Optional callback invoked when the user triggers Win + Shift + S to snip the screen,
+    /// allowing lockdown shells to immediately yield topmost z-order to ScreenClippingHost.
+    /// </summary>
+    public Action? OnSnippingRequested { get; set; }
+
     public LowLevelKeyboardHook()
     {
         _hookProc = HookCallback;
@@ -259,10 +265,21 @@ public sealed class LowLevelKeyboardHook : IDisposable
                 {
                     try
                     {
+                        OnSnippingRequested?.Invoke();
+                    }
+                    catch { }
+
+                    try
+                    {
                         Process.Start(new ProcessStartInfo("ms-screenclip:") { UseShellExecute = true });
                     }
                     catch
                     {
+                        try
+                        {
+                            Process.Start(new ProcessStartInfo("snippingtool.exe", "/clip") { UseShellExecute = true });
+                        }
+                        catch { }
                     }
                 }
                 return (IntPtr)1;

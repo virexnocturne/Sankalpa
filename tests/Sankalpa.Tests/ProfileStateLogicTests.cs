@@ -167,8 +167,17 @@ public class ProfileStateLogicTests
 
         DateTime tueDuring = new DateTime(2026, 11, 3, 11, 0, 0); // Tuesday
         bool active2 = ProfileStateLogic.IsProfileActive(profile, null, tueDuring, out string reason2);
-        Assert.False(active2);
-        Assert.Equal("None", reason2);
+        // Under Patch 10: outside schedule window, an enabled profile remains active (AlwaysOn) but unlocked & editable
+        Assert.True(active2);
+        Assert.Equal("AlwaysOn", reason2);
+
+        // Outside schedule window, profile is unlocked
+        bool lockedOutside = ProfileStateLogic.IsProfileLockedNow(profile, null, tueDuring);
+        Assert.False(lockedOutside);
+
+        // Inside schedule window, profile is strictly locked
+        bool lockedInside = ProfileStateLogic.IsProfileLockedNow(profile, null, monDuring);
+        Assert.True(lockedInside);
     }
 
     [Fact]

@@ -81,6 +81,12 @@ public partial class AppearanceDialog : Window
         // Load Meditation & Lockdown Warning preference
         MeditationWarningToggle.IsChecked = !_settings.SuppressMeditationStartWarning;
 
+        // Load Keyboard Shortcuts Expanded state
+        bool isShortcutsExp = _settings.IsKeyboardShortcutsExpanded;
+        ShortcutsContainer.Visibility = isShortcutsExp ? Visibility.Visible : Visibility.Collapsed;
+        ShortcutsToggleTextBlock.Text = isShortcutsExp ? "Collapse shortcuts" : "Expand shortcuts";
+        ShortcutsChevronPath.Data = (System.Windows.Media.Geometry)FindResource(isShortcutsExp ? "IconChevronUp" : "IconChevronDown");
+
         _isInitializing = false;
     }
 
@@ -116,6 +122,16 @@ public partial class AppearanceDialog : Window
         if (_isInitializing) return;
 
         _settings.SuppressMeditationStartWarning = MeditationWarningToggle.IsChecked != true;
+        UiSettingsStore.Save(_settings);
+    }
+
+        private void ToggleShortcuts_Click(object sender, RoutedEventArgs e)
+    {
+        bool isExpanded = ShortcutsContainer.Visibility != Visibility.Visible;
+        ShortcutsContainer.Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed;
+        ShortcutsToggleTextBlock.Text = isExpanded ? "Collapse shortcuts" : "Expand shortcuts";
+        ShortcutsChevronPath.Data = (System.Windows.Media.Geometry)FindResource(isExpanded ? "IconChevronUp" : "IconChevronDown");
+        _settings.IsKeyboardShortcutsExpanded = isExpanded;
         UiSettingsStore.Save(_settings);
     }
 

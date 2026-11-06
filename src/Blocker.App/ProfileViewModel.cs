@@ -222,11 +222,12 @@ public class ProfileViewModel : ViewModelBase
     public string ScheduleColText => Schedule.Count == 0 ? "Blocked at all times" : ScheduleSummary;
     public string LockColText => (IsSessionRunning && IsSessionLocked)
         ? "Complete Lock 🔒"
-        : (Schedule.Count > 0 && (LockedNow || IsActive))
+        : (Schedule.Count > 0 && LockedNow)
             ? "Schedule 🔒"
             : LockMode switch
             {
-                LockMode.Locked => "Schedule 🔒",
+                LockMode.HardLocked => "Locked 🔒",
+                LockMode.Locked => "Locked 🔒",
                 LockMode.Password => "Password 🔒",
                 LockMode.TypingChallenge => "Challenge 🔒",
                 LockMode.DelayedUnlock => $"Delay ({DelayedUnlockMinutes}m) ⏳",
@@ -321,13 +322,21 @@ public class ProfileViewModel : ViewModelBase
         {
             if (IsActive)
             {
-                if (NextChangeLocal.HasValue)
+                if (ActiveReason == "Schedule" && NextChangeLocal.HasValue)
                 {
                     return $"Active now until {UiLogic.FormatTime(NextChangeLocal.Value, TimeFormat)}";
                 }
                 if (ActiveReason == "AlwaysOn")
                 {
+                    if (Schedule.Count > 0 && NextChangeLocal.HasValue)
+                    {
+                        return $"Active • Next window: {UiLogic.FormatTimeWithDay(NextChangeLocal.Value, TimeFormat)}";
+                    }
                     return "Active now (always)";
+                }
+                if (NextChangeLocal.HasValue)
+                {
+                    return $"Active now until {UiLogic.FormatTime(NextChangeLocal.Value, TimeFormat)}";
                 }
                 if (ActiveReason == "Manual")
                 {
