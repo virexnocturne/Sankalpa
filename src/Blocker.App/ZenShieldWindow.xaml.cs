@@ -146,6 +146,7 @@ public partial class ZenShieldWindow : Window
     private const int SW_HIDE = 0;
     private const int SW_SHOW = 5;
     private const int SW_RESTORE = 9;
+    private const int SW_FORCEMINIMIZE = 11;
 
     public static void SetTaskbarVisibility(bool visible)
     {
@@ -192,6 +193,8 @@ public partial class ZenShieldWindow : Window
     private IntPtr _lastAllowedAppHwnd = IntPtr.Zero;
 
     private readonly HashSet<string> _allowedAppProcessNames = new(StringComparer.OrdinalIgnoreCase);
+
+    private int _unauthorizedBreachCount;
 
     public string? PasswordHash { get; set; }
 
@@ -652,6 +655,7 @@ public partial class ZenShieldWindow : Window
     public void SwitchToAllowedApp(WhitelistedAppItem app)
 
     {
+        _unauthorizedBreachCount = 0;
 
         // 1. Try to activate existing process window or launch executable
 
@@ -830,6 +834,7 @@ public partial class ZenShieldWindow : Window
     public void RestoreZenScreen()
     {
         _isAllowedAppMode = false;
+        _unauthorizedBreachCount = 0;
 
         if (_miniHudWindow != null)
         {
@@ -846,6 +851,7 @@ public partial class ZenShieldWindow : Window
         if (mainHandle != IntPtr.Zero)
         {
             SetWindowPos(mainHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            SetForegroundWindow(mainHandle);
         }
 
         foreach (var backdrop in _secondaryBackdrops)
@@ -1119,10 +1125,15 @@ public partial class ZenShieldWindow : Window
     {
         try
         {
-            // 1. Suppress MultitaskingViewFrame (Windows Task View handles) continuously
+            // 1. Continuously re-assert taskbar suppression across primary and secondary displays.
+            // When an allowed app like notepad runs, Explorer automatically unhides Shell_TrayWnd;
+            // the watchdog must continuously ensure it remains hidden (SW_HIDE).
+            SetTaskbarVisibility(false);
+
+            // 2. Suppress MultitaskingViewFrame (Windows Task View handles) continuously
             SuppressTaskView();
 
-            // 2. Active window watchdog
+            // 3. Active window watchdog
             IntPtr fgHwnd = GetForegroundWindow();
             if (fgHwnd == IntPtr.Zero) return;
 
@@ -1131,6 +1142,7 @@ public partial class ZenShieldWindow : Window
 
             if (fgPid == currentPid)
             {
+                _unauthorizedBreachCount = 0;
                 return; // Whitelisted self / dialogs / Mini-HUD
             }
 
@@ -1155,21 +1167,47 @@ public partial class ZenShieldWindow : Window
 
             if (!string.IsNullOrEmpty(procName))
             {
+                if (string.Equals(procName, "Sankalpa", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(procName, "Sankalpa.exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    _unauthorizedBreachCount = 0;
+                    return;
+                }
+
                 if (string.Equals(procName, "SnippingTool", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(procName, "ScreenClippingHost", StringComparison.OrdinalIgnoreCase))
                 {
                     return;
                 }
 
-                if (_isAllowedAppMode && _allowedAppProcessNames.Contains(procName))
+                if (_isAllowedAppMode &&
+                    (_allowedAppProcessNames.Contains(procName) || _allowedAppProcessNames.Contains(procName + ".exe")))
                 {
                     _lastAllowedAppHwnd = fgHwnd;
+                    _unauthorizedBreachCount = 0;
                     return;
                 }
             }
 
-            // Foreground is neither allowed app nor whitelisted tool: enforce focus
-            EnforceFocus();
+            // fgHwnd is neither Sankalpa.exe nor in _allowedAppProcessNames (and not SnippingTool/ScreenClippingHost)
+            // Actively suppress the unauthorized foreground window immediately:
+            ShowWindow(fgHwnd, SW_FORCEMINIMIZE);
+            ShowWindow(fgHwnd, SW_HIDE);
+
+            _unauthorizedBreachCount++;
+
+            // If the allowed app is no longer valid or if unauthorized apps repeatedly breach,
+            // re-assert ZenShieldWindow as Topmost = true (RestoreZenScreen()) to immediately cover the screen with the Zen Shield!
+            if (IsAllowedAppValid() && _unauthorizedBreachCount < 3)
+            {
+                ShowWindow(_lastAllowedAppHwnd, SW_RESTORE);
+                SetForegroundWindow(_lastAllowedAppHwnd);
+            }
+            else
+            {
+                _unauthorizedBreachCount = 0;
+                RestoreZenScreen();
+            }
         }
         catch (Exception ex)
         {
@@ -1191,15 +1229,64 @@ public partial class ZenShieldWindow : Window
         catch { }
     }
 
+    private bool IsAllowedAppValid()
+    {
+        if (!_isAllowedAppMode)
+        {
+            return false;
+        }
+
+        if (_lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
+        {
+            try
+            {
+                GetWindowThreadProcessId(_lastAllowedAppHwnd, out uint pid);
+                if (pid != 0)
+                {
+                    using var proc = Process.GetProcessById((int)pid);
+                    if (!proc.HasExited)
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // Fallback: check if any allowed app has an active top-level window
+        foreach (var allowedName in _allowedAppProcessNames)
+        {
+            try
+            {
+                var procs = Process.GetProcessesByName(allowedName);
+                foreach (var p in procs)
+                {
+                    using (p)
+                    {
+                        if (p.MainWindowHandle != IntPtr.Zero && IsWindow(p.MainWindowHandle))
+                        {
+                            _lastAllowedAppHwnd = p.MainWindowHandle;
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        return false;
+    }
+
     private void EnforceFocus()
     {
-        if (_isAllowedAppMode && _lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
+        if (IsAllowedAppValid() && _unauthorizedBreachCount < 3)
         {
             ShowWindow(_lastAllowedAppHwnd, SW_RESTORE);
             SetForegroundWindow(_lastAllowedAppHwnd);
         }
         else
         {
+            _unauthorizedBreachCount = 0;
             RestoreZenScreen();
         }
     }

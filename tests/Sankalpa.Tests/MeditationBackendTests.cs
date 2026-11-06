@@ -402,4 +402,88 @@ public class MeditationBackendTests : IDisposable
         Assert.Contains("screenclippinghost", ProtectedProcesses.Names);
         Assert.Contains("snippingtool", ProtectedProcesses.Names);
     }
+
+    [Fact]
+    public void Worker_IsAppAllowed_CorrectlyEnforcesWhitelistAndToolExceptions()
+    {
+        var allowedList = new List<string> { "notepad.exe", "code" };
+
+        // Whitelisted apps with or without .exe
+        Assert.True(Blocker.Service.Worker.IsAppAllowed("notepad", "notepad.exe", allowedList));
+        Assert.True(Blocker.Service.Worker.IsAppAllowed("code", "Code.exe", allowedList));
+
+        // Built-in allowed tools
+        Assert.True(Blocker.Service.Worker.IsAppAllowed("snippingtool", "SnippingTool.exe", allowedList));
+        Assert.True(Blocker.Service.Worker.IsAppAllowed("screenclippinghost", "ScreenClippingHost.exe", allowedList));
+
+        // Unauthorized apps
+        Assert.False(Blocker.Service.Worker.IsAppAllowed("chrome", "chrome.exe", allowedList));
+        Assert.False(Blocker.Service.Worker.IsAppAllowed("discord", "Discord.exe", allowedList));
+        Assert.False(Blocker.Service.Worker.IsAppAllowed("cmd", "cmd.exe", allowedList));
+    }
+
+    [Fact]
+    public void Worker_MeditationWhitelistSessionCheck_Integrity()
+    {
+        var dir = AppContext.BaseDirectory;
+        string? repoRoot = null;
+        var cur = new DirectoryInfo(dir);
+        while (cur != null)
+        {
+            if (File.Exists(Path.Combine(cur.FullName, "Blocker.sln")))
+            {
+                repoRoot = cur.FullName;
+                break;
+            }
+            cur = cur.Parent;
+        }
+
+        Assert.NotNull(repoRoot);
+        string workerPath = Path.Combine(repoRoot!, "src", "Blocker.Service", "Worker.cs");
+        Assert.True(File.Exists(workerPath));
+        string workerSrc = File.ReadAllText(workerPath);
+
+        // Verify WTSGetActiveConsoleSessionId is declared and used
+        Assert.Contains("WTSGetActiveConsoleSessionId()", workerSrc);
+        // Verify session comparison is used for user session processes
+        Assert.Contains("isTargetInActiveSession", workerSrc);
+        // Verify it terminates without requiring hwnd != IntPtr.Zero
+        Assert.Contains("hwnd == IntPtr.Zero || !targetProc.CloseMainWindow()", workerSrc);
+    }
+
+    [Fact]
+    public void ZenShieldWindow_WatchdogSuppression_Integrity()
+    {
+        var dir = AppContext.BaseDirectory;
+        string? repoRoot = null;
+        var cur = new DirectoryInfo(dir);
+        while (cur != null)
+        {
+            if (File.Exists(Path.Combine(cur.FullName, "Blocker.sln")))
+            {
+                repoRoot = cur.FullName;
+                break;
+            }
+            cur = cur.Parent;
+        }
+
+        Assert.NotNull(repoRoot);
+        string zenPath = Path.Combine(repoRoot!, "src", "Blocker.App", "ZenShieldWindow.xaml.cs");
+        Assert.True(File.Exists(zenPath));
+        string zenSrc = File.ReadAllText(zenPath);
+
+        // Verify continuous taskbar suppression
+        Assert.Contains("SetTaskbarVisibility(false);", zenSrc);
+        // Verify SW_FORCEMINIMIZE
+        Assert.Contains("SW_FORCEMINIMIZE = 11;", zenSrc);
+        // Verify immediate suppression of unauthorized foreground window
+        Assert.Contains("ShowWindow(fgHwnd, SW_FORCEMINIMIZE);", zenSrc);
+        Assert.Contains("ShowWindow(fgHwnd, SW_HIDE);", zenSrc);
+        // Verify re-assertion of _lastAllowedAppHwnd
+        Assert.Contains("ShowWindow(_lastAllowedAppHwnd, SW_RESTORE);", zenSrc);
+        Assert.Contains("SetForegroundWindow(_lastAllowedAppHwnd);", zenSrc);
+        // Verify breach count restoring Zen Shield
+        Assert.Contains("_unauthorizedBreachCount", zenSrc);
+        Assert.Contains("RestoreZenScreen();", zenSrc);
+    }
 }
