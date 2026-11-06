@@ -104,180 +104,6 @@ This document tracks planned bug fixes, regression repairs, and behavioral patch
 
 ---
 
-### 7. Pre-Session Confirmation Warning for Kiosk & Meditation Mode with "Do Not Show Again" (Accidental Lockout Prevention)
-
-- **Status**: `Planned`
-- **Priority**: `High`
-- **Category**: UX Safety, Accidental Trigger Prevention & Session Lifecycle
-- **Affected Components**:
-  - `src/Blocker.App/MeditationViewModel.cs` (`StartMeditation`)
-  - `src/Blocker.App/MainWindow.xaml.cs` (Global shortcut `Ctrl + Shift + M`)
-  - `src/Blocker.App/MeditationStartWarningDialog.xaml` (New confirmation dialog)
-  - `src/Blocker.Core/UiSettingsStore.cs` (`SuppressMeditationStartWarning`)
-  - `src/Blocker.App/AppearanceDialog.xaml` / `MainWindow.xaml` (Settings toggle to re-enable warning)
-
-- **Description / Symptoms**:
-  - Currently, clicking the "Start Meditation" button on the dashboard or accidentally pressing the global hotkey `Ctrl + Shift + M` instantly initiates full-screen kiosk lockdown without any confirmation or pre-flight prompt.
-  - If a user triggers the hotkey inadvertently (or clicks the button without realizing their lock mode is configured to Complete Lock or Password Lock with a long duration, e.g. 15–20 minutes), they find themselves immediately locked out of their operating system with no opportunity to abort.
-  - Real-world impact: Users have accidentally locked their entire computer for 16+ minutes while in the middle of active workflows, meetings, or unsaved work.
-  - Expected behavior: Provide a clear, respectful confirmation warning before engaging lockdown mode that explains the duration and lockdown rigor, equipped with a `"Do not show this warning again"` checkbox so experienced users can bypass it permanently without nuisance.
-
-- **Root Cause Analysis**:
-  1. In `MeditationViewModel.cs`, `StartMeditation()` immediately sets `IsActive = true`, starts the soundscape, instantiates `ZenShieldWindow`, covers all monitors, and locks the OS down synchronously on a single click or hotkey event.
-  2. There is no pre-flight validation check against user preferences in `UiSettingsStore` to confirm intent before applying strict low-level keyboard hooks and process blocking.
-
-- **Proposed Fix**:
-  1. **Pre-Session Confirmation Dialog (`MeditationStartWarningDialog.xaml`)**:
-     - Display a styled modal before entering lockdown when `!UiSettingsStore.SuppressMeditationStartWarning`.
-     - **Session Summary**: Clearly display the target duration (e.g. `16 minutes`), Lock Mode (`Locked / Strict`, `Password`, `None`), and Allowed Applications count (`0 allowed apps — Full Lockout`).
-     - **Explicit Warning Message**: *"You are about to enter full-screen lockdown. Desktop access, task switching, and non-whitelisted applications will be blocked until the session concludes."*
-     - **Frictionless Opt-Out**: Include a prominent `[ ] Do not show this warning again` checkbox.
-     - **Actions**: `[ Start Focus Session ]` (primary accent button) and `[ Cancel ]` (dismiss without starting).
-  2. **Hotkey & ViewModel Guard**:
-     - When `StartMeditation()` or `Ctrl + Shift + M` is invoked, check `UiSettingsStore.Instance.SuppressMeditationStartWarning`.
-     - If `false`, display the dialog. If the user clicks `Cancel`, abort session start immediately. If they click `Start` with the checkbox checked, save `SuppressMeditationStartWarning = true` in `UiSettingsStore.cs`.
-  3. **Settings Re-Enable Option**:
-     - Add a toggle in Settings (`MainWindow.xaml` and `AppearanceDialog.xaml`):
-       *"Show confirmation warning before entering Meditation & Lockdown"* allowing users who previously suppressed the warning to restore it at any time.
-
----
-
-### 8. Notes Drawer Shortcut Double-Execution & Countdown Clock Layout Snapping (`Ctrl + Shift + N` / `Ctrl + N`)
-
-- **Status**: `Planned`
-- **Priority**: `High`
-- **Category**: Input Handling, UI Animation & Focus Stage Layout Ergonomics
-- **Affected Components**:
-  - `src/Blocker.App/MainWindow.xaml` (`<KeyBinding>` line 27 & Focus Stage DataTrigger lines 1400–1408)
-  - `src/Blocker.App/MainWindow.xaml.cs` (`PreviewKeyDown` lines 134–156)
-  - `src/Blocker.App/NotesDrawerControl.xaml.cs` (`ApplyDrawerState`)
-  - `src/Blocker.App/MeditationViewModel.cs` (`ToggleNotesDrawerCommand`, `NewNoteCommand`)
-
-- **Description / Symptoms**:
-  - In normal dashboard mode (with no active lock session or schedule running):
-    1. **Double-Toggle Jitter on `Ctrl + Shift + N`**: Pressing the global hotkey `Ctrl + Shift + N` to toggle open the notes drawer fails to open or keep the drawer open. Instead, the middle countdown timer clock abruptly jerks to the left and immediately snaps back to center within milliseconds, leaving the drawer in its original closed state.
-    2. **Unnecessary Clock Shift on `Ctrl + N`**: Pressing `Ctrl + N` to create a new note opens the composer, but simultaneously causes the large centered countdown clock to shift left by 170px (setting `Margin="24,24,340,24"`), even though the drawer is already smoothly sliding in.
-    3. **Multi-Step `Escape` Dismissal**: When inside the note composer, pressing `Escape` once cancels the composer back to the notes card list (with the clock remaining shifted left), and pressing `Escape` a second time finally closes the drawer, snapping the countdown clock back to center.
-  - Expected behavior:
-    - Pressing `Ctrl + Shift + N` must reliably toggle the drawer open or closed without stuttering or double-executing.
-    - Centered elements (the large countdown timer) should either remain statically centered or animate smoothly using a non-jarring layout transform without erratic multi-axis snapping.
-
-- **Root Cause Analysis**:
-  1. **Duplicate Hotkey Registration (Double Execution)**:
-     - In `MainWindow.xaml` (line 27), a window-level key binding is registered:
-       ```xml
-       <KeyBinding Modifiers="Control+Shift" Key="N" Command="{Binding Meditation.ToggleNotesDrawerCommand}" />
-       ```
-     - Simultaneously, in `MainWindow.xaml.cs` (lines 147–155), a `PreviewKeyDown` handler intercepts the exact same key combination:
-       ```csharp
-       if (e.Key == Key.N && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift))
-       {
-           _viewModel.Meditation.ToggleNotesDrawerCommand?.Execute(null);
-           e.Handled = true;
-           return;
-       }
-       ```
-     - Even though `e.Handled = true` is set, WPF's internal command routing still triggers the `KeyBinding` or triggers a second toggle event when re-routed through child controls. As a result, `ToggleNotesDrawerCommand` runs twice:
-       `IsNotesDrawerOpen = false -> true -> false` in rapid succession.
-     - The property change triggers the layout margin shift to `24,24,340,24` and then immediately back to `24`, visually manifesting as the clock shooting to the left and snapping right back to center.
-  2. **Hard Layout Shift via Discrete Margin Setter**:
-     - In `MainWindow.xaml` (lines 1403–1407), the centered focus stage uses a discrete `Margin` change inside a `<DataTrigger>`:
-       ```xml
-       <DataTrigger Binding="{Binding Meditation.IsNotesDrawerOpen}" Value="True">
-           <Setter Property="Margin" Value="24,24,340,24" />
-       </DataTrigger>
-       ```
-     - Because this is an instantaneous layout margin modification rather than a smoothly animated canvas translation or dedicated grid column layout, any state toggle causes the entire clock container to jump abruptly.
-  3. **Multi-Stage `Escape` Key Stack**:
-     - The `PreviewKeyDown` handler for `Key.Escape` processes dismissals hierarchically: First closes the composer (`IsComposerOpen = false`), then on the next `Escape` press closes the drawer (`IsNotesDrawerOpen = false`). While this layered dismissal is structurally sound, the violent clock movement between steps creates a jarring experience for the user.
-
-- **Proposed Fix**:
-  1. **Consolidate Shortcut Routing (Deduplicate)**:
-     - Remove the duplicate `<KeyBinding>` for `Ctrl+Shift+N` from `MainWindow.xaml` and manage it exclusively in `PreviewKeyDown` in `MainWindow.xaml.cs` (or vice-versa), ensuring the command executes strictly once per keystroke.
-  2. **Smooth Layout Transition for Focus Clock**:
-     - Replace the abrupt `Margin="24,24,340,24"` discrete DataTrigger with a smoothed transition (e.g. animate `TranslateTransform.X` or place the focus clock inside a 2-column Grid with an animated right column width), preventing instant snapping when the drawer opens or closes.
-  3. **Direct Focus Transfer**:
-     - When `Ctrl + N` is pressed, open the drawer and immediately place keyboard focus into the title box (`MarkdownBox`) without requiring additional mouse clicks, and streamline `Escape` key cancellation.
-
----
-
-### 9. Kiosk Mode Bypass via Exposed Taskbar & Inert Watchdog in Allowed App Whitelist Mode
-
-- **Status**: `Planned`
-- **Priority**: `Critical`
-- **Category**: Kiosk Lockdown, Process Whitelisting & Bypass Prevention
-- **Affected Components**:
-  - `src/Blocker.App/ZenShieldWindow.xaml.cs` (`ShowMiniHud`, `WatchdogTimer_Tick`, `EnforceFocus`, `SetTaskbarVisibility`)
-  - `src/Blocker.Service/Worker.cs` (`Meditation Mode Whitelist enforcement`, lines 958–1010)
-  - `src/Blocker.Core/LowLevelKeyboardHook.cs`
-
-- **Description / Symptoms**:
-  - When running in Meditation Mode or System Lockdown with whitelisted apps (e.g. allowing `notepad.exe` or VS Code), users can completely bypass the kiosk lockdown and switch to unauthorized applications.
-  - The Windows Taskbar (`Shell_TrayWnd`) becomes visible and clickable at the bottom of the screen.
-  - Users can click on the Taskbar or Start Menu to launch or switch to any other application (such as Google Chrome, Discord, or games).
-  - Even though a 500ms watchdog timer (`_watchdogTimer`) runs continuously inside `ZenShieldWindow.xaml.cs` to monitor the foreground window, it fails to enforce lockdown: the unauthorized application remains in the foreground and fully interactive, rendering the kiosk whitelist non-functional.
-
-- **Deep Technical Diagnosis & Root Causes**:
-  1. **Taskbar Uncovered & Re-asserted by Windows Shell in Allowed App Mode**:
-     - In strict full-lockout mode, `ZenShieldWindow` is `Topmost = true` across all monitors, physically covering the Windows Taskbar.
-     - However, when an allowed app is launched, `ShowMiniHud()` executes:
-       ```csharp
-       Topmost = false;
-       SetWindowPos(mainHandle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-       ```
-     - Dropping `ZenShieldWindow` to `HWND_BOTTOM` places it beneath the Windows Taskbar (`Shell_TrayWnd`).
-     - Although `SetTaskbarVisibility(false)` was called once at session startup, Windows Explorer automatically restores and repaints the taskbar whenever a standard window (like `notepad.exe`) receives focus. Because `SetTaskbarVisibility(false)` is never maintained continuously in the watchdog loop, the entire Windows Taskbar remains permanently visible and interactive.
-  2. **Inert Foreground Watchdog (`SetForegroundWindow` Failure via Windows UIPI)**:
-     - When a user clicks the taskbar or launches an unauthorized application (e.g., Chrome), `WatchdogTimer_Tick` detects that the foreground PID is neither `Sankalpa.exe` nor in `_allowedAppProcessNames`.
-     - It calls `EnforceFocus()`:
-       ```csharp
-       private void EnforceFocus()
-       {
-           if (_isAllowedAppMode && _lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
-           {
-               ShowWindow(_lastAllowedAppHwnd, SW_RESTORE);
-               SetForegroundWindow(_lastAllowedAppHwnd);
-           }
-           else
-           {
-               RestoreZenScreen();
-           }
-       }
-       ```
-     - **Silent Win32 API Failure**: Under Windows User Interface Privilege Isolation (UIPI) and foreground lock policies (`LockSetForegroundWindow`), a background application cannot forcibly steal focus from an active foreground application unless it owns the input queue or was the last active process. Windows rejects `SetForegroundWindow(_lastAllowedAppHwnd)` silently (returning `FALSE`) and merely flashes the allowed app's taskbar icon.
-     - **Zero Suppression of the Unauthorized Window**: `EnforceFocus()` never calls `ShowWindow(fgHwnd, SW_FORCEMINIMIZE)` or `PostMessage(fgHwnd, WM_CLOSE, ...)` on the unauthorized foreground window (`fgHwnd`). It leaves the unauthorized window active, maximized, and receiving mouse/keyboard input.
-     - **Fallback Deadlock**: Because `IsWindow(_lastAllowedAppHwnd)` remains `true` (Notepad is still running in the background), the `else` branch (`RestoreZenScreen()`) is never triggered. The watchdog loops infinitely every 500ms making failed `SetForegroundWindow` calls while the user freely uses the unblocked app.
-  3. **Session 0 GUI Isolation Blindness in Background Service (`Worker.cs`)**:
-     - The background Windows Service (`SankalpaService` / `Worker.cs`) also attempts whitelist enforcement at line 970:
-       ```csharp
-       IntPtr hwnd = IntPtr.Zero;
-       try { hwnd = targetProc.MainWindowHandle; } catch { }
-       if (hwnd != IntPtr.Zero)
-       {
-           ShowWindow(hwnd, SW_FORCEMINIMIZE);
-           targetProc.Kill(entireProcessTree: true);
-       }
-       ```
-     - Because Windows Services run isolated in **Session 0**, `targetProc.MainWindowHandle` is always `IntPtr.Zero` when querying processes running on the interactive desktop in **Session 1** (or modern packaged UWP apps).
-     - Because `hwnd == IntPtr.Zero`, the service skips termination completely, leaving the user desktop unguarded by the service.
-
-- **Proposed Fix**:
-  1. **Continuous Taskbar Suppression During Allowed App Mode**:
-     - Call `SetTaskbarVisibility(false)` inside `WatchdogTimer_Tick` on every tick, or register an `ABM_SETSTATE` shell message setting the taskbar to auto-hide / hidden state so `Shell_TrayWnd` cannot resurface.
-  2. **Active Suppression of Disallowed Foreground Windows**:
-     - In `WatchdogTimer_Tick`, when `fgHwnd` belongs to an unauthorized process, immediately suppress the rogue window:
-       ```csharp
-       ShowWindow(fgHwnd, SW_FORCEMINIMIZE);
-       ShowWindow(fgHwnd, SW_HIDE);
-       ```
-     - Then re-assert `ZenShieldWindow` as `Topmost = true` or use `AttachThreadInput` to legitimately transfer focus back to `_lastAllowedAppHwnd`.
-  3. **Immediate Zen Backdrop Re-assertion on Focus Breach**:
-     - If an unauthorized process gains focus, immediately bring `ZenShieldWindow` to `HWND_TOPMOST` to cover all monitors until the user explicitly selects the allowed app from the Mini-HUD or hotkey.
-  4. **Direct Process Name Whitelisting in `Worker.cs` without `MainWindowHandle` Guard**:
-     - In `Worker.cs`, remove the `if (hwnd != IntPtr.Zero)` gate for whitelist enforcement, and verify interactive session PIDs via `Process.SessionId == WTSGetActiveConsoleSessionId()` so the service reliably terminates non-whitelisted processes across Session 0 boundaries.
-
----
-
 ### 10. Scheduled Block Deactivates Blocking Outside Scheduled Window Even When Toggled "ON"
 
 - **Status**: `Planned`
@@ -411,3 +237,51 @@ This document tracks planned bug fixes, regression repairs, and behavioral patch
   - If a user toggled a block profile "OFF" prior to a scheduled window, the scheduled block failed to turn on when the clock entered the scheduled period because `!profile.Enabled` was evaluated before `ScheduleLogic.IsActive`.
 - **Root Cause & Fix Applied**:
   - Adjusted schedule precedence in `ProfileStateLogic.cs` so active schedule time windows take priority over manual off-toggles, ensuring scheduled focus blocks automatically engage as configured.
+
+---
+
+### 7. Pre-Session Confirmation Warning for Kiosk & Meditation Mode with "Do Not Show Again"
+
+- **Status**: `Resolved & Verified (Shipped in v1.3.2)`
+- **Priority**: `High`
+- **Category**: UX Safety, Accidental Trigger Prevention & Session Lifecycle
+- **Affected Components**:
+  - `src/Blocker.App/MeditationViewModel.cs` (`StartMeditation`)
+  - `src/Blocker.App/MeditationStartWarningDialog.xaml` (New confirmation dialog)
+  - `src/Blocker.Core/UiSettingsStore.cs` (`SuppressMeditationStartWarning`)
+  - `src/Blocker.App/AppearanceDialog.xaml` (Settings toggle)
+- **Fix Applied**:
+  - Created `MeditationStartWarningDialog` displaying duration, lock mode, and allowed apps summary with prominent warning text and `[ ] Do not show this warning again` checkbox.
+  - Added pre-flight check in `MeditationViewModel.StartMeditation()` checking `UiSettingsStore.Instance.SuppressMeditationStartWarning`.
+  - Added "Show warning before starting Meditation & Lockdown" toggle in Settings to restore the prompt at any time.
+
+---
+
+### 8. Notes Drawer Shortcut Double-Execution & Countdown Clock Layout Snapping
+
+- **Status**: `Resolved & Verified (Shipped in v1.3.2)`
+- **Priority**: `High`
+- **Category**: Input Handling, UI Animation & Focus Stage Layout Ergonomics
+- **Affected Components**:
+  - `src/Blocker.App/MainWindow.xaml` (`<KeyBinding>` deduplication & `TranslateTransform` animation)
+  - `src/Blocker.App/MainWindow.xaml.cs` (`PreviewKeyDown` shortcut routing)
+  - `src/Blocker.App/NotesDrawerControl.xaml.cs` (`FocusComposer`)
+- **Fix Applied**:
+  - Removed duplicate `<KeyBinding>` for `Ctrl + Shift + N` from XAML; shortcut is routed strictly once in `PreviewKeyDown`, eliminating instant open/close jitter.
+  - Replaced the abrupt discrete `Margin="24,24,340,24"` DataTrigger with a smooth 220ms `TranslateTransform.X` animation to `-170`, synchronizing smoothly with the drawer slide.
+  - Added `FocusComposer()` to autofocus the note composer directly upon `Ctrl + N` and streamlined `Escape` key handling.
+
+---
+
+### 9. Kiosk Mode Bypass via Exposed Taskbar & Inert Watchdog in Allowed App Whitelist Mode
+
+- **Status**: `Resolved & Verified (Shipped in v1.3.2)`
+- **Priority**: `Critical`
+- **Category**: Kiosk Lockdown, Process Whitelisting & Bypass Prevention
+- **Affected Components**:
+  - `src/Blocker.App/ZenShieldWindow.xaml.cs` (`WatchdogTimer_Tick`, `EnforceFocus`)
+  - `src/Blocker.Service/Worker.cs` (`Meditation Mode Whitelist enforcement`)
+- **Fix Applied**:
+  - Added continuous taskbar suppression (`SetTaskbarVisibility(false)` with `SW_HIDE`) on every 500ms watchdog tick in `ZenShieldWindow.xaml.cs`.
+  - Added active window suppression with `ShowWindow(fgHwnd, SW_FORCEMINIMIZE)` and `ShowWindow(fgHwnd, SW_HIDE)` on unauthorized foreground processes, re-asserting `_lastAllowedAppHwnd` or bringing `ZenShieldWindow` to `HWND_TOPMOST` if breaches persist.
+  - Removed Session 0 `MainWindowHandle` gate in `Worker.cs` by detecting active console sessions via `WTSGetActiveConsoleSessionId()` and terminating unallowed user processes across session boundaries.
