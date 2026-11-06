@@ -111,6 +111,133 @@ public class NoteCardTests
     }
 
     [Fact]
+    public void NoteCard_MarkdownParsing_HeadersAndSubheaders_ParsedCorrectly()
+    {
+        string md = "# Main Header\n## Subheader 2\n### Subheader 3\nParagraph text here";
+        var card = new NoteCard("Headers Note", md);
+
+        Assert.Equal(4, card.Blocks.Count);
+
+        Assert.Equal(MarkdownBlockType.Header, card.Blocks[0].BlockType);
+        Assert.Equal("Main Header", card.Blocks[0].Text);
+
+        Assert.Equal(MarkdownBlockType.Subheader, card.Blocks[1].BlockType);
+        Assert.Equal("Subheader 2", card.Blocks[1].Text);
+
+        Assert.Equal(MarkdownBlockType.Subheader, card.Blocks[2].BlockType);
+        Assert.Equal("Subheader 3", card.Blocks[2].Text);
+
+        Assert.Equal(MarkdownBlockType.Paragraph, card.Blocks[3].BlockType);
+        Assert.Equal("Paragraph text here", card.Blocks[3].Text);
+    }
+
+    [Fact]
+    public void NoteCard_MarkdownParsing_BulletItems_ParsedCorrectly()
+    {
+        string md = "- Dash item\n* Asterisk item\n• Unicode bullet item";
+        var card = new NoteCard("Bullets Note", md);
+
+        Assert.Equal(3, card.Blocks.Count);
+
+        Assert.Equal(MarkdownBlockType.BulletItem, card.Blocks[0].BlockType);
+        Assert.Equal("Dash item", card.Blocks[0].Text);
+
+        Assert.Equal(MarkdownBlockType.BulletItem, card.Blocks[1].BlockType);
+        Assert.Equal("Asterisk item", card.Blocks[1].Text);
+
+        Assert.Equal(MarkdownBlockType.BulletItem, card.Blocks[2].BlockType);
+        Assert.Equal("Unicode bullet item", card.Blocks[2].Text);
+    }
+
+    [Fact]
+    public void NoteCard_MarkdownParsing_Tasks_StandardAndUnicode_ParsedCorrectly()
+    {
+        string md = "- [ ] Dash unchecked\n* [ ] Star unchecked\n- [x] Dash checked\n* [x] Star checked\n[ ] Bracket unchecked\n[x] Bracket checked\n☐ Ballot unchecked\n☑ Ballot checked";
+        var card = new NoteCard("Tasks Note", md);
+
+        Assert.Equal(8, card.Blocks.Count);
+
+        // 0: - [ ]
+        Assert.Equal(MarkdownBlockType.TaskItem, card.Blocks[0].BlockType);
+        Assert.Equal("Dash unchecked", card.Blocks[0].Text);
+        Assert.False(card.Blocks[0].IsChecked);
+        Assert.Equal(0, card.Blocks[0].TaskIndex);
+
+        // 1: * [ ]
+        Assert.Equal(MarkdownBlockType.TaskItem, card.Blocks[1].BlockType);
+        Assert.Equal("Star unchecked", card.Blocks[1].Text);
+        Assert.False(card.Blocks[1].IsChecked);
+        Assert.Equal(1, card.Blocks[1].TaskIndex);
+
+        // 2: - [x]
+        Assert.Equal(MarkdownBlockType.TaskItem, card.Blocks[2].BlockType);
+        Assert.Equal("Dash checked", card.Blocks[2].Text);
+        Assert.True(card.Blocks[2].IsChecked);
+        Assert.Equal(2, card.Blocks[2].TaskIndex);
+
+        // 3: * [x]
+        Assert.Equal(MarkdownBlockType.TaskItem, card.Blocks[3].BlockType);
+        Assert.Equal("Star checked", card.Blocks[3].Text);
+        Assert.True(card.Blocks[3].IsChecked);
+        Assert.Equal(3, card.Blocks[3].TaskIndex);
+
+        // 4: [ ]
+        Assert.Equal(MarkdownBlockType.TaskItem, card.Blocks[4].BlockType);
+        Assert.Equal("Bracket unchecked", card.Blocks[4].Text);
+        Assert.False(card.Blocks[4].IsChecked);
+        Assert.Equal(4, card.Blocks[4].TaskIndex);
+
+        // 5: [x]
+        Assert.Equal(MarkdownBlockType.TaskItem, card.Blocks[5].BlockType);
+        Assert.Equal("Bracket checked", card.Blocks[5].Text);
+        Assert.True(card.Blocks[5].IsChecked);
+        Assert.Equal(5, card.Blocks[5].TaskIndex);
+
+        // 6: ☐
+        Assert.Equal(MarkdownBlockType.TaskItem, card.Blocks[6].BlockType);
+        Assert.Equal("Ballot unchecked", card.Blocks[6].Text);
+        Assert.False(card.Blocks[6].IsChecked);
+        Assert.Equal(6, card.Blocks[6].TaskIndex);
+
+        // 7: ☑
+        Assert.Equal(MarkdownBlockType.TaskItem, card.Blocks[7].BlockType);
+        Assert.Equal("Ballot checked", card.Blocks[7].Text);
+        Assert.True(card.Blocks[7].IsChecked);
+        Assert.Equal(7, card.Blocks[7].TaskIndex);
+    }
+
+    [Fact]
+    public void NoteCard_ToggleTaskCheckbox_UnicodeBallotBoxAndStandardMarkdown_TogglesCleanly()
+    {
+        string md = "- [ ] Dash task\n* [ ] Star task\n☐ Ballot task\n☑ Checked ballot task";
+        var card = new NoteCard("Mixed Tasks Note", md);
+
+        // Toggle index 0 (- [ ]) -> checked
+        Assert.True(card.ToggleTaskCheckbox(0, true));
+        Assert.Contains("- [x] Dash task", card.MarkdownContent);
+
+        // Toggle index 1 (* [ ]) -> checked
+        Assert.True(card.ToggleTaskCheckbox(1, true));
+        Assert.Contains("* [x] Star task", card.MarkdownContent);
+
+        // Toggle index 2 (☐) -> checked
+        Assert.True(card.ToggleTaskCheckbox(2, true));
+        Assert.Contains("☑ Ballot task", card.MarkdownContent);
+
+        // Toggle index 3 (☑) -> unchecked
+        Assert.True(card.ToggleTaskCheckbox(3, false));
+        Assert.Contains("☐ Checked ballot task", card.MarkdownContent);
+
+        // Untoggle index 0 back to false
+        Assert.True(card.ToggleTaskCheckbox(0, false));
+        Assert.Contains("- [ ] Dash task", card.MarkdownContent);
+
+        // Untoggle index 2 back to false
+        Assert.True(card.ToggleTaskCheckbox(2, false));
+        Assert.Contains("☐ Ballot task", card.MarkdownContent);
+    }
+
+    [Fact]
     public void NoteCardCollection_GenerateSessionBundleMarkdown_FormatsCorrectly()
     {
         // Arrange
@@ -242,5 +369,82 @@ public class NoteCardTests
         Assert.Contains("Body relaxation scan before sleep.", masterJournal);
         Assert.Contains("### Gratitude", masterJournal);
         Assert.Contains("Grateful for productive pairing sessions.", masterJournal);
+    }
+
+    [Fact]
+    public void NoteCard_MarkdownParsing_BulletPrefixedTasks_ParsedAndToggledCorrectly()
+    {
+        string md = "• [ ] Bullet task unchecked\n• [x] Bullet task checked";
+        var card = new NoteCard("Tasks Note", md);
+
+        Assert.Equal(2, card.Blocks.Count);
+
+        Assert.Equal(MarkdownBlockType.TaskItem, card.Blocks[0].BlockType);
+        Assert.Equal("Bullet task unchecked", card.Blocks[0].Text);
+        Assert.False(card.Blocks[0].IsChecked);
+
+        Assert.Equal(MarkdownBlockType.TaskItem, card.Blocks[1].BlockType);
+        Assert.Equal("Bullet task checked", card.Blocks[1].Text);
+        Assert.True(card.Blocks[1].IsChecked);
+
+        // Toggle index 0
+        Assert.True(card.ToggleTaskCheckbox(0, true));
+        Assert.Contains("• [x] Bullet task unchecked", card.MarkdownContent);
+
+        // Toggle back
+        Assert.True(card.ToggleTaskCheckbox(0, false));
+        Assert.Contains("• [ ] Bullet task unchecked", card.MarkdownContent);
+    }
+
+    [Fact]
+    public void NoteCard_MarkdownParsing_ObsidianHeadings_ParsedCorrectly()
+    {
+        string md = "# Top Level Header\n## Second Level\n### Third Level\n#### Fourth Level";
+        var card = new NoteCard("Obsidian Headings", md);
+
+        Assert.Equal(4, card.Blocks.Count);
+        Assert.Equal(MarkdownBlockType.Header, card.Blocks[0].BlockType);
+        Assert.Equal("Top Level Header", card.Blocks[0].Text);
+
+        Assert.Equal(MarkdownBlockType.Subheader, card.Blocks[1].BlockType);
+        Assert.Equal("Second Level", card.Blocks[1].Text);
+
+        Assert.Equal(MarkdownBlockType.Subheader, card.Blocks[2].BlockType);
+        Assert.Equal("Third Level", card.Blocks[2].Text);
+
+        Assert.Equal(MarkdownBlockType.Subheader, card.Blocks[3].BlockType);
+        Assert.Equal("Fourth Level", card.Blocks[3].Text);
+    }
+
+    [Fact]
+    public void NoteCard_MarkdownParsing_ImageTags_WikilinkAndStandard_ParsedCorrectly()
+    {
+        string md = "# Header\n![[Pasted_Image_20261106_120000000.png]]\n![Alt Description](images/chart.png)\n- [ ] Task below";
+        var card = new NoteCard("Images Note", md);
+
+        Assert.Equal(4, card.Blocks.Count);
+
+        Assert.Equal(MarkdownBlockType.Header, card.Blocks[0].BlockType);
+
+        Assert.Equal(MarkdownBlockType.Image, card.Blocks[1].BlockType);
+        Assert.Equal("![[Pasted_Image_20261106_120000000.png]]", card.Blocks[1].Text);
+        Assert.Equal("Pasted_Image_20261106_120000000.png", card.Blocks[1].ImagePath);
+
+        Assert.Equal(MarkdownBlockType.Image, card.Blocks[2].BlockType);
+        Assert.Equal("![Alt Description](images/chart.png)", card.Blocks[2].Text);
+        Assert.Equal("images/chart.png", card.Blocks[2].ImagePath);
+
+        Assert.Equal(MarkdownBlockType.TaskItem, card.Blocks[3].BlockType);
+    }
+
+    [Fact]
+    public void NoteCard_MarkdownParsing_ImageWikilink_WithPipeSize_ExtractsCleanPath()
+    {
+        string md = "![[Pasted_Image_20261106_120000000.png|300]]";
+        var card = new NoteCard("Pipe Image", md);
+
+        Assert.Single(card.Blocks);
+        Assert.Equal(MarkdownBlockType.Image, card.Blocks[0].BlockType);
+        Assert.Equal("Pasted_Image_20261106_120000000.png", card.Blocks[0].ImagePath);
     }
 }

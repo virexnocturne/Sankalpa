@@ -101,19 +101,75 @@ public partial class ZenShieldWindow : Window
 
     #region Win32 Interop
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr FindWindow(string lpClassName, string? lpWindowName);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string? lpszWindow);
+
     [DllImport("user32.dll")]
-
     [return: MarshalAs(UnmanagedType.Bool)]
-
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-
-
     [DllImport("user32.dll")]
-
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    private static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
+    private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    private static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
+
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint SWP_SHOWWINDOW = 0x0040;
+    private const uint WM_CLOSE = 0x0010;
+
+    private const int SW_HIDE = 0;
+    private const int SW_SHOW = 5;
     private const int SW_RESTORE = 9;
+
+    public static void SetTaskbarVisibility(bool visible)
+    {
+        try
+        {
+            int cmd = visible ? SW_SHOW : SW_HIDE;
+
+            IntPtr primaryTray = FindWindow("Shell_TrayWnd", null);
+            if (primaryTray != IntPtr.Zero)
+            {
+                ShowWindow(primaryTray, cmd);
+            }
+
+            IntPtr secondaryTray = IntPtr.Zero;
+            while ((secondaryTray = FindWindowEx(IntPtr.Zero, secondaryTray, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero)
+            {
+                ShowWindow(secondaryTray, cmd);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ZenShield] Error setting taskbar visibility: {ex.Message}");
+        }
+    }
 
     #endregion
 
@@ -123,11 +179,27 @@ public partial class ZenShieldWindow : Window
 
     private readonly DispatcherTimer _autoSaveTimer;
 
+    private readonly DispatcherTimer _watchdogTimer;
+
     private readonly List<ZenBackdropWindow> _secondaryBackdrops = new();
 
     private ZenMiniHudWindow? _miniHudWindow;
 
     private LowLevelKeyboardHook? _keyboardHook;
+
+    private bool _isAllowedAppMode;
+
+    private IntPtr _lastAllowedAppHwnd = IntPtr.Zero;
+
+    private readonly HashSet<string> _allowedAppProcessNames = new(StringComparer.OrdinalIgnoreCase);
+
+    public string? PasswordHash { get; set; }
+
+    public string? PasswordSalt { get; set; }
+
+    public string? ExpectedPassword { get; set; }
+
+    public MeditationSession? Session { get; set; }
 
 
 
@@ -274,7 +346,10 @@ public partial class ZenShieldWindow : Window
 
     public Func<bool>? OnVerifyUnlockRequested { get; set; }
 
-
+    static ZenShieldWindow()
+    {
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => SetTaskbarVisibility(true);
+    }
 
     public ZenShieldWindow() : this(1500, false, "None", null, "Zen Session", null)
 
@@ -359,14 +434,15 @@ public partial class ZenShieldWindow : Window
 
 
         _autoSaveTimer = new DispatcherTimer
-
         {
-
             Interval = TimeSpan.FromSeconds(1)
-
         };
 
-
+        _watchdogTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(500)
+        };
+        _watchdogTimer.Tick += WatchdogTimer_Tick;
 
         UpdateTimerDisplay();
 
@@ -376,76 +452,63 @@ public partial class ZenShieldWindow : Window
 
         SetWhitelistedApps(whitelistedApps);
 
-
-
         Loaded += ZenShieldWindow_Loaded;
+    }
 
+    public ZenShieldWindow(
+        int totalSeconds,
+        bool completeLock,
+        string? lockType,
+        IEnumerable<string>? whitelistedApps,
+        string? profileName,
+        MeditationViewModel? viewModel,
+        MeditationSession? session,
+        string? passwordHash = null,
+        string? passwordSalt = null)
+        : this(totalSeconds, completeLock, lockType, whitelistedApps, profileName, viewModel)
+    {
+        Session = session;
+        PasswordHash = passwordHash;
+        PasswordSalt = passwordSalt;
     }
 
 
 
     private void ZenShieldWindow_Loaded(object sender, RoutedEventArgs e)
-
     {
+        // 1. Total taskbar suppression across primary and secondary displays
+        SetTaskbarVisibility(false);
 
-        // 1. Automatically spawn backdrop windows covering all secondary monitors
-
+        // 2. Automatically spawn backdrop windows covering all secondary monitors
         try
-
         {
-
             var spawned = ZenBackdropWindow.SpawnForSecondaryScreens();
-
             _secondaryBackdrops.AddRange(spawned);
-
         }
-
         catch (Exception ex)
-
         {
-
             Debug.WriteLine($"[ZenShield] Error spawning backdrops: {ex.Message}");
-
         }
 
-
-
-        // 2. Start countdown timer
-
+        // 3. Start countdown timer
         _sessionTimer.Start();
 
-
-
-        // 3. Focus reflections notes
-
-
-
-        // 4. If CompleteLock is active, start low-level keyboard hook to block Alt+Tab / WinKey
-
-        if (_completeLock)
-
+        // 4. Start low-level keyboard hook throughout meditation mode (including when running allowed apps with Mini-HUD)
+        if (_keyboardHook == null)
         {
-
             try
-
             {
-
                 _keyboardHook = new LowLevelKeyboardHook();
-
                 _keyboardHook.Start();
-
             }
-
             catch (Exception ex)
-
             {
-
                 Debug.WriteLine($"[ZenShield] Keyboard hook failed to start: {ex.Message}");
-
             }
-
         }
 
+        // 5. Start active window and Task View watchdog timer (500ms)
+        _watchdogTimer.Start();
     }
 
 
@@ -543,37 +606,29 @@ public partial class ZenShieldWindow : Window
     #region Whitelisted Apps & Mini-HUD
 
     public void SetWhitelistedApps(IEnumerable<string>? apps)
-
     {
-
         var list = new List<WhitelistedAppItem>();
+        _allowedAppProcessNames.Clear();
 
         if (apps != null)
-
         {
-
             foreach (var app in apps)
-
             {
-
                 if (!string.IsNullOrWhiteSpace(app))
-
                 {
+                    string trimmed = app.Trim();
+                    list.Add(new WhitelistedAppItem(trimmed));
 
-                    list.Add(new WhitelistedAppItem(app.Trim()));
-
+                    string procName = trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                        ? trimmed[..^4]
+                        : trimmed;
+                    _allowedAppProcessNames.Add(procName);
                 }
-
             }
-
         }
 
-
-
         WhitelistedAppsDock.Visibility = list.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-
         WhitelistedAppsItemsControl.ItemsSource = list;
-
     }
 
 
@@ -635,109 +690,79 @@ public partial class ZenShieldWindow : Window
 
 
             if (targetHwnd != IntPtr.Zero)
-
             {
-
+                _lastAllowedAppHwnd = targetHwnd;
                 ShowWindow(targetHwnd, SW_RESTORE);
-
                 SetForegroundWindow(targetHwnd);
-
             }
-
             else
-
             {
-
                 try
-
                 {
-
-                    Process.Start(new ProcessStartInfo(app.ExecutableName)
-
+                    var proc = Process.Start(new ProcessStartInfo(app.ExecutableName)
                     {
-
                         UseShellExecute = true
-
                     });
-
+                    if (proc != null)
+                    {
+                        try { _lastAllowedAppHwnd = proc.MainWindowHandle; } catch { }
+                    }
                 }
-
                 catch
-
                 {
-
                     // Fallback if full path is not directly executable by simple name
-
                 }
-
             }
-
         }
-
         catch (Exception ex)
-
         {
-
             Debug.WriteLine($"[ZenShield] App switch error: {ex.Message}");
-
         }
 
-
-
-        // 2. Hide Zen Shield and show floating topmost Mini-HUD
-
+        // 2. Keep Zen Shield in bottom Z-order backdrop and show floating topmost Mini-HUD
         ShowMiniHud();
-
     }
 
-
-
     private void ShowMiniHud()
-
     {
+        _isAllowedAppMode = true;
 
         if (_miniHudWindow == null)
-
         {
-
             _miniHudWindow = new ZenMiniHudWindow
-
             {
-
                 OnReturnToZenRequested = RestoreZenScreen,
-
                 OnToggleAudioRequested = ToggleAudioPlayback,
-
                 OnToggleNotesRequested = ToggleQuickNotes
-
             };
-
         }
-
-
 
         _miniHudWindow.UpdateTimer(FormatAdaptiveTime(_remainingSeconds));
-
         _miniHudWindow.UpdateAudioLabel(GetAudioHudLabel());
-
+        _miniHudWindow.Topmost = true;
         _miniHudWindow.Show();
-
+        _miniHudWindow.PositionAtTopCenter();
         _miniHudWindow.Activate();
 
-
-
-        // Hide Zen kiosk on primary and secondary screens
-
-        Hide();
-
-        foreach (var backdrop in _secondaryBackdrops)
-
+        // Keep a full-screen Zen backdrop at the bottom of the Z-order behind allowed apps.
+        // Minimizing or dragging an allowed app will only reveal the calm Zen focus screen,
+        // NEVER the Windows desktop or unblocked windows.
+        Topmost = false;
+        var mainHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (mainHandle != IntPtr.Zero)
         {
-
-            backdrop.Hide();
-
+            SetWindowPos(mainHandle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
 
+        foreach (var backdrop in _secondaryBackdrops)
+        {
+            backdrop.Topmost = false;
+            var secHandle = new System.Windows.Interop.WindowInteropHelper(backdrop).Handle;
+            if (secHandle != IntPtr.Zero)
+            {
+                SetWindowPos(secHandle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            }
+        }
     }
 
 
@@ -803,41 +828,37 @@ public partial class ZenShieldWindow : Window
 
 
     public void RestoreZenScreen()
-
     {
+        _isAllowedAppMode = false;
 
         if (_miniHudWindow != null)
-
         {
-
             _quickNotesOverlay?.Hide();
-
             _miniHudWindow.Hide();
-
         }
-
-
-
-        Show();
 
         WindowState = WindowState.Maximized;
-
         Topmost = true;
-
+        Show();
         Activate();
 
-
-
-        foreach (var backdrop in _secondaryBackdrops)
-
+        var mainHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (mainHandle != IntPtr.Zero)
         {
-
-            backdrop.Show();
-
-            backdrop.Topmost = true;
-
+            SetWindowPos(mainHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
         }
 
+        foreach (var backdrop in _secondaryBackdrops)
+        {
+            backdrop.WindowState = WindowState.Maximized;
+            backdrop.Topmost = true;
+            backdrop.Show();
+            var secHandle = new System.Windows.Interop.WindowInteropHelper(backdrop).Handle;
+            if (secHandle != IntPtr.Zero)
+            {
+                SetWindowPos(secHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            }
+        }
     }
 
     #endregion
@@ -930,178 +951,269 @@ public partial class ZenShieldWindow : Window
 
         }
 
-        else if (string.Equals(_lockType, "Challenge", StringComparison.OrdinalIgnoreCase))
-
+        else if (string.Equals(_lockType, "TypingChallenge", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(_lockType, "Challenge", StringComparison.OrdinalIgnoreCase))
         {
-
             StopSessionButton.IsEnabled = true;
-
             StopSessionButton.Content = "Stop Session";
-
             StopSessionButton.Opacity = 1.0;
-
             LockStatusNotice.Text = "Requires typing challenge verification to exit early";
-
             LockStatusNotice.Visibility = Visibility.Visible;
-
         }
-
         else
-
         {
-
             StopSessionButton.IsEnabled = true;
-
             StopSessionButton.Content = "Stop Session";
-
             StopSessionButton.Opacity = 1.0;
-
             LockStatusNotice.Visibility = Visibility.Collapsed;
-
         }
-
     }
-
-
 
     private void StopSession_Click(object sender, RoutedEventArgs e)
-
     {
-
         if (_completeLock)
-
         {
-
             return;
-
         }
-
-
 
         // If session finished, immediately close
-
         if (_remainingSeconds <= 0)
-
         {
-
             EndSession();
-
             return;
-
         }
-
-
 
         // If custom verification callback provided
-
         if (OnVerifyUnlockRequested != null)
-
         {
-
             if (OnVerifyUnlockRequested())
-
             {
-
                 EndSession();
-
             }
-
             return;
-
         }
-
-
 
         // Verification based on LockType
-
         if (string.Equals(_lockType, "Password", StringComparison.OrdinalIgnoreCase))
-
         {
-
             var pwdDlg = new PasswordUnlockDialog(_profileName)
-
             {
-
                 Owner = this
-
             };
 
-
+            pwdDlg.Closing += (s, ev) =>
+            {
+                if (pwdDlg.DialogResult == true)
+                {
+                    if (!VerifyPassword(pwdDlg.ResultPassword))
+                    {
+                        ev.Cancel = true;
+                        pwdDlg.DialogResult = null;
+                        pwdDlg.SetError("Incorrect password. Access denied.");
+                    }
+                }
+            };
 
             if (pwdDlg.ShowDialog() == true)
-
             {
-
-                EndSession();
-
+                if (VerifyPassword(pwdDlg.ResultPassword))
+                {
+                    EndSession();
+                }
+                else
+                {
+                    pwdDlg.SetError("Incorrect password. Access denied.");
+                }
             }
-
             return;
-
         }
 
-
-
-        if (string.Equals(_lockType, "Challenge", StringComparison.OrdinalIgnoreCase))
-
+        if (string.Equals(_lockType, "TypingChallenge", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(_lockType, "Challenge", StringComparison.OrdinalIgnoreCase))
         {
-
             string challenge = !string.IsNullOrWhiteSpace(ChallengeText)
-
                 ? ChallengeText
-
                 : TypingChallengeManager.GenerateChallenge(_profileName, 48);
 
-
-
             var challengeDlg = new TypingChallengeDialog(challenge, "Exit Zen Focus Session")
-
             {
-
                 Owner = this
-
             };
 
-
-
             if (challengeDlg.ShowDialog() == true)
-
             {
-
                 EndSession();
-
             }
-
             return;
-
         }
 
-
-
         // Standard exit without locks
-
         EndSession();
-
     }
 
+    public bool VerifyPassword(string inputPassword)
+    {
+        if (string.IsNullOrEmpty(inputPassword)) return false;
 
+        // 1. ExpectedPassword plain string match
+        if (!string.IsNullOrEmpty(ExpectedPassword) && string.Equals(inputPassword, ExpectedPassword, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // 2. PBKDF2 hash & salt verification
+        if (!string.IsNullOrEmpty(PasswordHash) && !string.IsNullOrEmpty(PasswordSalt) &&
+            PasswordSecurity.VerifyPassword(inputPassword, PasswordSalt, PasswordHash))
+        {
+            return true;
+        }
+
+        // 2b. PasswordHash as plain string
+        if (!string.IsNullOrEmpty(PasswordHash) && string.Equals(inputPassword, PasswordHash, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // 3. Check Session object via reflection or properties
+        if (Session != null)
+        {
+            var sType = Session.GetType();
+            var sPwd = sType.GetProperty("Password")?.GetValue(Session) as string;
+            if (!string.IsNullOrEmpty(sPwd) && string.Equals(inputPassword, sPwd, StringComparison.Ordinal)) return true;
+
+            var sHash = sType.GetProperty("PasswordHash")?.GetValue(Session) as string;
+            var sSalt = sType.GetProperty("PasswordSalt")?.GetValue(Session) as string;
+            if (!string.IsNullOrEmpty(sHash))
+            {
+                if (!string.IsNullOrEmpty(sSalt) && PasswordSecurity.VerifyPassword(inputPassword, sSalt, sHash)) return true;
+                if (string.Equals(inputPassword, sHash, StringComparison.Ordinal)) return true;
+            }
+        }
+
+        // 4. Check _viewModel via reflection
+        if (_viewModel != null)
+        {
+            var vmType = _viewModel.GetType();
+            var vmPwd = (vmType.GetProperty("Password") ?? vmType.GetProperty("StoredPassword") ?? vmType.GetProperty("UnlockPassword"))?.GetValue(_viewModel) as string;
+            if (!string.IsNullOrEmpty(vmPwd) && string.Equals(inputPassword, vmPwd, StringComparison.Ordinal)) return true;
+
+            var vmHash = (vmType.GetProperty("PasswordHash") ?? vmType.GetProperty("StoredPasswordHash"))?.GetValue(_viewModel) as string;
+            var vmSalt = (vmType.GetProperty("PasswordSalt") ?? vmType.GetProperty("StoredPasswordSalt"))?.GetValue(_viewModel) as string;
+            if (!string.IsNullOrEmpty(vmHash))
+            {
+                if (!string.IsNullOrEmpty(vmSalt) && PasswordSecurity.VerifyPassword(inputPassword, vmSalt, vmHash)) return true;
+                if (string.Equals(inputPassword, vmHash, StringComparison.Ordinal)) return true;
+            }
+        }
+
+        // 5. OnVerifyUnlockRequested callback
+        if (OnVerifyUnlockRequested != null)
+        {
+            return OnVerifyUnlockRequested();
+        }
+
+        return false;
+    }
+
+    private void WatchdogTimer_Tick(object? sender, EventArgs e)
+    {
+        try
+        {
+            // 1. Suppress MultitaskingViewFrame (Windows Task View handles) continuously
+            SuppressTaskView();
+
+            // 2. Active window watchdog
+            IntPtr fgHwnd = GetForegroundWindow();
+            if (fgHwnd == IntPtr.Zero) return;
+
+            uint currentPid = (uint)Process.GetCurrentProcess().Id;
+            GetWindowThreadProcessId(fgHwnd, out uint fgPid);
+
+            if (fgPid == currentPid)
+            {
+                return; // Whitelisted self / dialogs / Mini-HUD
+            }
+
+            var sbClass = new System.Text.StringBuilder(256);
+            GetClassName(fgHwnd, sbClass, sbClass.Capacity);
+            string className = sbClass.ToString();
+            if (string.Equals(className, "MultitaskingViewFrame", StringComparison.OrdinalIgnoreCase))
+            {
+                ShowWindow(fgHwnd, SW_HIDE);
+                PostMessage(fgHwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                EnforceFocus();
+                return;
+            }
+
+            string? procName = null;
+            try
+            {
+                using var fgProc = Process.GetProcessById((int)fgPid);
+                procName = fgProc.ProcessName;
+            }
+            catch { }
+
+            if (!string.IsNullOrEmpty(procName))
+            {
+                if (string.Equals(procName, "SnippingTool", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(procName, "ScreenClippingHost", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                if (_isAllowedAppMode && _allowedAppProcessNames.Contains(procName))
+                {
+                    _lastAllowedAppHwnd = fgHwnd;
+                    return;
+                }
+            }
+
+            // Foreground is neither allowed app nor whitelisted tool: enforce focus
+            EnforceFocus();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ZenShield] Watchdog error: {ex.Message}");
+        }
+    }
+
+    private static void SuppressTaskView()
+    {
+        try
+        {
+            IntPtr taskViewHwnd = IntPtr.Zero;
+            while ((taskViewHwnd = FindWindowEx(IntPtr.Zero, taskViewHwnd, "MultitaskingViewFrame", null)) != IntPtr.Zero)
+            {
+                ShowWindow(taskViewHwnd, SW_HIDE);
+                PostMessage(taskViewHwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+            }
+        }
+        catch { }
+    }
+
+    private void EnforceFocus()
+    {
+        if (_isAllowedAppMode && _lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
+        {
+            ShowWindow(_lastAllowedAppHwnd, SW_RESTORE);
+            SetForegroundWindow(_lastAllowedAppHwnd);
+        }
+        else
+        {
+            RestoreZenScreen();
+        }
+    }
 
     private void EndSession()
-
     {
-
         _sessionTimer.Stop();
-
         _autoSaveTimer.Stop();
-
+        _watchdogTimer.Stop();
         _quickNotesOverlay?.Close();
-
         _miniHudWindow?.Close();
-
+        SetTaskbarVisibility(true);
         OnSessionEnded?.Invoke();
-
         Close();
-
     }
 
     #endregion
@@ -1114,11 +1226,11 @@ public partial class ZenShieldWindow : Window
 
         base.OnClosed(e);
 
-
-
         _sessionTimer.Stop();
-
         _autoSaveTimer.Stop();
+        _watchdogTimer.Stop();
+
+        SetTaskbarVisibility(true);
 
 
 

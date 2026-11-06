@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.3.0" /></a>
+  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.3.1" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64)-blue?logo=windows" alt="Platform: Windows" />
   <img src="https://img.shields.io/badge/Framework-.NET%208.0%20WPF-purple?logo=dotnet" alt=".NET 8" />
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20%26%20Local-success?logo=shield" alt="Privacy First" />
@@ -22,6 +22,17 @@
 <p align="center">
   <img src="docs/screenshots/dashboard-black.png" alt="Sankalpa Dashboard - Obsidian Black Theme" width="850" />
 </p>
+
+---
+
+## 🌟 What's New in v1.3.1 (Massive Bug Patch & Rigor Enforcement)
+
+- 🛡️ **Ironclad Lockdown Watchdog**: Minimizing or dragging an allowed app title bar no longer exposes background windows—`ZenShieldWindow` acts as an underlying Zen backdrop at `HWND_BOTTOM` with a 500ms watchdog and a pinned Mini-HUD **"Return to Zen Focus"** button.
+- 🚫 **Wishlist Conflict Prevention**: Apps present in active or scheduled Block Profiles cannot be wishlisted during meditation mode and are flagged as `(Blocked by Block Profile)`.
+- 🛑 **Task View Gesture & Hook Hardening**: Suppressed three-finger swipe-up (`Task View` / `MultitaskingViewFrame`) and `Win+Tab`/`Alt+Tab` while permitting `Win+Shift+S` for screenshots.
+- 🔒 **Meditation Rigor Enforced**: Typing Challenge strictly validates sentence text; Password Protection requires setup and validates PBKDF2/SHA-256 salted hashes; Daily Schedules auto-trigger on time; durations persist across restarts.
+- 📝 **Persistent Notes Vault**: Notes are automatically saved to local JSON storage (`%LOCALAPPDATA%\Sankalpa\notes\active_notes.json`) across restarts; caret drift on `#` tags fixed; in-edit-mode screenshot previews added.
+- ⌨️ **Expanded Global Shortcuts**: `Ctrl + Shift + M` (Meditation), `Ctrl + Alt + M` (Mute), `Ctrl + Shift + U` (Configure), `Ctrl + N` (New Quick Note), `Ctrl + Shift + N` (Notes Drawer), `Esc` (Dismiss dialogs).
 
 ---
 
@@ -55,7 +66,7 @@
 
 ## 🚀 Download & Quick Start
 
-### 1. Download Latest Release (v1.3.0)
+### 1. Download Latest Release (v1.3.1)
 Download the installer or standalone release directly from [GitHub Releases](https://github.com/virexnocturne/Sankalpa/releases/latest):
 
 | File | Type | Size | SHA-256 Checksum |

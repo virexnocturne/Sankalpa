@@ -143,7 +143,8 @@ public class BlockerDatabase : IBlockStore
                 AllowedAppsJson TEXT NOT NULL DEFAULT '[]',
                 LockMode INTEGER NOT NULL DEFAULT 0,
                 Soundscape TEXT NULL,
-                EndedUtc TEXT NULL
+                EndedUtc TEXT NULL,
+                PasswordHash TEXT NULL
             );
 
             CREATE TABLE IF NOT EXISTS MeditationSchedules (
@@ -155,7 +156,8 @@ public class BlockerDatabase : IBlockStore
                 AllowedAppsJson TEXT NOT NULL DEFAULT '[]',
                 LockMode INTEGER NOT NULL DEFAULT 0,
                 Soundscape TEXT NULL,
-                LastSnoozedUtc TEXT NULL
+                LastSnoozedUtc TEXT NULL,
+                PasswordHash TEXT NULL
             );
             """;
             cmd.ExecuteNonQuery();
@@ -254,6 +256,31 @@ public class BlockerDatabase : IBlockStore
             {
                 using var alterCmd = connection.CreateCommand();
                 alterCmd.CommandText = "ALTER TABLE MeditationSessions ADD COLUMN EndedUtc TEXT NULL;";
+                alterCmd.ExecuteNonQuery();
+            }
+            if (medCols.Count > 0 && !medCols.Contains("PasswordHash"))
+            {
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE MeditationSessions ADD COLUMN PasswordHash TEXT NULL;";
+                alterCmd.ExecuteNonQuery();
+            }
+        }
+        catch { }
+
+        try
+        {
+            var schedCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using var schedColsCmd = connection.CreateCommand();
+            schedColsCmd.CommandText = "PRAGMA table_info(MeditationSchedules);";
+            using var r = schedColsCmd.ExecuteReader();
+            while (r.Read())
+            {
+                schedCols.Add(r.GetString(1));
+            }
+            if (schedCols.Count > 0 && !schedCols.Contains("PasswordHash"))
+            {
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE MeditationSchedules ADD COLUMN PasswordHash TEXT NULL;";
                 alterCmd.ExecuteNonQuery();
             }
         }
@@ -989,7 +1016,8 @@ public class BlockerDatabase : IBlockStore
             AllowedAppsJson = reader.IsDBNull(6) ? "[]" : reader.GetString(6),
             LockMode = (LockMode)reader.GetInt32(7),
             Soundscape = reader.IsDBNull(8) ? null : reader.GetString(8),
-            EndedUtc = reader.IsDBNull(9) ? null : DateTime.Parse(reader.GetString(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+            EndedUtc = reader.IsDBNull(9) ? null : DateTime.Parse(reader.GetString(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            PasswordHash = reader.FieldCount > 10 && !reader.IsDBNull(10) ? reader.GetString(10) : null
         };
     }
 
@@ -1005,7 +1033,8 @@ public class BlockerDatabase : IBlockStore
             AllowedAppsJson = reader.IsDBNull(5) ? "[]" : reader.GetString(5),
             LockMode = (LockMode)reader.GetInt32(6),
             Soundscape = reader.IsDBNull(7) ? null : reader.GetString(7),
-            LastSnoozedUtc = reader.IsDBNull(8) ? null : DateTime.Parse(reader.GetString(8), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+            LastSnoozedUtc = reader.IsDBNull(8) ? null : DateTime.Parse(reader.GetString(8), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            PasswordHash = reader.FieldCount > 9 && !reader.IsDBNull(9) ? reader.GetString(9) : null
         };
     }
 
@@ -1016,7 +1045,7 @@ public class BlockerDatabase : IBlockStore
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-        SELECT Id, StartUtc, TargetDurationSeconds, CompletedDurationSeconds, Completed, Notes, AllowedAppsJson, LockMode, Soundscape, EndedUtc
+        SELECT Id, StartUtc, TargetDurationSeconds, CompletedDurationSeconds, Completed, Notes, AllowedAppsJson, LockMode, Soundscape, EndedUtc, PasswordHash
         FROM MeditationSessions
         WHERE EndedUtc IS NULL AND Completed = 0
         ORDER BY Id DESC
@@ -1041,6 +1070,9 @@ public class BlockerDatabase : IBlockStore
     }
 
     public MeditationSession StartMeditationSession(long targetDurationSeconds, List<string> allowedApps, LockMode lockMode, string? soundscape)
+        => StartMeditationSession(targetDurationSeconds, allowedApps, lockMode, soundscape, null);
+
+    public MeditationSession StartMeditationSession(long targetDurationSeconds, List<string> allowedApps, LockMode lockMode, string? soundscape, string? passwordHash)
     {
         var active = GetActiveMeditationSession();
         if (active != null)
@@ -1048,13 +1080,28 @@ public class BlockerDatabase : IBlockStore
             EndMeditationSession(active.Id, completed: false);
         }
 
+        // If passwordHash was not passed directly, but lockMode is Password, check if an enabled schedule has it
+        if (string.IsNullOrEmpty(passwordHash) && lockMode == LockMode.Password)
+        {
+            try
+            {
+                var schedules = GetMeditationSchedules();
+                var matching = schedules.FirstOrDefault(s => s.Enabled && !string.IsNullOrEmpty(s.PasswordHash));
+                if (matching != null)
+                {
+                    passwordHash = matching.PasswordHash;
+                }
+            }
+            catch { }
+        }
+
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-        INSERT INTO MeditationSessions (StartUtc, TargetDurationSeconds, CompletedDurationSeconds, Completed, Notes, AllowedAppsJson, LockMode, Soundscape, EndedUtc)
-        VALUES (@startUtc, @targetDuration, 0, 0, NULL, @allowedApps, @lockMode, @soundscape, NULL);
+        INSERT INTO MeditationSessions (StartUtc, TargetDurationSeconds, CompletedDurationSeconds, Completed, Notes, AllowedAppsJson, LockMode, Soundscape, EndedUtc, PasswordHash)
+        VALUES (@startUtc, @targetDuration, 0, 0, NULL, @allowedApps, @lockMode, @soundscape, NULL, @passwordHash);
         SELECT last_insert_rowid();
         """;
 
@@ -1066,6 +1113,7 @@ public class BlockerDatabase : IBlockStore
         cmd.Parameters.AddWithValue("@allowedApps", allowedJson);
         cmd.Parameters.AddWithValue("@lockMode", (int)lockMode);
         cmd.Parameters.AddWithValue("@soundscape", (object?)soundscape ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@passwordHash", (object?)passwordHash ?? DBNull.Value);
 
         long newId = Convert.ToInt64(cmd.ExecuteScalar());
         return new MeditationSession
@@ -1079,7 +1127,8 @@ public class BlockerDatabase : IBlockStore
             AllowedAppsJson = allowedJson,
             LockMode = lockMode,
             Soundscape = soundscape,
-            EndedUtc = null
+            EndedUtc = null,
+            PasswordHash = passwordHash
         };
     }
 
@@ -1150,7 +1199,7 @@ public class BlockerDatabase : IBlockStore
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-        SELECT Id, StartUtc, TargetDurationSeconds, CompletedDurationSeconds, Completed, Notes, AllowedAppsJson, LockMode, Soundscape, EndedUtc
+        SELECT Id, StartUtc, TargetDurationSeconds, CompletedDurationSeconds, Completed, Notes, AllowedAppsJson, LockMode, Soundscape, EndedUtc, PasswordHash
         FROM MeditationSessions
         ORDER BY Id DESC
         LIMIT @limit;
@@ -1174,7 +1223,7 @@ public class BlockerDatabase : IBlockStore
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-        SELECT Id, Enabled, DaysOfWeekJson, TimeOfDay, DurationSeconds, AllowedAppsJson, LockMode, Soundscape, LastSnoozedUtc
+        SELECT Id, Enabled, DaysOfWeekJson, TimeOfDay, DurationSeconds, AllowedAppsJson, LockMode, Soundscape, LastSnoozedUtc, PasswordHash
         FROM MeditationSchedules
         ORDER BY Id ASC;
         """;
@@ -1205,7 +1254,8 @@ public class BlockerDatabase : IBlockStore
                 AllowedAppsJson = @apps,
                 LockMode = @lock,
                 Soundscape = @sound,
-                LastSnoozedUtc = @snoozed
+                LastSnoozedUtc = @snoozed,
+                PasswordHash = @pwdHash
             WHERE Id = @id;
             """;
             cmd.Parameters.AddWithValue("@id", schedule.Id);
@@ -1217,6 +1267,7 @@ public class BlockerDatabase : IBlockStore
             cmd.Parameters.AddWithValue("@lock", (int)schedule.LockMode);
             cmd.Parameters.AddWithValue("@sound", (object?)schedule.Soundscape ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@snoozed", schedule.LastSnoozedUtc.HasValue ? schedule.LastSnoozedUtc.Value.ToString("o", CultureInfo.InvariantCulture) : DBNull.Value);
+            cmd.Parameters.AddWithValue("@pwdHash", (object?)schedule.PasswordHash ?? DBNull.Value);
             cmd.ExecuteNonQuery();
             return schedule;
         }
@@ -1224,8 +1275,8 @@ public class BlockerDatabase : IBlockStore
         {
             using var cmd = connection.CreateCommand();
             cmd.CommandText = """
-            INSERT INTO MeditationSchedules (Enabled, DaysOfWeekJson, TimeOfDay, DurationSeconds, AllowedAppsJson, LockMode, Soundscape, LastSnoozedUtc)
-            VALUES (@enabled, @days, @time, @dur, @apps, @lock, @sound, @snoozed);
+            INSERT INTO MeditationSchedules (Enabled, DaysOfWeekJson, TimeOfDay, DurationSeconds, AllowedAppsJson, LockMode, Soundscape, LastSnoozedUtc, PasswordHash)
+            VALUES (@enabled, @days, @time, @dur, @apps, @lock, @sound, @snoozed, @pwdHash);
             SELECT last_insert_rowid();
             """;
             cmd.Parameters.AddWithValue("@enabled", schedule.Enabled ? 1 : 0);
@@ -1236,6 +1287,7 @@ public class BlockerDatabase : IBlockStore
             cmd.Parameters.AddWithValue("@lock", (int)schedule.LockMode);
             cmd.Parameters.AddWithValue("@sound", (object?)schedule.Soundscape ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@snoozed", schedule.LastSnoozedUtc.HasValue ? schedule.LastSnoozedUtc.Value.ToString("o", CultureInfo.InvariantCulture) : DBNull.Value);
+            cmd.Parameters.AddWithValue("@pwdHash", (object?)schedule.PasswordHash ?? DBNull.Value);
             long newId = Convert.ToInt64(cmd.ExecuteScalar());
             schedule.Id = (int)newId;
             return schedule;

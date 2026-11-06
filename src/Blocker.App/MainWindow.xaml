@@ -21,6 +21,10 @@
         <KeyBinding Modifiers="Control" Key="S" Command="{Binding ToggleSettingsCommand}" />
         <KeyBinding Modifiers="Control" Key="M" Command="{Binding OpenMeditationCommand}" />
         <KeyBinding Modifiers="Alt" Key="N" Command="{Binding Meditation.ToggleQuickNotesCommand}" />
+        <KeyBinding Modifiers="Control+Alt" Key="M" Command="{Binding Meditation.OpenEditDialogCommand}" />
+        <KeyBinding Modifiers="Control+Shift" Key="U" Command="{Binding Meditation.ToggleSoundscapeCommand}" />
+        <KeyBinding Modifiers="Control" Key="N" Command="{Binding Meditation.NewNoteCommand}" />
+        <KeyBinding Modifiers="Control+Shift" Key="N" Command="{Binding Meditation.ToggleNotesDrawerCommand}" />
     </Window.InputBindings>
 
     <Window.Resources>
@@ -1234,7 +1238,7 @@
                             <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,12" />
 
                             <!-- Alt + N -->
-                            <Grid>
+                            <Grid Margin="0,0,0,12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -1242,12 +1246,138 @@
                                 <StackPanel Grid.Column="0">
                                     <TextBlock Text="Quick Notes Overlay" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
-                                    <TextBlock Text="Summon floating session reflections anywhere while working."
+                                    <TextBlock Text="Summon floating quick notes anywhere while working."
                                                FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
                                 </StackPanel>
                                 <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
                                         BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
                                     <TextBlock Text="Alt + N" FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,12" />
+
+                            <!-- Ctrl + Shift + M -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Start / Stop Meditation" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Quickly begin or conclude your focus meditation session."
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                                    <TextBlock Text="Ctrl + Shift + M" FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,12" />
+
+                            <!-- Ctrl + Alt + M -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Meditation Settings" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Open configuration dialog for duration, lockdown, and sounds."
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                                    <TextBlock Text="Ctrl + Alt + M" FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,12" />
+
+                            <!-- Ctrl + Shift + U -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Toggle Soundscape" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Play, pause, or mute ambient soundscapes."
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                                    <TextBlock Text="Ctrl + Shift + U" FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,12" />
+
+                            <!-- Ctrl + N -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="New Note" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Open the notes composer to capture ideas or tasks."
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                                    <TextBlock Text="Ctrl + N" FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,12" />
+
+                            <!-- Ctrl + Shift + N -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Toggle Notes Drawer" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Slide open or close the right-edge notes vault drawer."
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                                    <TextBlock Text="Ctrl + Shift + N" FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,12" />
+
+                            <!-- Esc -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Close Panels &amp; Dialogs" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Dismiss open dialogs, settings, or slide-out drawers."
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                                    <TextBlock Text="Esc" FontFamily="{DynamicResource FontMono}" FontSize="12"
                                                Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
                                 </Border>
                             </Grid>
@@ -1266,7 +1396,17 @@
                                              Panel.ZIndex="10" />
 
                 <!-- Centered Focus Stage (Completely Pure) -->
-                <Grid Margin="24">
+                <Grid>
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Margin" Value="24" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Meditation.IsNotesDrawerOpen}" Value="True">
+                                    <Setter Property="Margin" Value="24,24,340,24" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520">
                         <!-- Subtle Header Badge -->
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16" Opacity="0.7">
@@ -1283,10 +1423,10 @@
                         <!-- Large Adaptive Countdown Timer -->
                         <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                                 BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}"
-                                Padding="36,24" Margin="0,0,0,28" HorizontalAlignment="Center">
+                                Padding="48,28" Margin="0,0,0,28" HorizontalAlignment="Center">
                             <TextBlock Text="{Binding Meditation.CurrentTimerDisplay}"
                                        FontFamily="{DynamicResource FontMono}"
-                                       FontSize="{DynamicResource FontSize64}"
+                                       FontSize="{DynamicResource FontSize72}"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextPrimary}"
                                        HorizontalAlignment="Center"

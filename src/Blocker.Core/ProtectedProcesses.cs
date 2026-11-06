@@ -17,6 +17,8 @@ public static class ProtectedProcesses
         "smss",
         "dwm",
         "taskmgr",
+        "screenclippinghost",
+        "snippingtool",
         "blocker",
         "blocker.service",
         "sankalpa",

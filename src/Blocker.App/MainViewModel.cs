@@ -764,6 +764,7 @@ public class MainViewModel : ViewModelBase
 
         // Commands
         Meditation = new MeditationViewModel(_pipeClient);
+        Meditation.GetBlockedAppsProvider = () => GetActiveBlockedProcesses();
         NewBlockCommand = new RelayCommand(() => RequestOpenEditorDialog?.Invoke(null));
         OpenExtensionDialogCommand = new RelayCommand(() => RequestOpenExtensionDialog?.Invoke());
         OpenSettingsCommand = new RelayCommand(() =>
@@ -1324,6 +1325,9 @@ public class MainViewModel : ViewModelBase
                 await LoadDnsConfigAsync();
             }
 
+            // Check active scheduled meditation session (Bug 7)
+            await CheckScheduledMeditationAsync();
+
             // Poll Block Events every second for instant toast notifications
             await PollEventsAsync();
         }
@@ -1384,6 +1388,75 @@ public class MainViewModel : ViewModelBase
         {
             // Ignore event polling failures
         }
+    }
+
+    public HashSet<string> GetActiveBlockedProcesses()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in Profiles)
+        {
+            if (p.Enabled || p.IsActive)
+            {
+                foreach (var proc in p.BlockedProcesses)
+                {
+                    if (!string.IsNullOrWhiteSpace(proc))
+                    {
+                        set.Add(proc.Trim());
+                    }
+                }
+            }
+        }
+        return set;
+    }
+
+    private async Task CheckScheduledMeditationAsync()
+    {
+        if (Meditation == null || !IsServiceConnected) return;
+
+        try
+        {
+            var medStatus = await Meditation.GetActiveMeditationAsync();
+            if (medStatus != null && medStatus.Active && medStatus.RemainingSeconds > 0)
+            {
+                if (Meditation.ActiveZenShield == null)
+                {
+                    LockMode lockMode = LockMode.Locked;
+                    if (Enum.TryParse<LockMode>(medStatus.LockMode, true, out var parsedMode))
+                    {
+                        lockMode = parsedMode;
+                    }
+
+                    string? pwdHash = Meditation.PasswordHash;
+                    if (string.IsNullOrEmpty(pwdHash))
+                    {
+                        pwdHash = _uiSettings.MeditationPasswordHash;
+                    }
+
+                    if (Application.Current?.Dispatcher != null)
+                    {
+                        await Application.Current.Dispatcher.InvokeAsync(() =>
+                        {
+                            Meditation.LaunchZenShieldFromSession(
+                                medStatus.RemainingSeconds,
+                                lockMode,
+                                medStatus.AllowedApps ?? new List<string>(),
+                                pwdHash,
+                                medStatus.Soundscape);
+                        });
+                    }
+                    else
+                    {
+                        Meditation.LaunchZenShieldFromSession(
+                            medStatus.RemainingSeconds,
+                            lockMode,
+                            medStatus.AllowedApps ?? new List<string>(),
+                            pwdHash,
+                            medStatus.Soundscape);
+                    }
+                }
+            }
+        }
+        catch { }
     }
 
     public async Task RetryConnectionAsync()

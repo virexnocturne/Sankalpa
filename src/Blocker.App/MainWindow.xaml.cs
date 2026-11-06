@@ -1,9 +1,12 @@
 using System;
 using System.ComponentModel;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Input;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using Key = System.Windows.Input.Key;
 using MouseButtonEventArgs = System.Windows.Input.MouseButtonEventArgs;
@@ -57,12 +60,98 @@ public partial class MainWindow : Window
             return ok == true ? dlg.ResultText : null;
         };
 
-        KeyDown += (s, e) =>
+        PreviewKeyDown += (s, e) =>
         {
-            if (e.Key == System.Windows.Input.Key.Escape && _viewModel.IsSettingsViewActive)
+            // Esc: Close settings, composer, or notes drawer
+            if (e.Key == Key.Escape)
             {
-                _viewModel.IsSettingsViewActive = false;
-                e.Handled = true;
+                if (_viewModel.IsSettingsViewActive)
+                {
+                    _viewModel.IsSettingsViewActive = false;
+                    e.Handled = true;
+                    return;
+                }
+                if (_viewModel.Meditation != null)
+                {
+                    if (_viewModel.Meditation.IsComposerOpen)
+                    {
+                        _viewModel.Meditation.CancelNoteComposerCommand?.Execute(null);
+                        e.Handled = true;
+                        return;
+                    }
+                    if (_viewModel.Meditation.IsNotesDrawerOpen)
+                    {
+                        _viewModel.Meditation.IsNotesDrawerOpen = false;
+                        e.Handled = true;
+                        return;
+                    }
+                }
+            }
+
+            // Ctrl + Shift + M: Start/Stop Meditation
+            if (e.Key == Key.M && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift) && (Keyboard.Modifiers & ModifierKeys.Alt) == 0)
+            {
+                if (_viewModel.Meditation != null)
+                {
+                    if (_viewModel.Meditation.IsActive)
+                    {
+                        if (_viewModel.Meditation.CanStop)
+                        {
+                            _viewModel.Meditation.StopMeditation();
+                        }
+                    }
+                    else
+                    {
+                        _viewModel.Meditation.StartMeditation();
+                    }
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            // Ctrl + Alt + M: Open Meditation Configuration Dialog
+            if (e.Key == Key.M && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) == (ModifierKeys.Control | ModifierKeys.Alt) && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
+            {
+                if (_viewModel.Meditation != null)
+                {
+                    _viewModel.Meditation.OpenEditDialogCommand?.Execute(null);
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            // Ctrl + Shift + U: Toggle Soundscape Mute/Unmute
+            if (e.Key == Key.U && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift))
+            {
+                if (_viewModel.Meditation != null)
+                {
+                    _viewModel.Meditation.ToggleSoundscapeCommand?.Execute(null);
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            // Ctrl + N: New Note
+            if (e.Key == Key.N && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & (ModifierKeys.Shift | ModifierKeys.Alt)) == 0)
+            {
+                if (_viewModel.Meditation != null)
+                {
+                    _viewModel.Meditation.IsNotesDrawerOpen = true;
+                    _viewModel.Meditation.NewNoteCommand?.Execute(null);
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            // Ctrl + Shift + N: Toggle Notes Drawer
+            if (e.Key == Key.N && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift))
+            {
+                if (_viewModel.Meditation != null)
+                {
+                    _viewModel.Meditation.ToggleNotesDrawerCommand?.Execute(null);
+                    e.Handled = true;
+                    return;
+                }
             }
         };
 
@@ -90,9 +179,64 @@ public partial class MainWindow : Window
         }
     }
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    private const int HOTKEY_ID = 0x9001;
+    private const uint MOD_ALT = 0x0001;
+    private const uint MOD_NOREPEAT = 0x4000;
+    private const uint VK_N = 0x4E;
+    private const int WM_HOTKEY = 0x0312;
+
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         _viewModel.StartPolling();
+
+        // Load Persistent Notes Vault into Meditation NotesCollection on startup
+        try
+        {
+            if (_viewModel.Meditation != null && _viewModel.Meditation.NotesCollection.Count == 0)
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string vaultPath = System.IO.Path.Combine(localAppData, "Sankalpa", "notes", "active_notes.json");
+                if (System.IO.File.Exists(vaultPath))
+                {
+                    string json = System.IO.File.ReadAllText(vaultPath);
+                    var cards = NoteCardCollection.Deserialize(json);
+                    foreach (var card in cards)
+                    {
+                        _viewModel.Meditation.NotesCollection.Add(card);
+                    }
+                }
+            }
+        }
+        catch { }
+
+        try
+        {
+            IntPtr hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero)
+            {
+                RegisterHotKey(hwnd, HOTKEY_ID, MOD_ALT | MOD_NOREPEAT, VK_N);
+                HwndSource.FromHwnd(hwnd)?.AddHook(HwndHook);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
+        {
+            _viewModel.Meditation?.ToggleQuickNotes();
+            handled = true;
+        }
+        return IntPtr.Zero;
     }
 
     protected override void OnStateChanged(EventArgs e)
@@ -114,6 +258,31 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
+        try
+        {
+            if (_viewModel.Meditation != null && _viewModel.Meditation.NotesCollection.Count > 0)
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string vaultDir = System.IO.Path.Combine(localAppData, "Sankalpa", "notes");
+                if (!System.IO.Directory.Exists(vaultDir)) System.IO.Directory.CreateDirectory(vaultDir);
+                string vaultPath = System.IO.Path.Combine(vaultDir, "active_notes.json");
+                string json = NoteCardCollection.Serialize(_viewModel.Meditation.NotesCollection.ToList());
+                System.IO.File.WriteAllText(vaultPath, json);
+            }
+        }
+        catch { }
+
+        try
+        {
+            IntPtr hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero)
+            {
+                UnregisterHotKey(hwnd, HOTKEY_ID);
+            }
+        }
+        catch
+        {
+        }
         _viewModel.StopPolling();
         _viewModel.Meditation?.Dispose();
     }

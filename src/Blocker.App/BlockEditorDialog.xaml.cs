@@ -354,6 +354,7 @@ public partial class BlockEditorDialog : Window
 
         SelectTabByIndex(initialTab);
         Loaded += (s, e) => SelectTabByIndex(initialTab);
+        PreviewKeyDown += (s, e) => { if (e.Key == Key.Escape) { DialogResult = false; Close(); e.Handled = true; } };
 
         if (profile != null)
         {
@@ -751,10 +752,6 @@ public partial class BlockEditorDialog : Window
 
         if (pickerDlg.ShowDialog() == true)
         {
-            if (!_isLockedMode)
-            {
-                Apps.Clear();
-            }
             foreach (var app in pickerDlg.SelectedApps)
             {
                 if (!Apps.Contains(app, StringComparer.OrdinalIgnoreCase))

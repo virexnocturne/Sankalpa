@@ -16,6 +16,7 @@ public class MeditationSession
     public LockMode LockMode { get; set; } = LockMode.None;
     public string? Soundscape { get; set; }
     public DateTime? EndedUtc { get; set; }
+    public string? PasswordHash { get; set; }
 
     public List<string> GetAllowedApps()
     {

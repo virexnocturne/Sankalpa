@@ -10,8 +10,17 @@ public class Worker : BackgroundService
 {
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string? lpszWindow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
     private const int SW_MINIMIZE = 6;
     private const int SW_FORCEMINIMIZE = 11;
+    private const uint WM_CLOSE = 0x0010;
 
     private readonly ILogger<Worker> _logger;
     private readonly BlockerDatabase _db;
@@ -32,6 +41,7 @@ public class Worker : BackgroundService
     private readonly Dictionary<int, DateTime> _scheduleWarningNotifiedUtc = new();
     private readonly Dictionary<int, DateTime> _scheduleTriggeredUtc = new();
     private readonly HashSet<int> _loggedMeditationPids = new();
+    private readonly HashSet<IntPtr> _loggedCabinetHwnds = new();
 
 
     private readonly ConcurrentDictionary<string, string?> _originalFileNameCache = new(StringComparer.OrdinalIgnoreCase);
@@ -174,6 +184,9 @@ public class Worker : BackgroundService
                 else
                 {
                     _db.EndMeditationSession(activeMeditation.Id, completed: true);
+                    _activeMeditationSession = null;
+                    _loggedMeditationPids.Clear();
+                    // Scheduled Blocks Integrity: Ensure meditation session cleanup does NOT touch, disable, or alter standard profile schedules.
                 }
             }
 
@@ -410,7 +423,7 @@ public class Worker : BackgroundService
                         // Re-apply if tampered or adapter disconnected/reconnected (throttled to at most once per 20s)
                         if (DateTime.UtcNow - _lastDnsWatchdogApplyUtc >= TimeSpan.FromSeconds(20))
                         {
-                            if (!DnsManager.IsDnsActive(dnsConfig.PrimaryDns, dnsConfig.PrimaryIpv6))
+                            if (!DnsManager.IsDnsActive(dnsConfig.PrimaryDns, dnsConfig.PrimaryIpv6, dnsConfig.SecondaryDns, dnsConfig.SecondaryIpv6))
                             {
                                 _lastDnsWatchdogApplyUtc = DateTime.UtcNow;
                                 _ = Task.Run(() =>
@@ -632,6 +645,10 @@ public class Worker : BackgroundService
                 _logger.LogInformation("{Message}", msg);
                 ServiceNotificationDispatcher.DispatchNotification("MeditationComplete", "Meditation", "Meditation session complete! Well done.");
                 _activeMeditationSession = null;
+                _loggedMeditationPids.Clear();
+
+                // Scheduled Blocks Integrity: Ensure meditation session cleanup does NOT touch, disable, or alter standard profile schedules.
+                // Standard profiles and their scheduled active windows operate strictly independently at all times.
             }
             else
             {
@@ -640,6 +657,10 @@ public class Worker : BackgroundService
         }
         else
         {
+            if (_activeMeditationSession != null)
+            {
+                _loggedMeditationPids.Clear();
+            }
             _activeMeditationSession = null;
         }
 
@@ -760,6 +781,21 @@ public class Worker : BackgroundService
         bool hasBlockedApps = currentBlockedList != null && currentBlockedList.Count > 0;
         bool hasUnauthorizedBrowsers = unauthorizedBrowsers != null && unauthorizedBrowsers.Count > 0;
         var killedBrowsersThisPass = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Check standalone File Explorer windows during active meditation
+        if (_activeMeditationSession != null)
+        {
+            var allowedApps = _activeMeditationSession.GetAllowedApps() ?? new List<string>();
+            bool isExplorerAllowed = IsAppAllowed("explorer", "explorer.exe", allowedApps);
+            if (!isExplorerAllowed)
+            {
+                SuppressStandaloneExplorerWindows(timestamp);
+            }
+        }
+        else if (_loggedCabinetHwnds.Count > 0)
+        {
+            _loggedCabinetHwnds.Clear();
+        }
 
         for (int i = 0; i < runningProcesses.Count; i++)
         {
@@ -1071,6 +1107,15 @@ public class Worker : BackgroundService
         string normProc = ProcessMatcher.NormalizeProcessName(processName);
         string normExe = ProcessMatcher.NormalizeProcessName(exeName);
 
+        // Always allow Snipping Tool and Screen Clipping Host during meditation
+        if (string.Equals(normProc, "screenclippinghost", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normExe, "screenclippinghost", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normProc, "snippingtool", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normExe, "snippingtool", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         foreach (var allowed in allowedApps)
         {
             string normAllowed = ProcessMatcher.NormalizeProcessName(allowed);
@@ -1085,6 +1130,44 @@ public class Worker : BackgroundService
         }
 
         return false;
+    }
+
+    private void SuppressStandaloneExplorerWindows(string timestamp)
+    {
+        try
+        {
+            var foundHwnds = new HashSet<IntPtr>();
+            foreach (var className in new[] { "CabinetWClass", "ExploreWClass" })
+            {
+                IntPtr hwnd = IntPtr.Zero;
+                while ((hwnd = FindWindowEx(IntPtr.Zero, hwnd, className, null)) != IntPtr.Zero)
+                {
+                    foundHwnds.Add(hwnd);
+                    ShowWindow(hwnd, SW_FORCEMINIMIZE);
+                    ShowWindow(hwnd, SW_MINIMIZE);
+                    PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+
+                    if (_loggedCabinetHwnds.Add(hwnd))
+                    {
+                        string msg = $"[{timestamp}] [MEDITATION WHITELIST] Standalone File Explorer window suppressed ({className}).";
+                        Console.WriteLine(msg);
+                        _logger.LogInformation("{Message}", msg);
+
+                        bool dispatched = ServiceNotificationDispatcher.DispatchNotification("MeditationWhitelist", "explorer.exe", "Standalone File Explorer closed");
+                        _db.RecordBlockEvent(new BlockEvent
+                        {
+                            TimeUtc = DateTime.UtcNow,
+                            Kind = "MeditationWhitelist",
+                            Name = "explorer.exe",
+                            ProfileName = "Standalone File Explorer",
+                            ServiceDispatched = dispatched
+                        });
+                    }
+                }
+            }
+            _loggedCabinetHwnds.IntersectWith(foundHwnds);
+        }
+        catch { }
     }
 
     private void CheckMeditationSchedules(DateTime localNow)

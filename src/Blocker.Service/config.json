@@ -1,5 +1,3 @@
 {
-  "BlockedProcesses": [
-    "notepad.exe"
-  ]
+  "BlockedProcesses": []
 }

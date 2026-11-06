@@ -4,6 +4,38 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FIX-2026-11-06-02] Ironclad Lockdown, Rigor, Notes Vault & UI Bug Patch (v1.3.1)
+- **Timestamp**: 2026-11-06 18:45 IST
+- **Component**: Lockdown Engine (`ZenShieldWindow.xaml.cs`, `ZenMiniHudWindow.xaml.cs`, `LowLevelKeyboardHook.cs`), Meditation Rigor (`MeditationViewModel.cs`, `MeditationEditDialog.xaml.cs`, `PasswordSecurity.cs`), Notes Vault (`NotesDrawerControl.xaml.cs`, `ZenQuickNotesOverlay.xaml`, `UiSettingsStore.cs`), Block Editor & Service (`BlockEditorDialog.xaml.cs`, `Worker.cs`, `config.json`), Packaging & Installer (`Sankalpa.iss`, `build-installer.ps1`, `manifest.json`)
+- **Status**: **RELEASED & VERIFIED IN LIVE OS**
+- **Problems Identified & Solved**:
+  1. **Bug 1 (Blocked Apps Wishlist Conflict)**: Prevented applications in active/enabled block profiles from being wishlisted in meditation mode; labeled with `(Blocked by Block Profile)`.
+  2. **Bug 2 & 3 (Allowed App Minimize & Drag Bypass)**: Placed `ZenShieldWindow` as an impenetrable Zen backdrop at `HWND_BOTTOM` beneath allowed apps, backed by a 500ms watchdog and a "Return to Zen Focus" button on the pinned Mini-HUD.
+  3. **Bug 4 (Task View Gesture Bypass)**: Suppressed three-finger swipe-up (`Task View` / `MultitaskingViewFrame`) and `Win+Tab`/`Alt+Tab` via hook and frame interception, while allowing `Win+Shift+S` for screenshots.
+  4. **Bug 5 (Typing Challenge Prompt Enforced)**: Normalized lock mode strings so Typing Challenge strictly requires typing the sentence before unlocking.
+  5. **Bug 6 (Cryptographic Password Protection)**: Enforced password configuration and confirmation, storing a PBKDF2/SHA-256 salted hash and requiring hash verification to exit.
+  6. **Bug 7 (Daily Schedule Automatic Session Trigger)**: Automated scheduled session detection to automatically display `ZenShieldWindow` on time.
+  7. **Bug 8 (Soundscape Pill Instant Update)**: Fixed data binding so changing soundscapes immediately updates the top-left pill display.
+  8. **Bug 9 (Timer Centering on Session Completion)**: Added automatic reset of notes drawer state upon session end to re-center the countdown timer.
+  9. **Bug 10 (Timer Duration Persistence)**: Saved user-configured timer durations to `UiSettingsStore`, persisting across restarts.
+  10. **Bug 11 (NOTES Drawer Tab Focus Dotted Outline)**: Removed dotted focus border on the NOTES handle with `FocusVisualStyle="{x:Null}"`.
+  11. **Bug 12 (Persistent Notes Vault)**: Implemented local JSON note persistence in `%LOCALAPPDATA%\Sankalpa\notes\active_notes.json` with debounced atomic writes and auto-reload on startup.
+  12. **Bug 13 (Caret Drift on `#` Tags)**: Fixed text binding re-entrancy in `NotesDrawerControl`, preventing letter deletion and cursor jumping when adding headings or tags.
+  13. **Bug 14 (Quick Notes Save Bar Clipping & Duplicate Checkmark)**: Compacted status bar hint to `"Ctrl+Enter save • Right-click presets"` and removed duplicate checkmark.
+  14. **Missing Feature (In-Edit-Mode Screenshot Previews)**: Added live image thumbnail preview cards for embedded markdown images while editing notes.
+  15. **Bug 15 (Scheduled Blocks Independence)**: Scheduled block profiles remain active and follow their own time window when meditation ends.
+  16. **Bug 16 ("Pick apps..." Selection Appending)**: Appended newly picked applications to existing lists instead of replacing them.
+  17. **Bug 17 (Default Block Profile Cleanup)**: Removed `notepad.exe` seed from default block profiles.
+  18. **Bug 18 (Scrollbar Preservation)**: Preserved all native and themed scrollbars per user requirement.
+  19. **Feature (Auto-Dismiss Quick Notes Hint)**: Tracked overlay opens to auto-hide the `"Alt + N to toggle"` hint badge after 3 uses.
+  20. **Feature (Expanded Global Shortcuts)**: Added `Ctrl+Shift+M` (Meditation), `Ctrl+Alt+M` (Mute), `Ctrl+Shift+U` (Configure), `Ctrl+N` (New Note), `Ctrl+Shift+N` (Notes Drawer), `Esc` (Dismiss dialogs).
+- **Verification**:
+  - All 803 automated unit and security tests passing (89 in `Sankalpa.Security.Tests`, 714 in `Sankalpa.Tests`).
+  - Headless UI render tests generated 44 screenshots with 0 errors.
+  - Packaged companion extension `sankalpa-extension-v1.3.1.zip` and deployed binaries to `Sankalpa dev` and `Sankalpa-Release`.
+
+---
+
 ### [FEAT-2026-11-06-01] Meditation Mode, System Lockdown, Obsidian Notes & Drawers (v1.3.0)
 - **Timestamp**: 2026-11-06 13:00 IST
 - **Component**: Core Models & IPC (`MeditationSession.cs`, `MeditationSchedule.cs`, `NoteCard.cs`, `NoteCardCollection.cs`, `LowLevelKeyboardHook.cs`, `Protocol.cs`, `CommandHandler.cs`), Service (`BlockerDatabase.cs`, `Worker.cs`), Desktop App (`MainWindow.xaml`, `MeditationViewModel.cs`, `ZenShieldWindow.xaml`, `ZenBackdropWindow.xaml`, `ZenMiniHudWindow.xaml`, `ZenQuickNotesOverlay.xaml`, `NotesDrawerControl.xaml`, `SoundscapePillControl.xaml`, `MeditationEditDialog.xaml`, `UniversalNotesDialog.xaml`, `AmbientSoundEngine.cs`), Installer (`Sankalpa-Setup-1.3.0.exe`)

@@ -21,16 +21,27 @@ public class MeditationViewModel : ViewModelBase, IDisposable
     private readonly AmbientSoundEngine _soundEngine;
     private readonly DispatcherTimer _sessionTimer;
     private readonly DispatcherTimer _noteDebounceTimer;
+    private readonly DispatcherTimer _transientSaveTimer;
 
     private long _targetDurationSeconds = 1200; // 20m default
     private long _remainingSeconds = 1200;
     private bool _isActive;
     private LockMode _lockMode = LockMode.Locked;
     private SoundscapeType _selectedSoundscape = SoundscapeType.Rain;
+    private string? _passwordHash;
     private string _currentNote = string.Empty;
-    private string _autoSaveStatus = "All changes saved";
+    private string _autoSaveStatus = string.Empty;
     private int? _activeSessionId;
     private ZenShieldWindow? _activeZenShield;
+
+    public ZenShieldWindow? ActiveZenShield => _activeZenShield;
+    public Func<IEnumerable<string>>? GetBlockedAppsProvider { get; set; }
+
+    public string? PasswordHash
+    {
+        get => _passwordHash;
+        set => SetProperty(ref _passwordHash, value);
+    }
 
     // Schedule properties
     private bool _isScheduleEnabled;
@@ -74,6 +85,16 @@ public class MeditationViewModel : ViewModelBase, IDisposable
             Interval = TimeSpan.FromMilliseconds(500)
         };
         _noteDebounceTimer.Tick += NoteDebounceTimer_Tick;
+
+        _transientSaveTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(2.5)
+        };
+        _transientSaveTimer.Tick += (s, e) =>
+        {
+            _transientSaveTimer.Stop();
+            AutoSaveStatus = string.Empty;
+        };
 
         // Initialize Commands
         StartMeditationCommand = new RelayCommand(StartMeditation);
@@ -120,12 +141,41 @@ public class MeditationViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(HasNoNotes));
             OnPropertyChanged(nameof(HasNotes));
             OnPropertyChanged(nameof(NotesCountText));
-            SaveNoteAsync();
+            SaveActiveNotes();
         });
 
         SaveNoteCardCommand = new RelayCommand(() =>
         {
-            string title = string.IsNullOrWhiteSpace(ComposerTitle) ? "Untitled Note" : ComposerTitle.Trim();
+            string title = ComposerTitle?.Trim() ?? string.Empty;
+            string content = ComposerMarkdown ?? string.Empty;
+
+            // Auto-detect title from first heading or first non-empty line if title input is left empty
+            if (string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(content))
+            {
+                var lines = content.Replace("\r", "").Split('\n');
+                foreach (var line in lines)
+                {
+                    string tr = line.Trim();
+                    if (tr.StartsWith("# ") || tr.StartsWith("## ") || tr.StartsWith("### "))
+                    {
+                        title = tr.TrimStart('#').Trim();
+                        break;
+                    }
+                    else if (!string.IsNullOrWhiteSpace(tr) && string.IsNullOrEmpty(title))
+                    {
+                        string clean = tr.TrimStart('-', '*', '•', '>', ' ', '[', ']', '☐', '☑');
+                        if (clean.Length > 40) clean = clean[..40] + "...";
+                        title = clean.Trim();
+                        break;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                title = "Untitled Note";
+            }
+
             if (!string.IsNullOrEmpty(EditingNoteId))
             {
                 var existing = NotesCollection.FirstOrDefault(n => n.Id == EditingNoteId);
@@ -148,7 +198,7 @@ public class MeditationViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(HasNoNotes));
             OnPropertyChanged(nameof(HasNotes));
             OnPropertyChanged(nameof(NotesCountText));
-            SaveNoteAsync();
+            SaveActiveNotes();
         });
 
         CancelNoteComposerCommand = new RelayCommand(() =>
@@ -171,6 +221,29 @@ public class MeditationViewModel : ViewModelBase, IDisposable
                 card.IsFullExpanded = !card.IsFullExpanded;
             }
         });
+
+        // Load settings from UiSettingsStore (Bug 10)
+        try
+        {
+            var uiSettings = UiSettingsStore.Load();
+            int durMins = uiSettings.MeditationDurationMinutes > 0 ? uiSettings.MeditationDurationMinutes : 20;
+            _targetDurationSeconds = durMins * 60;
+            _remainingSeconds = _targetDurationSeconds;
+
+            if (Enum.TryParse<LockMode>(uiSettings.MeditationLockMode, true, out var parsedLock))
+            {
+                _lockMode = parsedLock;
+            }
+            if (Enum.TryParse<SoundscapeType>(uiSettings.MeditationSoundscape, true, out var parsedSound))
+            {
+                _selectedSoundscape = parsedSound;
+            }
+            if (!string.IsNullOrEmpty(uiSettings.MeditationPasswordHash))
+            {
+                _passwordHash = uiSettings.MeditationPasswordHash;
+            }
+        }
+        catch { }
 
         UpdateTimerDisplay();
     }
@@ -257,6 +330,7 @@ public class MeditationViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _selectedSoundscape, value))
             {
                 OnPropertyChanged(nameof(SelectedSoundscapeName));
+                OnPropertyChanged(nameof(SelectedSoundscapeDisplayName));
                 OnPropertyChanged(nameof(IsRainSelected));
                 OnPropertyChanged(nameof(IsLibrarySelected));
                 OnPropertyChanged(nameof(IsForestSelected));
@@ -370,9 +444,10 @@ public class MeditationViewModel : ViewModelBase, IDisposable
         {
             if (SetProperty(ref _currentNote, value))
             {
-                if (NotesCollection.Count == 0 && !string.IsNullOrWhiteSpace(value))
+                var cards = NoteCardCollection.Deserialize(value);
+                if (!AreCardListsEquivalent(NotesCollection, cards))
                 {
-                    var cards = NoteCardCollection.Deserialize(value);
+                    NotesCollection.Clear();
                     foreach (var card in cards)
                     {
                         WireCard(card);
@@ -387,6 +462,21 @@ public class MeditationViewModel : ViewModelBase, IDisposable
                 _noteDebounceTimer.Start();
             }
         }
+    }
+
+    private static bool AreCardListsEquivalent(IList<NoteCard> a, IList<NoteCard> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++)
+        {
+            if (a[i].Id != b[i].Id ||
+                a[i].Title != b[i].Title ||
+                a[i].MarkdownContent != b[i].MarkdownContent)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     public string AutoSaveStatus
@@ -449,7 +539,8 @@ public class MeditationViewModel : ViewModelBase, IDisposable
                 "Meditation & Lockdown",
                 this)
             {
-                NotesText = CurrentNote
+                NotesText = CurrentNote,
+                Tag = PasswordHash
             };
 
             _activeZenShield.OnToggleNotesRequested = ToggleQuickNotes;
@@ -461,6 +552,36 @@ public class MeditationViewModel : ViewModelBase, IDisposable
             _activeZenShield.OnSessionEnded = () =>
             {
                 StopMeditationInternal();
+            };
+
+            _activeZenShield.OnVerifyUnlockRequested = () =>
+            {
+                if (LockMode == LockMode.Password)
+                {
+                    var dlg = new PasswordUnlockDialog("Meditation Session")
+                    {
+                        Owner = _activeZenShield
+                    };
+                    if (dlg.ShowDialog() == true)
+                    {
+                        if (VerifyPassword(dlg.ResultPassword))
+                        {
+                            return true;
+                        }
+                        DarkDialogWindow.Show("Incorrect password. Access denied.", "Verification Failed", isConfirmation: false);
+                    }
+                    return false;
+                }
+                else if (LockMode == LockMode.TypingChallenge)
+                {
+                    var challenge = "I choose to return to my desktop with intention and focus.";
+                    var dlg = new TypingChallengeDialog(challenge)
+                    {
+                        Owner = _activeZenShield
+                    };
+                    return dlg.ShowDialog() == true;
+                }
+                return true;
             };
 
             _activeZenShield.Show();
@@ -542,13 +663,48 @@ public class MeditationViewModel : ViewModelBase, IDisposable
             {
                 return;
             }
+            if (!VerifyPassword(dlg.ResultPassword))
+            {
+                DarkDialogWindow.Show("Incorrect password. Access denied.", "Verification Failed", isConfirmation: false);
+                return;
+            }
         }
 
         StopMeditationInternal();
     }
 
+    public bool VerifyPassword(string input)
+    {
+        if (string.IsNullOrEmpty(_passwordHash)) return true;
+        if (string.IsNullOrEmpty(input)) return false;
+
+        string inputHash = ComputeSha256(input);
+        if (string.Equals(inputHash, _passwordHash, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (_passwordHash.Contains(':'))
+        {
+            var parts = _passwordHash.Split(':');
+            if (parts.Length == 2 && PasswordSecurity.VerifyPassword(input, parts[0], parts[1]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static string ComputeSha256(string rawData)
+    {
+        byte[] bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(rawData));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
     private void StopMeditationInternal()
     {
+        IsNotesDrawerOpen = false;
         _quickNotesOverlay?.Close();
         _quickNotesOverlay = null;
         _sessionTimer.Stop();
@@ -643,14 +799,29 @@ public class MeditationViewModel : ViewModelBase, IDisposable
         SaveNoteAsync();
     }
 
-    private void SaveNoteAsync()
+    public void SaveActiveNotes()
     {
-        AutoSaveStatus = "Saved";
         if (NotesCollection.Count > 0)
         {
             _currentNote = NoteCardCollection.Serialize(NotesCollection.ToList());
-            OnPropertyChanged(nameof(CurrentNote));
         }
+        else
+        {
+            _currentNote = string.Empty;
+        }
+        OnPropertyChanged(nameof(CurrentNote));
+
+        // If _quickNotesOverlay is open or exists, sync it immediately:
+        _quickNotesOverlay?.LoadNotes(_currentNote);
+
+        if (_activeZenShield != null)
+        {
+            _activeZenShield.NotesText = _currentNote;
+        }
+
+        AutoSaveStatus = "Saved";
+        _transientSaveTimer.Stop();
+        _transientSaveTimer.Start();
 
         if (_activeSessionId.HasValue && _pipeClient != null)
         {
@@ -673,6 +844,11 @@ public class MeditationViewModel : ViewModelBase, IDisposable
                 catch { }
             });
         }
+    }
+
+    private void SaveNoteAsync()
+    {
+        SaveActiveNotes();
     }
 
     public void ExportCurrentNotes()
@@ -718,6 +894,7 @@ public class MeditationViewModel : ViewModelBase, IDisposable
 
     public void OpenEditDialog()
     {
+        var blockedApps = GetBlockedAppsProvider?.Invoke();
         var dlg = new MeditationEditDialog(
             (int)(TargetDurationSeconds / 60),
             LockMode,
@@ -725,7 +902,9 @@ public class MeditationViewModel : ViewModelBase, IDisposable
             IsScheduleEnabled,
             ScheduleTime,
             ScheduleDays,
-            SelectedSoundscape)
+            SelectedSoundscape,
+            passwordHash: PasswordHash,
+            blockedApps: blockedApps)
         {
             Owner = Application.Current?.MainWindow
         };
@@ -734,6 +913,7 @@ public class MeditationViewModel : ViewModelBase, IDisposable
         {
             TargetDurationSeconds = dlg.DurationMinutes * 60;
             LockMode = dlg.LockProtection;
+            PasswordHash = dlg.PasswordHash;
 
             AllowedApps.Clear();
             if (!dlg.CompleteLockout)
@@ -748,6 +928,21 @@ public class MeditationViewModel : ViewModelBase, IDisposable
             ScheduleTime = dlg.ScheduleTime;
             ScheduleDays = dlg.ScheduleDays;
             SelectedSoundscape = dlg.SelectedSoundscape;
+
+            // Persist settings to UiSettingsStore (Bug 10)
+            try
+            {
+                var uiSettings = UiSettingsStore.Load();
+                uiSettings.MeditationDurationMinutes = dlg.DurationMinutes;
+                uiSettings.MeditationLockMode = dlg.LockProtection.ToString();
+                uiSettings.MeditationSoundscape = dlg.SelectedSoundscape.ToString();
+                if (dlg.LockProtection == LockMode.Password && !string.IsNullOrEmpty(dlg.PasswordHash))
+                {
+                    uiSettings.MeditationPasswordHash = dlg.PasswordHash;
+                }
+                UiSettingsStore.Save(uiSettings);
+            }
+            catch { }
 
             // Sync schedule to Service
             if (IsScheduleEnabled && _pipeClient != null)
@@ -817,12 +1012,121 @@ public class MeditationViewModel : ViewModelBase, IDisposable
         _quickNotesOverlay.Activate();
     }
 
+    public async Task<MeditationStatusDto?> GetActiveMeditationAsync()
+    {
+        if (_pipeClient == null) return null;
+        try
+        {
+            var res = await _pipeClient.SendRequestAsync(new Request { Command = CommandNames.GetMeditationStatus });
+            if (!res.Connected || res.Response?.Ok != true || string.IsNullOrWhiteSpace(res.Response.Data))
+            {
+                res = await _pipeClient.SendRequestAsync(new Request { Command = "GetActiveMeditation" });
+            }
+            if (res.Connected && res.Response?.Ok == true && !string.IsNullOrWhiteSpace(res.Response.Data))
+            {
+                return JsonSerializer.Deserialize<MeditationStatusDto>(res.Response.Data, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    public void LaunchZenShieldFromSession(long remainingSeconds, LockMode lockMode, List<string> allowedApps, string? passwordHash = null, string? soundscape = null)
+    {
+        if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+        {
+            Application.Current.Dispatcher.Invoke(() => LaunchZenShieldFromSession(remainingSeconds, lockMode, allowedApps, passwordHash, soundscape));
+            return;
+        }
+
+        if (_activeZenShield != null) return;
+
+        IsActive = true;
+        RemainingSeconds = remainingSeconds;
+        TargetDurationSeconds = remainingSeconds;
+        LockMode = lockMode;
+        PasswordHash = passwordHash;
+
+        AllowedApps.Clear();
+        foreach (var app in allowedApps)
+        {
+            AllowedApps.Add(app);
+        }
+
+        if (!string.IsNullOrEmpty(soundscape) && Enum.TryParse<SoundscapeType>(soundscape, true, out var parsedSound))
+        {
+            SelectedSoundscape = parsedSound;
+        }
+
+        if (SelectedSoundscape != SoundscapeType.None)
+        {
+            try { _soundEngine.SetSoundscape(SelectedSoundscape); } catch { }
+        }
+
+        try
+        {
+            _activeZenShield = new ZenShieldWindow(
+                (int)remainingSeconds,
+                lockMode == LockMode.Locked,
+                lockMode.ToString(),
+                allowedApps,
+                "Meditation & Lockdown",
+                this)
+            {
+                NotesText = CurrentNote,
+                Tag = passwordHash
+            };
+
+            _activeZenShield.OnToggleNotesRequested = ToggleQuickNotes;
+            _activeZenShield.OnNotesChanged = text => CurrentNote = text;
+            _activeZenShield.OnSessionEnded = () => StopMeditationInternal();
+            _activeZenShield.OnVerifyUnlockRequested = () =>
+            {
+                if (LockMode == LockMode.Password)
+                {
+                    var dlg = new PasswordUnlockDialog("Meditation Session")
+                    {
+                        Owner = _activeZenShield
+                    };
+                    if (dlg.ShowDialog() == true)
+                    {
+                        if (VerifyPassword(dlg.ResultPassword))
+                        {
+                            return true;
+                        }
+                        DarkDialogWindow.Show("Incorrect password. Access denied.", "Verification Failed", isConfirmation: false);
+                    }
+                    return false;
+                }
+                else if (LockMode == LockMode.TypingChallenge)
+                {
+                    var challenge = "I choose to return to my desktop with intention and focus.";
+                    var dlg = new TypingChallengeDialog(challenge)
+                    {
+                        Owner = _activeZenShield
+                    };
+                    return dlg.ShowDialog() == true;
+                }
+                return true;
+            };
+
+            _activeZenShield.Show();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MeditationViewModel] Error launching ZenShield from session: {ex.Message}");
+        }
+
+        _sessionTimer.Start();
+    }
+
     #endregion
 
     public void Dispose()
     {
         _sessionTimer.Stop();
         _noteDebounceTimer.Stop();
+        _transientSaveTimer.Stop();
         _soundEngine.Dispose();
     }
 }

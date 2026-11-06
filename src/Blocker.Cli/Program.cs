@@ -709,6 +709,10 @@ switch (command)
                 Console.WriteLine($"  Preset:    {cfg.PresetName}");
                 Console.WriteLine($"  Primary:   {cfg.PrimaryDns}");
                 Console.WriteLine($"  Secondary: {cfg.SecondaryDns}");
+                bool isSystemActive = DnsManager.IsDnsActive(cfg.PrimaryDns, cfg.PrimaryIpv6, cfg.SecondaryDns, cfg.SecondaryIpv6);
+                var activeIfaces = DnsManager.GetActiveInterfaceNames();
+                Console.WriteLine($"  Enforced:  {isSystemActive}");
+                Console.WriteLine($"  Adapters:  {string.Join(", ", activeIfaces)}");
                 Console.WriteLine($"  Locked:    {cfg.Locked} (Mode: {cfg.LockType})");
                 if (cfg.Locked && cfg.LockedUntilUtc.HasValue)
                 {

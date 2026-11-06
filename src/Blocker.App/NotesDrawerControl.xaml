@@ -1,14 +1,54 @@
 <UserControl x:Class="Blocker.App.NotesDrawerControl"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
              xmlns:local="clr-namespace:Blocker.App">
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <local:InverseBooleanToVisibilityConverter x:Key="InvBoolToVis" />
+        <local:AttachmentImageConverter x:Key="AttachmentImageConverter" />
+
+        <sys:Double x:Key="HeaderFontSize">15</sys:Double>
+        <sys:Double x:Key="SubheaderFontSize">13.5</sys:Double>
+
+        <Style x:Key="DrawerMiniButton" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaised}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontFamily" Value="{DynamicResource FontBody}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="btnBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="{DynamicResource BorderStrong}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="{DynamicResource Surface}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <Style x:Key="DrawerTabButtonStyle" TargetType="{x:Type Button}">
-            <Setter Property="FocusVisualStyle" Value="{StaticResource DefaultFocusVisualStyle}" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Background" Value="{DynamicResource SurfaceRaised}" />
             <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
             <Setter Property="BorderThickness" Value="1,1,0,1" />
@@ -75,12 +115,17 @@
                       HorizontalAlignment="Center"
                       Margin="0,0,0,8" />
 
-                <!-- Vertical Text Stack "N O T E S" -->
-                <TextBlock Text="N" FontFamily="{DynamicResource FontTitle}" FontSize="{DynamicResource FontSize12}" FontWeight="Bold" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center" />
-                <TextBlock Text="O" FontFamily="{DynamicResource FontTitle}" FontSize="{DynamicResource FontSize12}" FontWeight="Bold" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center" Margin="0,3,0,0" />
-                <TextBlock Text="T" FontFamily="{DynamicResource FontTitle}" FontSize="{DynamicResource FontSize12}" FontWeight="Bold" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center" Margin="0,3,0,0" />
-                <TextBlock Text="E" FontFamily="{DynamicResource FontTitle}" FontSize="{DynamicResource FontSize12}" FontWeight="Bold" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center" Margin="0,3,0,0" />
-                <TextBlock Text="S" FontFamily="{DynamicResource FontTitle}" FontSize="{DynamicResource FontSize12}" FontWeight="Bold" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                <!-- Rotated Word "NOTES" (-90deg counter-clockwise, S at top, N at bottom) -->
+                <TextBlock Text="NOTES"
+                           FontFamily="{DynamicResource FontTitle}"
+                           FontSize="{DynamicResource FontSize12}"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource TextSecondary}"
+                           HorizontalAlignment="Center">
+                    <TextBlock.LayoutTransform>
+                        <RotateTransform Angle="-90" />
+                    </TextBlock.LayoutTransform>
+                </TextBlock>
             </StackPanel>
         </Button>
 
@@ -115,7 +160,7 @@
 
                         <!-- Title and Auto-save -->
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="Session Reflections"
+                            <TextBlock Text="Notes"
                                        FontFamily="{DynamicResource FontTitle}"
                                        FontSize="{DynamicResource FontSizeHeading}"
                                        FontWeight="SemiBold"
@@ -123,7 +168,21 @@
                             <TextBlock Text="{Binding AutoSaveStatus}"
                                        FontSize="{DynamicResource FontSize12}"
                                        Foreground="{DynamicResource Success}"
-                                       Margin="0,2,0,0" />
+                                       Margin="0,2,0,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <Trigger Property="Text" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </Trigger>
+                                            <Trigger Property="Text" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
 
                         <!-- Close Drawer Button -->
@@ -297,9 +356,9 @@
                                                                             <!-- Header Block -->
                                                                             <TextBlock Text="{Binding Text}"
                                                                                        FontWeight="Bold"
-                                                                                       FontSize="{DynamicResource FontSize13}"
+                                                                                       FontSize="{DynamicResource HeaderFontSize}"
                                                                                        Foreground="{DynamicResource TextPrimary}"
-                                                                                       Margin="0,4,0,2"
+                                                                                       Margin="0,5,0,2"
                                                                                        TextWrapping="Wrap">
                                                                                 <TextBlock.Style>
                                                                                     <Style TargetType="TextBlock">
@@ -312,6 +371,50 @@
                                                                                     </Style>
                                                                                 </TextBlock.Style>
                                                                             </TextBlock>
+
+                                                                            <!-- Subheader Block -->
+                                                                            <TextBlock Text="{Binding Text}"
+                                                                                       FontWeight="SemiBold"
+                                                                                       FontSize="{DynamicResource SubheaderFontSize}"
+                                                                                       Foreground="{DynamicResource TextSecondary}"
+                                                                                       Margin="0,3,0,1"
+                                                                                       TextWrapping="Wrap">
+                                                                                <TextBlock.Style>
+                                                                                    <Style TargetType="TextBlock">
+                                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding BlockType}" Value="Subheader">
+                                                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </TextBlock.Style>
+                                                                            </TextBlock>
+
+                                                                            <!-- BulletItem Block -->
+                                                                            <DockPanel Margin="0,2">
+                                                                                <DockPanel.Style>
+                                                                                    <Style TargetType="DockPanel">
+                                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding BlockType}" Value="BulletItem">
+                                                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </DockPanel.Style>
+                                                                                <TextBlock Text="• "
+                                                                                           FontWeight="Bold"
+                                                                                           Foreground="{DynamicResource Accent}"
+                                                                                           FontSize="{DynamicResource FontSize12}"
+                                                                                           DockPanel.Dock="Left"
+                                                                                           VerticalAlignment="Top" />
+                                                                                <TextBlock Text="{Binding Text}"
+                                                                                           FontSize="{DynamicResource FontSize12}"
+                                                                                           Foreground="{DynamicResource TextSecondary}"
+                                                                                           TextWrapping="Wrap"
+                                                                                           VerticalAlignment="Center" />
+                                                                            </DockPanel>
 
                                                                             <!-- Interactive Task Checkbox Block -->
                                                                             <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
@@ -362,6 +465,29 @@
                                                                                     </Style>
                                                                                 </TextBlock.Style>
                                                                             </TextBlock>
+
+                                                                            <!-- Image Block -->
+                                                                            <Border CornerRadius="6"
+                                                                                    BorderBrush="{DynamicResource Border}"
+                                                                                    BorderThickness="1"
+                                                                                    Background="{DynamicResource SurfaceRaised}"
+                                                                                    Padding="2"
+                                                                                    Margin="0,4,0,4"
+                                                                                    HorizontalAlignment="Left">
+                                                                                <Border.Style>
+                                                                                    <Style TargetType="Border">
+                                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding BlockType}" Value="Image">
+                                                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </Border.Style>
+                                                                                <Image Source="{Binding ImagePath, Converter={StaticResource AttachmentImageConverter}}"
+                                                                                       MaxHeight="180"
+                                                                                       Stretch="Uniform" />
+                                                                            </Border>
                                                                         </Grid>
                                                                     </DataTemplate>
                                                                 </ItemsControl.ItemTemplate>
@@ -401,14 +527,46 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
-                            <!-- Composer Heading -->
-                            <TextBlock Grid.Row="0"
-                                       Text="{Binding ComposerHeadingText}"
-                                       FontFamily="{DynamicResource FontTitle}"
-                                       FontSize="{DynamicResource FontSizeHeading}"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextPrimary}"
-                                       Margin="0,0,0,12" />
+                            <!-- Composer Header: Title on Left, Edit / Preview Toggle on Right -->
+                            <Grid Grid.Row="0" Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding ComposerHeadingText}"
+                                           FontFamily="{DynamicResource FontTitle}"
+                                           FontSize="{DynamicResource FontSizeHeading}"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}"
+                                           VerticalAlignment="Center" />
+
+                                <!-- Edit / Preview Segmented Tab Toggle -->
+                                <Border Grid.Column="1"
+                                        Background="{DynamicResource SurfaceRaised}"
+                                        BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="2"
+                                        VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="ComposerEditTabBtn"
+                                                Content="Edit"
+                                                Style="{StaticResource DrawerMiniButton}"
+                                                Padding="8,2"
+                                                Click="ComposerEditTab_Click"
+                                                ToolTip="Write Markdown"
+                                                Margin="0,0,2,0" />
+                                        <Button x:Name="ComposerPreviewTabBtn"
+                                                Content="Preview"
+                                                Style="{StaticResource DrawerMiniButton}"
+                                                Padding="8,2"
+                                                Click="ComposerPreviewTab_Click"
+                                                ToolTip="Live Markdown Preview (Ctrl+P)" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
 
                             <!-- Composer Input Fields -->
                             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
@@ -457,39 +615,109 @@
                                                Margin="0,0,0,4" />
 
                                     <Grid>
-                                        <TextBlock Text="Write markdown (# heading, - [ ] task, reflections)..."
-                                                   FontSize="{DynamicResource FontSize13}"
-                                                   Foreground="{DynamicResource TextDisabled}"
-                                                   VerticalAlignment="Top"
-                                                   Margin="10,8,0,0"
-                                                   IsHitTestVisible="False">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Text, ElementName=MarkdownBox}" Value="">
-                                                            <Setter Property="Visibility" Value="Visible" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
+                                        <!-- Edit Mode Area (TextBox & In-Edit Screenshot Previews) -->
+                                        <Grid x:Name="ComposerEditArea">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
 
-                                        <TextBox x:Name="MarkdownBox"
-                                                 Text="{Binding ComposerMarkdown, UpdateSourceTrigger=PropertyChanged}"
-                                                 Background="{DynamicResource Bg}"
-                                                 BorderBrush="{DynamicResource Border}"
-                                                 BorderThickness="1"
-                                                 Foreground="{DynamicResource TextPrimary}"
-                                                 FontSize="{DynamicResource FontSize13}"
-                                                 Padding="8,8"
-                                                 AcceptsReturn="True"
-                                                 TextWrapping="Wrap"
-                                                 MinHeight="180"
-                                                 MaxHeight="360"
-                                                 VerticalScrollBarVisibility="Auto"
-                                                 VerticalContentAlignment="Top"
-                                                 VerticalAlignment="Top" />
+                                            <!-- Watermark Placeholder and MarkdownBox in Row 0 -->
+                                            <Grid Grid.Row="0">
+                                                <TextBlock Text="Write markdown (# heading, - [ ] task, reflections)..."
+                                                           FontSize="{DynamicResource FontSize13}"
+                                                           FontFamily="{DynamicResource FontMono}"
+                                                           Foreground="{DynamicResource TextDisabled}"
+                                                           VerticalAlignment="Top"
+                                                           Margin="10,8,0,0"
+                                                           IsHitTestVisible="False">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Text, ElementName=MarkdownBox}" Value="">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+
+                                                <TextBox x:Name="MarkdownBox"
+                                                         Background="{DynamicResource Bg}"
+                                                         BorderBrush="{DynamicResource Border}"
+                                                         BorderThickness="1"
+                                                         Foreground="{DynamicResource TextPrimary}"
+                                                         FontFamily="{DynamicResource FontMono}"
+                                                         FontSize="{DynamicResource FontSize13}"
+                                                         Padding="8,8"
+                                                         AcceptsReturn="True"
+                                                         TextWrapping="Wrap"
+                                                         MinHeight="180"
+                                                         MaxHeight="360"
+                                                         VerticalScrollBarVisibility="Auto"
+                                                         VerticalContentAlignment="Top"
+                                                         VerticalAlignment="Top"
+                                                         CaretBrush="{DynamicResource Accent}">
+                                                    <TextBox.ContextMenu>
+                                                        <ContextMenu Background="{DynamicResource SurfaceRaised}"
+                                                                     BorderBrush="{DynamicResource BorderStrong}"
+                                                                     BorderThickness="1"
+                                                                     Foreground="{DynamicResource TextPrimary}">
+                                                            <MenuItem Header="Insert Task (- [ ])" Click="InsertTask_Click" InputGestureText="Ctrl+Shift+T" />
+                                                            <MenuItem Header="Insert Bullet (- )" Click="InsertBullet_Click" />
+                                                            <MenuItem Header="Insert Numbered List (1. )" Click="InsertNumbered_Click" />
+                                                            <Separator Background="{DynamicResource Border}" />
+                                                            <MenuItem Header="Heading 1 (# )" Click="InsertH1_Click" />
+                                                            <MenuItem Header="Heading 2 (## )" Click="InsertH2_Click" />
+                                                            <MenuItem Header="Heading 3 (### )" Click="InsertH3_Click" />
+                                                            <Separator Background="{DynamicResource Border}" />
+                                                            <MenuItem Header="Format Bold (**bold**)" Click="InsertBold_Click" InputGestureText="Ctrl+B" />
+                                                            <MenuItem Header="Format Italic (*italic*)" Click="InsertItalic_Click" InputGestureText="Ctrl+I" />
+                                                            <MenuItem Header="Format Strikethrough (~~text~~)" Click="InsertStrikethrough_Click" />
+                                                            <MenuItem Header="Format Highlight (==text==)" Click="InsertHighlight_Click" />
+                                                            <MenuItem Header="Format Inline Code (`code`)" Click="InsertCode_Click" />
+                                                            <MenuItem Header="Insert Quote (&gt; )" Click="InsertQuote_Click" />
+                                                            <Separator Background="{DynamicResource Border}" />
+                                                            <MenuItem Command="Cut" Header="Cut" />
+                                                            <MenuItem Command="Copy" Header="Copy" />
+                                                            <MenuItem Command="Paste" Header="Paste" />
+                                                            <MenuItem Command="SelectAll" Header="Select All" />
+                                                        </ContextMenu>
+                                                    </TextBox.ContextMenu>
+                                                </TextBox>
+                                            </Grid>
+
+                                            <!-- In-Edit-Mode Screenshot Previews Strip in Row 1 -->
+                                            <Border x:Name="EditModeImagePreviewStrip"
+                                                    Grid.Row="1"
+                                                    Visibility="Collapsed"
+                                                    Background="{DynamicResource SurfaceRaised}"
+                                                    BorderBrush="{DynamicResource Border}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="4"
+                                                    Margin="0,6,0,0"
+                                                    Padding="6,4">
+                                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                                    <StackPanel x:Name="EditModeImageThumbnailsPanel" Orientation="Horizontal" />
+                                                </ScrollViewer>
+                                            </Border>
+                                        </Grid>
+
+                                        <!-- Live Preview Area (Preview Mode) -->
+                                        <Border x:Name="ComposerPreviewContainer"
+                                                Visibility="Collapsed"
+                                                Background="{DynamicResource SurfaceRaised}"
+                                                BorderBrush="{DynamicResource Border}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="12,10"
+                                                MinHeight="180"
+                                                MaxHeight="360">
+                                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                                <StackPanel x:Name="ComposerPreviewPanel" />
+                                            </ScrollViewer>
+                                        </Border>
                                     </Grid>
                                 </StackPanel>
                             </ScrollViewer>

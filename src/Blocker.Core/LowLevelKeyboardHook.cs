@@ -14,8 +14,16 @@ public sealed class LowLevelKeyboardHook : IDisposable
     private const int WH_KEYBOARD_LL = 13;
     private const uint WM_QUIT = 0x0012;
 
+    private const uint WM_KEYDOWN = 0x0100;
+    private const uint WM_KEYUP = 0x0101;
+    private const uint WM_SYSKEYDOWN = 0x0104;
+    private const uint WM_SYSKEYUP = 0x0105;
+
     private const int VK_TAB = 0x09;
     private const int VK_ESCAPE = 0x1B;
+    private const int VK_SHIFT = 0x10;
+    private const int VK_LSHIFT = 0xA0;
+    private const int VK_RSHIFT = 0xA1;
     private const int VK_CONTROL = 0x11;
     private const int VK_LCONTROL = 0xA2;
     private const int VK_RCONTROL = 0xA3;
@@ -24,6 +32,7 @@ public sealed class LowLevelKeyboardHook : IDisposable
     private const int VK_RMENU = 0xA5;
     private const int VK_LWIN = 0x5B;
     private const int VK_RWIN = 0x5C;
+    private const int VK_S = 0x53;
 
     private const uint LLKHF_ALTDOWN = 0x20;
 
@@ -225,6 +234,15 @@ public sealed class LowLevelKeyboardHook : IDisposable
         {
             var kbd = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
             uint vk = kbd.vkCode;
+            uint msg = (uint)wParam;
+
+            bool winDown = (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
+                           (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
+
+            bool shiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 ||
+                             (GetAsyncKeyState(VK_LSHIFT) & 0x8000) != 0 ||
+                             (GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0;
+
             bool altDown = (kbd.flags & LLKHF_ALTDOWN) != 0 ||
                            (GetAsyncKeyState(VK_MENU) & 0x8000) != 0 ||
                            (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0 ||
@@ -234,19 +252,49 @@ public sealed class LowLevelKeyboardHook : IDisposable
                             (GetAsyncKeyState(VK_LCONTROL) & 0x8000) != 0 ||
                             (GetAsyncKeyState(VK_RCONTROL) & 0x8000) != 0;
 
+            // Whitelist Win + Shift + S for Snipping Tool / Screen Clipping
+            if (vk == VK_S && winDown && shiftDown)
+            {
+                if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo("ms-screenclip:") { UseShellExecute = true });
+                    }
+                    catch
+                    {
+                    }
+                }
+                return (IntPtr)1;
+            }
+
             bool block = false;
 
-            // 1. VK_LWIN (0x5B) and VK_RWIN (0x5C)
-            if (vk == VK_LWIN || vk == VK_RWIN)
+            // 0. Block VK_TAB (0x09) whenever Win is held (Win + Tab) as well as when Alt is held (Alt + Tab)
+            if (vk == VK_TAB && (winDown || altDown))
             {
                 block = true;
             }
-            // 2. VK_TAB (0x09) when Alt is held
+            // 1. VK_LWIN (0x5B) and VK_RWIN (0x5C) - suppresses Start Menu
+            else if (vk == VK_LWIN || vk == VK_RWIN)
+            {
+                block = true;
+            }
+            // 2. Prevent touchpad swipe down bypass and any shortcut while Win key is down (Win+D, Win+M, Win+E, Win+Tab, etc.)
+            else if (winDown)
+            {
+                // Allow Shift keypress through so Win+Shift+S combo can be formed cleanly
+                if (vk != VK_SHIFT && vk != VK_LSHIFT && vk != VK_RSHIFT)
+                {
+                    block = true;
+                }
+            }
+            // 3. VK_TAB (0x09) when Alt is held (Alt+Tab)
             else if (vk == VK_TAB && altDown)
             {
                 block = true;
             }
-            // 3. VK_ESCAPE (0x1B) when Alt is held or Ctrl is held
+            // 4. VK_ESCAPE (0x1B) when Alt is held or Ctrl is held (Alt+Esc, Ctrl+Esc)
             else if (vk == VK_ESCAPE && (altDown || ctrlDown))
             {
                 block = true;

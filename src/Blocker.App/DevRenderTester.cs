@@ -169,6 +169,8 @@ public static class DevRenderTester
         RenderZenMiniHudWindow(Path.Combine(outputDir, "zen-mini-hud.png"));
         RenderZenQuickNotesOverlay(Path.Combine(outputDir, "zen-quick-notes.png"));
         RenderZenBackdropWindow(Path.Combine(outputDir, "zen-backdrop.png"));
+        RenderMeditationMainWindow(Path.Combine(outputDir, "meditation-notes-tab.png"), isDrawerOpen: false);
+        RenderMeditationMainWindow(Path.Combine(outputDir, "meditation-notes-drawer.png"), isDrawerOpen: true);
 
         Console.WriteLine("[RenderTest] All screenshots rendered successfully.");
         return 0;
@@ -358,6 +360,19 @@ public static class DevRenderTester
 
         var win = new MainWindow(vm, disableServiceSync: true);
         SaveWindowToPng(win, filePath, 760, 680);
+    }
+
+    private static void RenderMeditationMainWindow(string filePath, bool isDrawerOpen)
+    {
+        var vm = new MainViewModel();
+        vm.IsMeditationViewActive = true;
+        vm.Meditation.IsNotesDrawerOpen = isDrawerOpen;
+        if (isDrawerOpen)
+        {
+            vm.Meditation.NotesCollection.Add(new NoteCard("Session Objectives", "- [x] Initial design review\n- [ ] Deep focus coding sprint\n• Daily reflections"));
+        }
+        var win = new MainWindow(vm, disableServiceSync: true);
+        SaveWindowToPng(win, filePath, 860, 680);
     }
 
     private static void RenderAppearanceDialog(string filePath)

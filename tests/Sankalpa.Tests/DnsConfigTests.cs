@@ -110,4 +110,49 @@ public class DnsConfigTests
 
         Assert.True(TypingChallengeManager.ValidateChallenge(challengeKey, challenge, out _));
     }
+
+    [Fact]
+    public void IPAddressEquals_ComparesIPv4AndIPv6_Correctly()
+    {
+        Assert.True(DnsManager.IPAddressEquals("1.1.1.3", "1.1.1.3"));
+        Assert.True(DnsManager.IPAddressEquals("1.1.1.3", " 1.1.1.3 "));
+        Assert.False(DnsManager.IPAddressEquals("1.1.1.3", "1.0.0.3"));
+        Assert.False(DnsManager.IPAddressEquals("1.1.1.3", "8.8.8.8"));
+
+        // IPv6 normalization (shorthand vs expanded)
+        Assert.True(DnsManager.IPAddressEquals("2606:4700:4700::1113", "2606:4700:4700:0:0:0:0:1113"));
+        Assert.True(DnsManager.IPAddressEquals("2606:4700:4700::1113", "2606:4700:4700::1113"));
+        Assert.False(DnsManager.IPAddressEquals("2606:4700:4700::1113", "2606:4700:4700::1003"));
+
+        // Null / empty / invalid
+        Assert.False(DnsManager.IPAddressEquals(null, "1.1.1.3"));
+        Assert.False(DnsManager.IPAddressEquals("1.1.1.3", ""));
+        Assert.False(DnsManager.IPAddressEquals("   ", "   "));
+    }
+
+    [Fact]
+    public void IsVirtualOrExcludedAdapter_IdentifiesVirtualAdapters()
+    {
+        // Virtual host-only adapters that must not hijack DNS checks
+        Assert.True(DnsManager.IsVirtualOrExcludedAdapter("VirtualBox Host-Only Ethernet Adapter", "Ethernet 4", System.Net.NetworkInformation.NetworkInterfaceType.Ethernet));
+        Assert.True(DnsManager.IsVirtualOrExcludedAdapter("VMware Network Adapter VMnet1", "VMnet1", System.Net.NetworkInformation.NetworkInterfaceType.Ethernet));
+        Assert.True(DnsManager.IsVirtualOrExcludedAdapter("Microsoft Wi-Fi Direct Virtual Adapter", "Local Area Connection* 1", System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211));
+        Assert.True(DnsManager.IsVirtualOrExcludedAdapter("Hyper-V Virtual Ethernet Adapter", "vEthernet (WSL)", System.Net.NetworkInformation.NetworkInterfaceType.Ethernet));
+
+        // Loopback and tunnel
+        Assert.True(DnsManager.IsVirtualOrExcludedAdapter("Software Loopback Interface", "Loopback", System.Net.NetworkInformation.NetworkInterfaceType.Loopback));
+        Assert.True(DnsManager.IsVirtualOrExcludedAdapter("Tunnel Interface", "Tunnel", System.Net.NetworkInformation.NetworkInterfaceType.Tunnel));
+
+        // Real physical adapters must never be excluded
+        Assert.False(DnsManager.IsVirtualOrExcludedAdapter("Realtek Gaming GbE Family Controller", "Ethernet", System.Net.NetworkInformation.NetworkInterfaceType.Ethernet));
+        Assert.False(DnsManager.IsVirtualOrExcludedAdapter("Realtek RTL8852AE WiFi 6 802.11ax PCIe Adapter", "Wi-Fi", System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211));
+    }
+
+    [Fact]
+    public void IsDnsActive_WithEmptyInputs_ReturnsFalse()
+    {
+        Assert.False(DnsManager.IsDnsActive("", ""));
+        Assert.False(DnsManager.IsDnsActive(null!, null!));
+        Assert.False(DnsManager.IsDnsActive("   ", "   "));
+    }
 }

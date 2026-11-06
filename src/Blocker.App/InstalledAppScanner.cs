@@ -16,6 +16,11 @@ public static class InstalledAppScanner
         "notification_helper", "vcredist", "dxsetup", "touchup", "dotnet", "vc_redist"
     };
 
+    public static bool IsAppInstalled(string exeName)
+    {
+        return Blocker.Core.InstalledAppScanner.IsAppInstalled(exeName);
+    }
+
     public static List<AppPickerItem> ScanRunningProcessesOnly()
     {
         var rawItems = new List<AppPickerItem>();

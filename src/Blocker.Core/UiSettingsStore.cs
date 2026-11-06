@@ -24,6 +24,10 @@ public class UiSettings
     public bool ShowBrowserAlerts { get; set; } = true;
     public bool ShowAppAlerts { get; set; } = true;
     public bool ShowDnsAlerts { get; set; } = true;
+    public int MeditationDurationMinutes { get; set; } = 20;
+    public string MeditationLockMode { get; set; } = "Locked";
+    public string MeditationSoundscape { get; set; } = "Rain";
+    public string? MeditationPasswordHash { get; set; }
 
     // Backward compatibility helper properties for legacy extension sync callers if needed
     [JsonIgnore]

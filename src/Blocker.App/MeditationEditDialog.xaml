@@ -126,42 +126,51 @@
                                        Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,8" />
                             <!-- Preset Pills -->
                             <UniformGrid Columns="6" Margin="0,0,0,10">
-                                <RadioButton x:Name="Preset5" Content="5m" Style="{StaticResource PillRadioButton}"
-                                             GroupName="DurationPreset" Margin="0,0,4,0" Click="Preset_Click" Tag="5" />
-                                <RadioButton x:Name="Preset10" Content="10m" Style="{StaticResource PillRadioButton}"
-                                             GroupName="DurationPreset" Margin="0,0,4,0" Click="Preset_Click" Tag="10" />
-                                <RadioButton x:Name="Preset20" Content="20m" Style="{StaticResource PillRadioButton}"
-                                             GroupName="DurationPreset" Margin="0,0,4,0" Click="Preset_Click" Tag="20" IsChecked="True" />
+                                <RadioButton x:Name="Preset15" Content="15m" Style="{StaticResource PillRadioButton}"
+                                             GroupName="DurationPreset" Margin="0,0,4,0" Click="Preset_Click" Tag="15" />
                                 <RadioButton x:Name="Preset30" Content="30m" Style="{StaticResource PillRadioButton}"
                                              GroupName="DurationPreset" Margin="0,0,4,0" Click="Preset_Click" Tag="30" />
                                 <RadioButton x:Name="Preset45" Content="45m" Style="{StaticResource PillRadioButton}"
                                              GroupName="DurationPreset" Margin="0,0,4,0" Click="Preset_Click" Tag="45" />
-                                <RadioButton x:Name="Preset60" Content="60m" Style="{StaticResource PillRadioButton}"
-                                             GroupName="DurationPreset" Margin="0,0,0,0" Click="Preset_Click" Tag="60" />
+                                <RadioButton x:Name="Preset1h" Content="1h" Style="{StaticResource PillRadioButton}"
+                                             GroupName="DurationPreset" Margin="0,0,4,0" Click="Preset_Click" Tag="60" />
+                                <RadioButton x:Name="Preset2h" Content="2h" Style="{StaticResource PillRadioButton}"
+                                             GroupName="DurationPreset" Margin="0,0,4,0" Click="Preset_Click" Tag="120" />
+                                <RadioButton x:Name="Preset3h" Content="3h" Style="{StaticResource PillRadioButton}"
+                                             GroupName="DurationPreset" Margin="0,0,0,0" Click="Preset_Click" Tag="180" />
                             </UniformGrid>
 
-                            <!-- Custom Minutes Stepper -->
-                            <Grid Margin="0,4,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="80" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Custom:" FontSize="{DynamicResource FontSize12}"
-                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <TextBox Grid.Column="1" x:Name="DurationInput" Text="20" Height="30"
+                            <!-- Custom Hours and Minutes Stepper -->
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="Custom:" FontSize="{DynamicResource FontSize12}"
+                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,10,0" />
+
+                                <!-- Hours Stepper -->
+                                <TextBox x:Name="HoursInput" Text="0" Width="44" Height="30"
                                          VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
                                          Style="{StaticResource NumericInputTextBox}" TextChanged="DurationInput_TextChanged" />
-                                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="6,0,0,0">
-                                    <Button Content="-" Width="28" Height="30" Style="{StaticResource SecondaryButton}"
-                                            Padding="0" Click="DecrementMinutes_Click" ToolTip="Decrease 1 min" />
-                                    <Button Content="+" Width="28" Height="30" Style="{StaticResource SecondaryButton}"
-                                            Padding="0" Margin="4,0,0,0" Click="IncrementMinutes_Click" ToolTip="Increase 1 min" />
+                                <StackPanel Orientation="Horizontal" Margin="4,0,0,0">
+                                    <Button Content="-" Width="24" Height="30" Style="{StaticResource SecondaryButton}"
+                                            Padding="0" Click="DecrementHours_Click" ToolTip="Decrease 1 hour" />
+                                    <Button Content="+" Width="24" Height="30" Style="{StaticResource SecondaryButton}"
+                                            Padding="0" Margin="3,0,0,0" Click="IncrementHours_Click" ToolTip="Increase 1 hour" />
                                 </StackPanel>
-                                <TextBlock Grid.Column="3" Text="minutes" FontSize="{DynamicResource FontSize12}"
-                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="10,0,0,0" />
-                            </Grid>
+                                <TextBlock Text="hr" FontSize="{DynamicResource FontSize12}"
+                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="6,0,16,0" />
+
+                                <!-- Minutes Stepper -->
+                                <TextBox x:Name="MinutesInput" Text="20" Width="44" Height="30"
+                                         VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                         Style="{StaticResource NumericInputTextBox}" TextChanged="DurationInput_TextChanged" />
+                                <StackPanel Orientation="Horizontal" Margin="4,0,0,0">
+                                    <Button Content="-" Width="24" Height="30" Style="{StaticResource SecondaryButton}"
+                                            Padding="0" Click="DecrementMinutes_Click" ToolTip="Decrease 1 min" />
+                                    <Button Content="+" Width="24" Height="30" Style="{StaticResource SecondaryButton}"
+                                            Padding="0" Margin="3,0,0,0" Click="IncrementMinutes_Click" ToolTip="Increase 1 min" />
+                                </StackPanel>
+                                <TextBlock Text="min" FontSize="{DynamicResource FontSize12}"
+                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 
@@ -186,16 +195,13 @@
                             <StackPanel x:Name="AllowedAppsPanel" Visibility="Collapsed" Margin="0,4,0,0">
                                 <WrapPanel x:Name="AllowedAppsWrapPanel" Margin="0,0,0,8" />
 
-                                <StackPanel Orientation="Horizontal">
+                                <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <Button Content="+ Select Allowed App..." Style="{StaticResource SecondaryButton}"
-                                            FontSize="{DynamicResource FontSize12}" Padding="10,5" Click="PickApp_Click" />
-                                    <TextBlock Text="Quick:" FontSize="{DynamicResource FontSize12}"
-                                               Foreground="{DynamicResource TextDisabled}" VerticalAlignment="Center" Margin="12,0,6,0" />
-                                    <Button Content="Spotify" Style="{StaticResource SecondaryButton}" FontSize="{DynamicResource FontSize12}"
-                                            Padding="8,3" Margin="0,0,4,0" Click="QuickAddApp_Click" Tag="spotify.exe" />
-                                    <Button Content="Notepad" Style="{StaticResource SecondaryButton}" FontSize="{DynamicResource FontSize12}"
-                                            Padding="8,3" Click="QuickAddApp_Click" Tag="notepad.exe" />
-                                </StackPanel>
+                                            FontSize="{DynamicResource FontSize12}" Padding="10,5" Click="PickApp_Click" Margin="0,0,8,4" />
+                                    <TextBlock x:Name="QuickAppsLabel" Text="Quick:" FontSize="{DynamicResource FontSize12}"
+                                               Foreground="{DynamicResource TextDisabled}" VerticalAlignment="Center" Margin="6,0,6,4" />
+                                    <WrapPanel x:Name="QuickAppsWrapPanel" VerticalAlignment="Center" />
+                                </WrapPanel>
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -208,13 +214,37 @@
                                        Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,8" />
                             <RadioButton x:Name="RbLockStrict" Content="Complete Lock (Strict Unbreakable - Exit Disabled)"
                                          GroupName="LockProtection" IsChecked="True"
-                                         FontSize="{DynamicResource FontSize12}" Margin="0,0,0,8" />
+                                         FontSize="{DynamicResource FontSize12}" Margin="0,0,0,8"
+                                         Checked="LockProtectionMode_Changed" />
                             <RadioButton x:Name="RbLockChallenge" Content="Typing Challenge (Type a sentence to exit)"
                                          GroupName="LockProtection"
-                                         FontSize="{DynamicResource FontSize12}" Margin="0,0,0,8" />
+                                         FontSize="{DynamicResource FontSize12}" Margin="0,0,0,8"
+                                         Checked="LockProtectionMode_Changed" />
                             <RadioButton x:Name="RbLockPassword" Content="Password Protection (Enter password to exit)"
                                          GroupName="LockProtection"
-                                         FontSize="{DynamicResource FontSize12}" />
+                                         FontSize="{DynamicResource FontSize12}"
+                                         Checked="LockProtectionMode_Changed" />
+
+                            <!-- Password Protection Panel -->
+                            <StackPanel x:Name="PasswordProtectionPanel" Visibility="Collapsed" Margin="0,8,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="New Password:" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
+                                        <PasswordBox x:Name="NewPasswordBox" Height="30" VerticalContentAlignment="Center" Padding="8,4" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Confirm Password:" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
+                                        <PasswordBox x:Name="ConfirmPasswordBox" Height="30" VerticalContentAlignment="Center" Padding="8,4" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock x:Name="PasswordErrorTextBlock" Foreground="{DynamicResource Danger}" FontSize="{DynamicResource FontSize12}"
+                                           Margin="0,6,0,0" Visibility="Collapsed" TextWrapping="Wrap" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 
@@ -235,20 +265,34 @@
                             </Grid>
 
                             <StackPanel x:Name="ScheduleOptionsPanel" Visibility="Collapsed" Margin="0,6,0,0">
-                                <!-- Time of Day -->
-                                <Grid Margin="0,0,0,10">
+                                <!-- Time of Day Range: From [ 15:00 ]  To [ 16:00 ] (24h format) -->
+                                <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="72" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="72" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Start Time:" FontSize="{DynamicResource FontSize12}"
-                                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                    <TextBlock Grid.Column="0" Text="From:" FontSize="{DynamicResource FontSize12}"
+                                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                     <TextBox Grid.Column="1" x:Name="ScheduleTimeInput" Text="15:00" Height="30"
-                                             Style="{StaticResource TimePickerTextBox}" FontSize="{DynamicResource FontSize12}" />
-                                    <TextBlock Grid.Column="2" Text="(24h format, e.g. 15:00)" FontSize="{DynamicResource FontSize12}"
+                                             Style="{StaticResource TimePickerTextBox}" FontSize="{DynamicResource FontSize12}"
+                                             VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                             TextChanged="ScheduleTime_TextChanged" />
+                                    <TextBlock Grid.Column="2" Text="To:" FontSize="{DynamicResource FontSize12}"
+                                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,8,0" />
+                                    <TextBox Grid.Column="3" x:Name="ScheduleEndTimeInput" Text="16:00" Height="30"
+                                             Style="{StaticResource TimePickerTextBox}" FontSize="{DynamicResource FontSize12}"
+                                             VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                             TextChanged="ScheduleTime_TextChanged" />
+                                    <TextBlock Grid.Column="4" Text="(24h format)" FontSize="{DynamicResource FontSize12}"
                                                Foreground="{DynamicResource TextDisabled}" VerticalAlignment="Center" Margin="8,0,0,0" />
                                 </Grid>
+
+                                <!-- Calculated duration helper label -->
+                                <TextBlock x:Name="ScheduleDurationLabel" Text="Duration: 1h 00m" FontSize="{DynamicResource FontSize12}"
+                                           Foreground="{DynamicResource Accent}" Margin="0,0,0,10" FontWeight="Medium" />
 
                                 <!-- Days of Week -->
                                 <TextBlock Text="Repeat Days:" FontSize="{DynamicResource FontSize12}"

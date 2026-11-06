@@ -12,6 +12,39 @@
         WindowStartupLocation="Manual">
 
     <Window.Resources>
+        <Style x:Key="HudIconButton" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="4,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="btnBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="{DynamicResource SurfaceRaised}" />
+                                <Setter TargetName="btnBorder" Property="BorderBrush" Value="{DynamicResource Border}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="btnBorder" Property="Opacity" Value="0.75" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="HudSecondaryButton" TargetType="{x:Type Button}">
             <Setter Property="Background" Value="{DynamicResource SurfaceRaised}" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
@@ -22,6 +55,7 @@
             <Setter Property="FontFamily" Value="{DynamicResource FontBody}" />
             <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
             <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Button}">
@@ -53,6 +87,7 @@
             <Setter Property="Padding" Value="14,5" />
             <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Button}">
@@ -81,7 +116,8 @@
     </Window.Resources>
 
     <!-- Outer margin so drop shadow is not clipped by window boundary -->
-    <Border CornerRadius="20"
+    <Border x:Name="HudBorder"
+            CornerRadius="20"
             Background="{DynamicResource Surface}"
             BorderBrush="{DynamicResource BorderStrong}"
             BorderThickness="1"
@@ -89,17 +125,23 @@
             Margin="14"
             Cursor="SizeAll">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="18" ShadowDepth="4" Opacity="0.55" Direction="270" Color="#000000" />
+            <DropShadowEffect BlurRadius="18" ShadowDepth="4" Opacity="0.55" Direction="270" />
         </Border.Effect>
 
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <!-- Subtle Zen Icon -->
-            <Path Style="{StaticResource Icon}"
-                  Data="{StaticResource IconLotus}"
-                  Width="15" Height="15"
-                  Stroke="{DynamicResource Accent}"
-                  VerticalAlignment="Center"
-                  Margin="0,0,10,0" />
+            <!-- Subtle Zen Icon Button (Click to minimize/expand) -->
+            <Button x:Name="LotusButton"
+                    Style="{StaticResource HudIconButton}"
+                    Click="LotusButton_Click"
+                    ToolTip="Click to minimize Mini-HUD"
+                    VerticalAlignment="Center"
+                    Margin="0,0,8,0">
+                <Path Style="{StaticResource Icon}"
+                      Data="{StaticResource IconLotus}"
+                      Width="15" Height="15"
+                      Stroke="{DynamicResource Accent}"
+                      VerticalAlignment="Center" />
+            </Button>
 
             <!-- Countdown Text Block -->
             <TextBlock x:Name="CountdownTextBlock"
@@ -111,37 +153,42 @@
                        VerticalAlignment="Center"
                        Margin="0,0,12,0" />
 
-            <!-- Vertical Separator -->
-            <Rectangle Width="1" Height="16" Fill="{DynamicResource BorderStrong}" Margin="0,0,12,0" VerticalAlignment="Center" />
+            <!-- Expanded Controls Panel (collapsible to pill) -->
+            <StackPanel x:Name="ExpandedControlsPanel"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center">
+                <!-- Vertical Separator -->
+                <Rectangle Width="1" Height="16" Fill="{DynamicResource BorderStrong}" Margin="0,0,12,0" VerticalAlignment="Center" />
 
-            <!-- Ambient Sound Toggle Button -->
-            <Button x:Name="AudioToggleButton"
-                    Content="🌧 Rain [⏸]"
-                    Style="{StaticResource HudSecondaryButton}"
-                    Click="AudioToggle_Click"
-                    Margin="0,0,10,0"
-                    ToolTip="Toggle Ambient Audio Playback" />
+                <!-- Ambient Sound Toggle Button -->
+                <Button x:Name="AudioToggleButton"
+                        Content="Rain"
+                        Style="{StaticResource HudSecondaryButton}"
+                        Click="AudioToggle_Click"
+                        Margin="0,0,10,0"
+                        ToolTip="Toggle Ambient Audio Playback" />
 
-            <!-- Vertical Separator -->
-            <Rectangle Width="1" Height="16" Fill="{DynamicResource BorderStrong}" Margin="0,0,10,0" VerticalAlignment="Center" />
+                <!-- Vertical Separator -->
+                <Rectangle Width="1" Height="16" Fill="{DynamicResource BorderStrong}" Margin="0,0,10,0" VerticalAlignment="Center" />
 
-            <!-- Quick Notes Button -->
-            <Button x:Name="NotesButton"
-                    Content="📝 Notes"
-                    Style="{StaticResource HudSecondaryButton}"
-                    Click="NotesButton_Click"
-                    Margin="0,0,10,0"
-                    ToolTip="Quick Notes &amp; Reflections (Alt+N)" />
+                <!-- Quick Notes Button -->
+                <Button x:Name="NotesButton"
+                        Content="Notes"
+                        Style="{StaticResource HudSecondaryButton}"
+                        Click="NotesButton_Click"
+                        Margin="0,0,10,0"
+                        ToolTip="Quick Notes &amp; Reflections (Alt+N)" />
 
-            <!-- Vertical Separator -->
-            <Rectangle Width="1" Height="16" Fill="{DynamicResource BorderStrong}" Margin="0,0,10,0" VerticalAlignment="Center" />
+                <!-- Vertical Separator -->
+                <Rectangle Width="1" Height="16" Fill="{DynamicResource BorderStrong}" Margin="0,0,10,0" VerticalAlignment="Center" />
 
-            <!-- Emerald Return to Zen Button -->
-            <Button x:Name="ReturnButton"
-                    Content="Return to Zen Screen"
-                    Style="{StaticResource HudEmeraldButton}"
-                    Click="ReturnButton_Click"
-                    ToolTip="Return to Fullscreen Zen Shield Kiosk" />
+                <!-- Emerald Return to Zen Button -->
+                <Button x:Name="ReturnButton"
+                        Content="Return to Zen Screen"
+                        Style="{StaticResource HudEmeraldButton}"
+                        Click="ReturnButton_Click"
+                        ToolTip="Return to Fullscreen Zen Shield Kiosk" />
+            </StackPanel>
         </StackPanel>
     </Border>
 </Window>

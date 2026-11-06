@@ -253,6 +253,7 @@ public class MeditationBackendTests : IDisposable
             // In non-interactive test sessions / sandboxes, SetWindowsHookEx may return Access Denied (error 5)
         }
     }
+
     [Fact]
     public void MeditationSession_WhitelistMatching_HandlesCaseAndExtensionDifferences()
     {
@@ -322,5 +323,83 @@ public class MeditationBackendTests : IDisposable
 
         // Clean up
         _db.DeleteMeditationSchedule(saved.Id);
+    }
+
+    [Fact]
+    public void InstalledAppScanner_IsAppInstalled_DetectsInstalledAppsAndRejectsNonExistent()
+    {
+        // 1. Notepad is standard on Windows System32 / WindowsApps
+        Assert.True(InstalledAppScanner.IsAppInstalled("notepad.exe"));
+        Assert.True(InstalledAppScanner.IsAppInstalled("notepad"));
+
+        // 2. Non-existent application executables should return false
+        Assert.False(InstalledAppScanner.IsAppInstalled("random_nonexistent_xyz987654.exe"));
+        Assert.False(InstalledAppScanner.IsAppInstalled("fake_unknown_process_12345"));
+
+        // 3. Null or whitespace handling
+        Assert.False(InstalledAppScanner.IsAppInstalled(""));
+        Assert.False(InstalledAppScanner.IsAppInstalled("   "));
+        Assert.False(InstalledAppScanner.IsAppInstalled(null!));
+    }
+
+    [Fact]
+    public void MeditationSchedule_CalculateDurationMinutes_HandlesStandardAndOvernightRanges()
+    {
+        // Standard same-day durations
+        Assert.Equal(60, MeditationSchedule.CalculateDurationMinutes("15:00", "16:00"));
+        Assert.Equal(90, MeditationSchedule.CalculateDurationMinutes("15:00", "16:30"));
+        Assert.Equal(45, MeditationSchedule.CalculateDurationMinutes("09:15", "10:00"));
+        Assert.Equal(120, MeditationSchedule.CalculateDurationMinutes("10:00", "12:00"));
+        Assert.Equal(180, MeditationSchedule.CalculateDurationMinutes("10:00", "13:00"));
+
+        // Overnight ranges crossing midnight
+        Assert.Equal(120, MeditationSchedule.CalculateDurationMinutes("23:00", "01:00"));
+        Assert.Equal(45, MeditationSchedule.CalculateDurationMinutes("23:30", "00:15"));
+        Assert.Equal(240, MeditationSchedule.CalculateDurationMinutes("22:00", "02:00"));
+        Assert.Equal(10, MeditationSchedule.CalculateDurationMinutes("23:55", "00:05"));
+
+        // Full 24-hour cycle
+        Assert.Equal(1440, MeditationSchedule.CalculateDurationMinutes("15:00", "15:00"));
+
+        // Invalid or malformed strings return 0
+        Assert.Equal(0, MeditationSchedule.CalculateDurationMinutes("invalid", "16:00"));
+        Assert.Equal(0, MeditationSchedule.CalculateDurationMinutes("15:00", "invalid"));
+        Assert.Equal(0, MeditationSchedule.CalculateDurationMinutes("25:00", "16:00"));
+        Assert.Equal(0, MeditationSchedule.CalculateDurationMinutes("", "16:00"));
+
+        // Instance methods on MeditationSchedule
+        var schedule = new MeditationSchedule
+        {
+            TimeOfDay = "23:00",
+            EndTimeOfDay = "01:00"
+        };
+        Assert.Equal(120, schedule.CalculateDurationMinutes());
+        Assert.Equal(7200, schedule.CalculateDurationSeconds());
+
+        schedule.UpdateDurationFromTimeRange();
+        Assert.Equal(7200, schedule.DurationSeconds);
+
+        // Helper CalculateEndTime
+        Assert.Equal("16:00", MeditationSchedule.CalculateEndTime("15:00", 60));
+        Assert.Equal("16:30", MeditationSchedule.CalculateEndTime("15:00", 90));
+        Assert.Equal("01:00", MeditationSchedule.CalculateEndTime("23:00", 120));
+        Assert.Equal("00:15", MeditationSchedule.CalculateEndTime("23:30", 45));
+
+        schedule.DurationSeconds = 5400; // 90 min
+        schedule.UpdateEndTimeFromDuration();
+        Assert.Equal("00:30", schedule.EndTimeOfDay);
+    }
+
+    [Fact]
+    public void ProtectedProcesses_SnippingToolAndScreenClippingHost_AreProtected()
+    {
+        Assert.True(ProtectedProcesses.IsProtected("screenclippinghost"));
+        Assert.True(ProtectedProcesses.IsProtected("screenclippinghost.exe"));
+        Assert.True(ProtectedProcesses.IsProtected("ScreenClippingHost"));
+        Assert.True(ProtectedProcesses.IsProtected("snippingtool"));
+        Assert.True(ProtectedProcesses.IsProtected("snippingtool.exe"));
+        Assert.True(ProtectedProcesses.IsProtected("SnippingTool"));
+        Assert.Contains("screenclippinghost", ProtectedProcesses.Names);
+        Assert.Contains("snippingtool", ProtectedProcesses.Names);
     }
 }

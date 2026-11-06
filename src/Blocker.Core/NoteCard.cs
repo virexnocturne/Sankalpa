@@ -12,8 +12,11 @@ namespace Blocker.Core;
 public enum MarkdownBlockType
 {
     Header,
+    Subheader,
     Paragraph,
-    TaskItem
+    TaskItem,
+    BulletItem,
+    Image
 }
 
 public class MarkdownBlockItem : INotifyPropertyChanged
@@ -23,6 +26,7 @@ public class MarkdownBlockItem : INotifyPropertyChanged
 
     public MarkdownBlockType BlockType { get; set; }
     public string Text { get; set; } = string.Empty;
+    public string ImagePath { get; set; } = string.Empty;
     public int TaskIndex { get; set; } = -1;
 
     public bool IsChecked
@@ -186,7 +190,9 @@ public class NoteCard : INotifyPropertyChanged
         }
 
         var lines = MarkdownContent.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-        var taskRegex = new Regex(@"^\s*[-*]\s*\[([ xX])\]\s*(.*)$");
+        var taskRegex = new Regex(@"^\s*(?:[-*•]\s*)?(?:\[([ xX])\]|([☐☑]))\s*(.*)$");
+        var imageWikiRegex = new Regex(@"^!\[\[(.*?)\]\]$");
+        var imageMdRegex = new Regex(@"^!\[(.*?)\]\((.*?)\)$");
         int taskCount = 0;
 
         foreach (var line in lines)
@@ -198,11 +204,16 @@ public class NoteCard : INotifyPropertyChanged
             }
 
             var taskMatch = taskRegex.Match(trimmed);
+            var wikiMatch = imageWikiRegex.Match(trimmed);
+            var mdMatch = imageMdRegex.Match(trimmed);
+
             if (taskMatch.Success)
             {
                 int currentIdx = taskCount++;
-                bool isChecked = taskMatch.Groups[1].Value.Trim().Equals("x", StringComparison.OrdinalIgnoreCase);
-                string text = taskMatch.Groups[2].Value;
+                bool isChecked = taskMatch.Groups[1].Success
+                    ? taskMatch.Groups[1].Value.Trim().Equals("x", StringComparison.OrdinalIgnoreCase)
+                    : (taskMatch.Groups[2].Value == "☑");
+                string text = taskMatch.Groups[3].Value;
                 var item = new MarkdownBlockItem
                 {
                     BlockType = MarkdownBlockType.TaskItem,
@@ -217,6 +228,40 @@ public class NoteCard : INotifyPropertyChanged
                 };
                 _blocks.Add(item);
             }
+            else if (wikiMatch.Success)
+            {
+                string target = wikiMatch.Groups[1].Value.Trim();
+                string path = target.Contains('|') ? target.Split('|')[0].Trim() : target;
+                _blocks.Add(new MarkdownBlockItem
+                {
+                    BlockType = MarkdownBlockType.Image,
+                    Text = trimmed,
+                    ImagePath = path
+                });
+            }
+            else if (mdMatch.Success)
+            {
+                string path = mdMatch.Groups[2].Value.Trim();
+                if (path.Contains(' '))
+                {
+                    path = path.Split(' ')[0].Trim('"', '\'');
+                }
+                _blocks.Add(new MarkdownBlockItem
+                {
+                    BlockType = MarkdownBlockType.Image,
+                    Text = trimmed,
+                    ImagePath = path
+                });
+            }
+            else if (trimmed.StartsWith("###") || trimmed.StartsWith("##"))
+            {
+                string subheaderText = trimmed.TrimStart('#').Trim();
+                _blocks.Add(new MarkdownBlockItem
+                {
+                    BlockType = MarkdownBlockType.Subheader,
+                    Text = subheaderText
+                });
+            }
             else if (trimmed.StartsWith("#"))
             {
                 string headerText = trimmed.TrimStart('#').Trim();
@@ -224,6 +269,24 @@ public class NoteCard : INotifyPropertyChanged
                 {
                     BlockType = MarkdownBlockType.Header,
                     Text = headerText
+                });
+            }
+            else if (trimmed.StartsWith("• ") || trimmed.StartsWith("- ") || trimmed.StartsWith("* "))
+            {
+                string bulletText = trimmed.Substring(2).Trim();
+                _blocks.Add(new MarkdownBlockItem
+                {
+                    BlockType = MarkdownBlockType.BulletItem,
+                    Text = bulletText
+                });
+            }
+            else if (trimmed.StartsWith("•"))
+            {
+                string bulletText = trimmed.Substring(1).Trim();
+                _blocks.Add(new MarkdownBlockItem
+                {
+                    BlockType = MarkdownBlockType.BulletItem,
+                    Text = bulletText
                 });
             }
             else
@@ -253,7 +316,7 @@ public class NoteCard : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Toggles the n-th markdown checkbox (- [ ] or - [x]) in the markdown content.
+    /// Toggles the n-th markdown checkbox (- [ ], - [x], or Unicode ballot box ☐, ☑) in the markdown content.
     /// </summary>
     public bool ToggleTaskCheckbox(int taskIndex, bool isChecked)
     {
@@ -262,7 +325,7 @@ public class NoteCard : INotifyPropertyChanged
             return false;
         }
 
-        var regex = new Regex(@"^(\s*[-*]\s*\[)([ xX])(\].*)$", RegexOptions.Multiline);
+        var regex = new Regex(@"^(\s*(?:[-*•]\s*)?)(?:\[([ xX])\]|([☐☑]))(.*)$", RegexOptions.Multiline);
         var matches = regex.Matches(MarkdownContent);
 
         if (taskIndex >= matches.Count)
@@ -271,11 +334,23 @@ public class NoteCard : INotifyPropertyChanged
         }
 
         var targetMatch = matches[taskIndex];
-        string newChar = isChecked ? "x" : " ";
-        string before = MarkdownContent.Substring(0, targetMatch.Groups[2].Index);
-        string after = MarkdownContent.Substring(targetMatch.Groups[2].Index + 1);
+        if (targetMatch.Groups[2].Success)
+        {
+            string newChar = isChecked ? "x" : " ";
+            int idx = targetMatch.Groups[2].Index;
+            _markdownContent = MarkdownContent.Substring(0, idx) + newChar + MarkdownContent.Substring(idx + 1);
+        }
+        else if (targetMatch.Groups[3].Success)
+        {
+            string newChar = isChecked ? "☑" : "☐";
+            int idx = targetMatch.Groups[3].Index;
+            _markdownContent = MarkdownContent.Substring(0, idx) + newChar + MarkdownContent.Substring(idx + 1);
+        }
+        else
+        {
+            return false;
+        }
 
-        _markdownContent = before + newChar + after;
         _updatedAtUtc = DateTime.UtcNow;
         OnPropertyChanged(nameof(MarkdownContent));
         OnPropertyChanged(nameof(UpdatedAtUtc));

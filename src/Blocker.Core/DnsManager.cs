@@ -13,19 +13,140 @@ namespace Blocker.Core;
 
 public static class DnsManager
 {
+    public static bool IsVirtualOrExcludedAdapter(string description, string name, NetworkInterfaceType type)
+    {
+        if (type == NetworkInterfaceType.Loopback || type == NetworkInterfaceType.Tunnel)
+        {
+            return true;
+        }
+
+        string desc = description ?? string.Empty;
+        string nm = name ?? string.Empty;
+
+        // Oracle VirtualBox Host-Only adapters
+        if (desc.IndexOf("VirtualBox Host-Only", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            nm.IndexOf("VirtualBox", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return true;
+        }
+
+        // VMware VMnet Host-Only adapters
+        if (desc.IndexOf("VMware Network Adapter VMnet", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            nm.IndexOf("VMnet", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return true;
+        }
+
+        // Microsoft Wi-Fi Direct virtual adapter
+        if (desc.IndexOf("Microsoft Wi-Fi Direct Virtual", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            nm.IndexOf("Local Area Connection*", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return true;
+        }
+
+        // Hyper-V internal switches (WSL, Default Switch)
+        if (desc.IndexOf("Hyper-V Virtual Ethernet Adapter", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            nm.IndexOf("vEthernet (WSL)", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            nm.IndexOf("vEthernet (Default Switch)", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return true;
+        }
+
+        // NDIS Lightweight Filters / Packet Schedulers
+        if (desc.IndexOf("LightWeight Filter", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            desc.IndexOf("Filter Driver", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            desc.IndexOf("Packet Scheduler", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            nm.IndexOf("Filter-", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            nm.IndexOf("Scheduler-", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool IsVirtualOrExcludedAdapter(NetworkInterface ni)
+    {
+        if (IsVirtualOrExcludedAdapter(ni.Description, ni.Name, ni.NetworkInterfaceType))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool HasDefaultGateway(NetworkInterface ni)
+    {
+        try
+        {
+            var props = ni.GetIPProperties();
+            return props.GatewayAddresses.Any(g =>
+                g.Address != null &&
+                !IPAddress.Any.Equals(g.Address) &&
+                !IPAddress.IPv6Any.Equals(g.Address) &&
+                !string.IsNullOrWhiteSpace(g.Address.ToString()));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static List<NetworkInterface> GetTargetNetworkInterfaces()
+    {
+        var list = new List<NetworkInterface>();
+        try
+        {
+            var all = NetworkInterface.GetAllNetworkInterfaces();
+            var upInterfaces = all
+                .Where(ni => ni.OperationalStatus == OperationalStatus.Up && !IsVirtualOrExcludedAdapter(ni))
+                .ToList();
+
+            // 1. Interfaces with active default gateways are actively routing internet traffic
+            var withGateway = upInterfaces.Where(HasDefaultGateway).ToList();
+            if (withGateway.Count > 0)
+            {
+                return withGateway;
+            }
+
+            // 2. Fallback: all non-virtual UP interfaces
+            if (upInterfaces.Count > 0)
+            {
+                return upInterfaces;
+            }
+        }
+        catch { }
+
+        return list;
+    }
+
     public static List<string> GetActiveInterfaceNames()
     {
         var list = new List<string>();
         try
         {
-            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
-            foreach (var ni in interfaces)
+            var targetInterfaces = GetTargetNetworkInterfaces();
+            foreach (var ni in targetInterfaces)
             {
-                if (ni.OperationalStatus == OperationalStatus.Up &&
-                    ni.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
-                    ni.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
+                if (!list.Contains(ni.Name, StringComparer.OrdinalIgnoreCase))
                 {
                     list.Add(ni.Name);
+                }
+            }
+
+            // Also include any physical UP Ethernet/Wi-Fi interfaces even if gateway negotiation is pending
+            var all = NetworkInterface.GetAllNetworkInterfaces();
+            foreach (var ni in all)
+            {
+                if (ni.OperationalStatus == OperationalStatus.Up &&
+                    !IsVirtualOrExcludedAdapter(ni) &&
+                    (ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ||
+                     ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet))
+                {
+                    if (!list.Contains(ni.Name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        list.Add(ni.Name);
+                    }
                 }
             }
         }
@@ -169,6 +290,33 @@ public static class DnsManager
         bool anySuccess = false;
         var interfaces = GetActiveInterfaceNames();
 
+        // Also include any other non-loopback interface that currently has static preset DNS configured
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                    !interfaces.Contains(ni.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    var props = ni.GetIPProperties();
+                    if (props.DnsAddresses.Any(d =>
+                        d.ToString().StartsWith("1.1.1.") ||
+                        d.ToString().StartsWith("1.0.0.") ||
+                        d.ToString().StartsWith("185.228.") ||
+                        d.ToString().StartsWith("94.140.") ||
+                        d.ToString().StartsWith("9.9.9.") ||
+                        d.ToString().StartsWith("2606:4700:") ||
+                        d.ToString().StartsWith("2a0d:2a00:") ||
+                        d.ToString().StartsWith("2a10:50c0:") ||
+                        d.ToString().StartsWith("2620:fe:")))
+                    {
+                        interfaces.Add(ni.Name);
+                    }
+                }
+            }
+        }
+        catch { }
+
         foreach (var iface in interfaces)
         {
             string safeIface = iface.Replace("\"", string.Empty);
@@ -212,35 +360,76 @@ public static class DnsManager
         });
     }
 
-    public static bool IsDnsActive(string expectedPrimary, string expectedPrimaryIpv6 = "")
+    public static bool IPAddressEquals(string? a, string? b)
+    {
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
+        if (IPAddress.TryParse(a.Trim(), out var ipA) && IPAddress.TryParse(b.Trim(), out var ipB))
+        {
+            return ipA.Equals(ipB);
+        }
+        return string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsDnsActive(string expectedPrimary, string expectedPrimaryIpv6 = "", string expectedSecondary = "", string expectedSecondaryIpv6 = "")
     {
         if (string.IsNullOrWhiteSpace(expectedPrimary) && string.IsNullOrWhiteSpace(expectedPrimaryIpv6)) return false;
 
         try
         {
-            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
-            foreach (var ni in interfaces)
+            var targetInterfaces = GetTargetNetworkInterfaces();
+            if (targetInterfaces.Count == 0)
             {
-                if (ni.OperationalStatus == OperationalStatus.Up &&
-                    ni.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                // No active internet adapters - cannot leak DNS
+                return true;
+            }
+
+            foreach (var ni in targetInterfaces)
+            {
+                var ipProps = ni.GetIPProperties();
+                var dnsList = ipProps.DnsAddresses;
+
+                // 1. Check IPv4 Primary DNS
+                if (!string.IsNullOrWhiteSpace(expectedPrimary))
                 {
-                    var ipProps = ni.GetIPProperties();
-                    foreach (var dns in ipProps.DnsAddresses)
+                    var firstV4 = dnsList.FirstOrDefault(d => d.AddressFamily == AddressFamily.InterNetwork);
+                    if (firstV4 == null || !IPAddressEquals(firstV4.ToString(), expectedPrimary))
                     {
-                        string dnsStr = dns.ToString().Trim();
-                        if (!string.IsNullOrWhiteSpace(expectedPrimary) &&
-                            string.Equals(dnsStr, expectedPrimary.Trim(), StringComparison.OrdinalIgnoreCase))
+                        return false;
+                    }
+
+                    // 2. Check IPv4 Secondary DNS if provided and present
+                    if (!string.IsNullOrWhiteSpace(expectedSecondary))
+                    {
+                        var v4List = dnsList.Where(d => d.AddressFamily == AddressFamily.InterNetwork).ToList();
+                        if (v4List.Count > 1 && !IPAddressEquals(v4List[1].ToString(), expectedSecondary))
                         {
-                            return true;
+                            return false;
                         }
-                        if (!string.IsNullOrWhiteSpace(expectedPrimaryIpv6) &&
-                            string.Equals(dnsStr, expectedPrimaryIpv6.Trim(), StringComparison.OrdinalIgnoreCase))
+                    }
+                }
+
+                // 3. Check IPv6 Primary DNS if configured and present
+                if (!string.IsNullOrWhiteSpace(expectedPrimaryIpv6))
+                {
+                    var firstV6 = dnsList.FirstOrDefault(d => d.AddressFamily == AddressFamily.InterNetworkV6);
+                    if (firstV6 != null && !IPAddressEquals(firstV6.ToString(), expectedPrimaryIpv6))
+                    {
+                        return false;
+                    }
+
+                    // 4. Check IPv6 Secondary DNS if configured and present
+                    if (!string.IsNullOrWhiteSpace(expectedSecondaryIpv6))
+                    {
+                        var v6List = dnsList.Where(d => d.AddressFamily == AddressFamily.InterNetworkV6).ToList();
+                        if (v6List.Count > 1 && !IPAddressEquals(v6List[1].ToString(), expectedSecondaryIpv6))
                         {
-                            return true;
+                            return false;
                         }
                     }
                 }
             }
+
+            return true;
         }
         catch { }
 

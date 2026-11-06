@@ -9,6 +9,11 @@ using CheckBox = System.Windows.Controls.CheckBox;
 
 namespace Blocker.App;
 
+public class BlockedByProfilePickerRow : AppPickerRow
+{
+    public new string? StatusText => "(Blocked by Block Profile)";
+}
+
 public partial class AppPickerDialog : Window
 {
     private readonly List<string> _alreadyBlockedExes = new();
@@ -16,19 +21,43 @@ public partial class AppPickerDialog : Window
     private readonly HashSet<string> _userSelectedExes = new(StringComparer.OrdinalIgnoreCase);
     private List<AppPickerRow> _currentRows = new();
 
+    public bool IsMeditationMode { get; set; }
+    public HashSet<string> BlockedProfileApps { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public List<string> SelectedApps { get; private set; } = new();
 
     public AppPickerDialog(
         IEnumerable<string>? alreadyBlockedExes = null,
-        List<AppPickerItem>? customItems = null)
+        List<AppPickerItem>? customItems = null,
+        bool isMeditationMode = false,
+        IEnumerable<string>? blockedProfileApps = null)
     {
         InitializeComponent();
         WindowHelper.EnableDarkMode(this);
+
+        IsMeditationMode = isMeditationMode;
+        if (blockedProfileApps != null)
+        {
+            foreach (var b in blockedProfileApps)
+            {
+                string norm = AppPickerLogic.NormalizeExeName(b);
+                if (!string.IsNullOrEmpty(norm)) BlockedProfileApps.Add(norm);
+            }
+        }
 
         if (alreadyBlockedExes != null)
         {
             _alreadyBlockedExes.AddRange(alreadyBlockedExes);
         }
+
+        Loaded += (s, e) =>
+        {
+            if (CheckIsMeditationMode())
+            {
+                LoadBlockedProfileApps();
+                RebuildList();
+            }
+        };
 
         if (customItems != null)
         {
@@ -58,6 +87,92 @@ public partial class AppPickerDialog : Window
         }
     }
 
+    public bool CheckIsMeditationMode()
+    {
+        if (IsMeditationMode) return true;
+        if (Owner != null && Owner.GetType().Name.Contains("Meditation", StringComparison.OrdinalIgnoreCase)) return true;
+        if (System.Windows.Application.Current != null)
+        {
+            foreach (Window win in System.Windows.Application.Current.Windows)
+            {
+                if (win.IsVisible && win.GetType().Name.Contains("Meditation", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void LoadBlockedProfileApps()
+    {
+        if (!CheckIsMeditationMode()) return;
+
+        // 1. From Application.Current MainViewModel if available
+        try
+        {
+            if (System.Windows.Application.Current != null)
+            {
+                foreach (Window win in System.Windows.Application.Current.Windows)
+                {
+                    if (win.DataContext is MainViewModel mvm)
+                    {
+                        foreach (var prof in mvm.Profiles)
+                        {
+                            if (prof.Enabled || prof.IsActive || prof.IsSessionRunning)
+                            {
+                                foreach (var app in prof.BlockedProcesses)
+                                {
+                                    string norm = AppPickerLogic.NormalizeExeName(app);
+                                    if (!string.IsNullOrEmpty(norm))
+                                    {
+                                        BlockedProfileApps.Add(norm);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+
+        // 2. Fallback to IPC request to service if available
+        if (BlockedProfileApps.Count == 0)
+        {
+            try
+            {
+                var pipeClient = new PipeClient(timeoutMs: 300);
+                var task = pipeClient.SendRequestAsync(new Request { Command = CommandNames.ListProfiles });
+                if (task.Wait(300) && task.Result.Connected && task.Result.Response?.Ok == true && !string.IsNullOrWhiteSpace(task.Result.Response.Data))
+                {
+                    var profiles = System.Text.Json.JsonSerializer.Deserialize<List<Profile>>(task.Result.Response.Data, new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    if (profiles != null)
+                    {
+                        foreach (var prof in profiles)
+                        {
+                            if (prof.Enabled)
+                            {
+                                foreach (var app in prof.BlockedProcesses)
+                                {
+                                    string norm = AppPickerLogic.NormalizeExeName(app);
+                                    if (!string.IsNullOrEmpty(norm))
+                                    {
+                                        BlockedProfileApps.Add(norm);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+    }
+
     public void SetSearchQuery(string query)
     {
         SearchTextBox.Text = query;
@@ -67,11 +182,35 @@ public partial class AppPickerDialog : Window
     {
         string query = SearchTextBox.Text;
         bool showAll = ShowAllProcessesCheckBox.IsChecked == true;
+        bool isMeditation = CheckIsMeditationMode();
+        if (isMeditation && BlockedProfileApps.Count == 0)
+        {
+            LoadBlockedProfileApps();
+        }
 
         var rows = AppPickerLogic.BuildFlatPickerList(_rawItems, _alreadyBlockedExes, query, showAll);
+        var finalRows = new List<AppPickerRow>(rows.Count);
 
         foreach (var row in rows)
         {
+            if (isMeditation && !row.IsHeader && !string.IsNullOrEmpty(row.ExeName) &&
+                BlockedProfileApps.Contains(AppPickerLogic.NormalizeExeName(row.ExeName)))
+            {
+                var blockedRow = new BlockedByProfilePickerRow
+                {
+                    IsHeader = false,
+                    DisplayName = row.DisplayName,
+                    ExeName = row.ExeName,
+                    Path = row.Path,
+                    Category = row.Category,
+                    IsSystemProcess = row.IsSystemProcess,
+                    IsAlreadyBlocked = true,
+                    IsSelected = false
+                };
+                finalRows.Add(blockedRow);
+                continue;
+            }
+
             if (!row.IsHeader && !row.IsAlreadyBlocked)
             {
                 if (_userSelectedExes.Contains(row.ExeName))
@@ -81,12 +220,14 @@ public partial class AppPickerDialog : Window
 
                 row.PropertyChanged += OnRowPropertyChanged;
             }
+
+            finalRows.Add(row);
         }
 
-        _currentRows = rows;
+        _currentRows = finalRows;
         AppsListBox.ItemsSource = _currentRows;
 
-        EmptyNoticeTextBlock.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyNoticeTextBlock.Visibility = finalRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateSelectedSummary();
     }
 
@@ -141,7 +282,7 @@ public partial class AppPickerDialog : Window
     {
         if (sender is FrameworkElement fe && fe.DataContext is AppPickerRow row)
         {
-            if (row.IsEnabled)
+            if (row.IsEnabled && !BlockedProfileApps.Contains(AppPickerLogic.NormalizeExeName(row.ExeName)))
             {
                 if (e.OriginalSource is DependencyObject d && IsDescendantOf<CheckBox>(d))
                 {
@@ -177,7 +318,7 @@ public partial class AppPickerDialog : Window
     {
         SelectedApps = _userSelectedExes
             .Select(AppPickerLogic.NormalizeExeName)
-            .Where(x => !string.IsNullOrEmpty(x))
+            .Where(x => !string.IsNullOrEmpty(x) && !BlockedProfileApps.Contains(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
