@@ -18,6 +18,9 @@ public class Worker : BackgroundService
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WTSGetActiveConsoleSessionId();
+
     private const int SW_MINIMIZE = 6;
     private const int SW_FORCEMINIMIZE = 11;
     private const uint WM_CLOSE = 0x0010;
@@ -966,18 +969,42 @@ public class Worker : BackgroundService
                         try
                         {
                             using var targetProc = Process.GetProcessById(processId);
-                            IntPtr hwnd = IntPtr.Zero;
-                            try { hwnd = targetProc.MainWindowHandle; } catch { }
 
-                            // Only suppress processes that have a top-level GUI window
-                            if (hwnd != IntPtr.Zero)
+                            uint activeSessionId = WTSGetActiveConsoleSessionId();
+                            if (activeSessionId == 0xFFFFFFFF || activeSessionId == 0)
                             {
-                                ShowWindow(hwnd, SW_FORCEMINIMIZE);
-                                ShowWindow(hwnd, SW_MINIMIZE);
+                                var explorer = Process.GetProcessesByName("explorer").FirstOrDefault(e => e.SessionId > 0);
+                                if (explorer != null)
+                                {
+                                    activeSessionId = (uint)explorer.SessionId;
+                                }
+                            }
+
+                            int targetSession = -1;
+                            try { targetSession = targetProc.SessionId; } catch { }
+
+                            bool isTargetInActiveSession = (activeSessionId != 0xFFFFFFFF && targetSession == (int)activeSessionId) ||
+                                                          (targetSession > 0 && targetSession == Process.GetCurrentProcess().SessionId) ||
+                                                          (activeSessionId == 0xFFFFFFFF && targetSession > 0);
+
+                            if (isTargetInActiveSession)
+                            {
+                                IntPtr hwnd = IntPtr.Zero;
+                                try { hwnd = targetProc.MainWindowHandle; } catch { }
+
+                                if (hwnd != IntPtr.Zero)
+                                {
+                                    try
+                                    {
+                                        ShowWindow(hwnd, SW_FORCEMINIMIZE);
+                                        ShowWindow(hwnd, SW_MINIMIZE);
+                                    }
+                                    catch { }
+                                }
 
                                 try
                                 {
-                                    if (!targetProc.CloseMainWindow())
+                                    if (hwnd == IntPtr.Zero || !targetProc.CloseMainWindow())
                                     {
                                         targetProc.Kill(entireProcessTree: true);
                                     }
@@ -987,9 +1014,20 @@ public class Worker : BackgroundService
                                     try { targetProc.Kill(); } catch { }
                                 }
 
+                                bool isBrowserOrMultiProcess =
+                                    BrowserCatalog.IsSupportedBrowser(exeName) ||
+                                    BrowserCatalog.IsUnsupportedBrowser(exeName) ||
+                                    BrowserCatalog.IsSupportedBrowser(processName) ||
+                                    BrowserCatalog.IsUnsupportedBrowser(processName);
+
+                                if (isBrowserOrMultiProcess && killedBrowsersThisPass.Add(exeName))
+                                {
+                                    ExecuteTaskkillByImageName(exeName);
+                                }
+
                                 if (_loggedMeditationPids.Add(processId))
                                 {
-                                    string msg = $"[{timestamp}] [MEDITATION WHITELIST] Process '{exeName}' closed/minimized (not in allowed meditation apps).";
+                                    string msg = $"[{timestamp}] [MEDITATION WHITELIST] Process '{exeName}' terminated (not in allowed meditation apps).";
                                     Console.WriteLine(msg);
                                     _logger.LogInformation("{Message}", msg);
 
@@ -1102,7 +1140,7 @@ public class Worker : BackgroundService
 
     #region Meditation Mode Helpers
 
-    private static bool IsAppAllowed(string processName, string exeName, List<string> allowedApps)
+    public static bool IsAppAllowed(string processName, string exeName, List<string> allowedApps)
     {
         string normProc = ProcessMatcher.NormalizeProcessName(processName);
         string normExe = ProcessMatcher.NormalizeProcessName(exeName);
