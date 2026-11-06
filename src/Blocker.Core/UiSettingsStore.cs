@@ -16,6 +16,7 @@ public class UiSettings
 {
     public Dictionary<string, SessionSettings> ProfileSettings { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public bool SuppressAlwaysActiveWarning { get; set; }
+    public bool SuppressMeditationStartWarning { get; set; } = false;
     public string Theme { get; set; } = "black";
     public string AccentColor { get; set; } = "Emerald";
     public string CardDensity { get; set; } = "Comfortable";
@@ -32,10 +33,29 @@ public class UiSettings
     // Backward compatibility helper properties for legacy extension sync callers if needed
     [JsonIgnore]
     public string ExtensionTheme => Theme;
+
+    public void Save()
+    {
+        UiSettingsStore.Save(this);
+    }
 }
 
 public static class UiSettingsStore
 {
+    private static UiSettings? _instance;
+
+    public static UiSettings Instance
+    {
+        get => _instance ??= Load();
+        set => _instance = value;
+    }
+
+    public static bool SuppressMeditationStartWarning
+    {
+        get => Instance.SuppressMeditationStartWarning;
+        set => Instance.SuppressMeditationStartWarning = value;
+    }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -227,8 +247,14 @@ public static class UiSettingsStore
         return new UiSettings();
     }
 
+    public static void Save()
+    {
+        Save(Instance);
+    }
+
     public static void Save(UiSettings settings)
     {
+        _instance = settings;
         SaveToFile(settings, GetDefaultFilePath());
         try
         {

@@ -511,6 +511,23 @@ public class MeditationViewModel : ViewModelBase, IDisposable
     {
         if (_isActive) return;
 
+        if (!UiSettingsStore.Instance.SuppressMeditationStartWarning)
+        {
+            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                bool confirmed = false;
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    confirmed = ShowMeditationStartWarning();
+                });
+                if (!confirmed) return;
+            }
+            else
+            {
+                if (!ShowMeditationStartWarning()) return;
+            }
+        }
+
         IsActive = true;
         RemainingSeconds = _targetDurationSeconds;
         UpdateTimerDisplay();
@@ -625,6 +642,33 @@ public class MeditationViewModel : ViewModelBase, IDisposable
                 }
             }
         });
+    }
+
+    private bool ShowMeditationStartWarning()
+    {
+        try
+        {
+            int durationMinutes = (int)Math.Max(1, _targetDurationSeconds / 60);
+            string lockRigor = MeditationStartWarningDialog.FormatLockRigor(_lockMode);
+            var owner = Application.Current?.MainWindow;
+            var dlg = new MeditationStartWarningDialog(durationMinutes, lockRigor, AllowedApps, owner);
+            if (dlg.ShowDialog() != true)
+            {
+                return false;
+            }
+
+            if (dlg.DoNotShowAgain)
+            {
+                UiSettingsStore.Instance.SuppressMeditationStartWarning = true;
+                UiSettingsStore.Instance.Save();
+            }
+
+            return true;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     public void StopMeditation()

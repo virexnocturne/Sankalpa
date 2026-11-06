@@ -11,6 +11,19 @@ public partial class AppearanceDialog : Window
     private readonly UiSettings _settings;
     private bool _isInitializing = true;
 
+    public bool ShowMeditationStartWarning
+    {
+        get => !_settings.SuppressMeditationStartWarning;
+        set
+        {
+            if (_settings.SuppressMeditationStartWarning != !value)
+            {
+                _settings.SuppressMeditationStartWarning = !value;
+                UiSettingsStore.Save(_settings);
+            }
+        }
+    }
+
     public AppearanceDialog(Window? owner = null)
     {
         InitializeComponent();
@@ -20,6 +33,7 @@ public partial class AppearanceDialog : Window
         }
 
         _settings = UiSettingsStore.Load();
+        DataContext = this;
 
         // Load current Theme Mode
         if (ThemeManager.CurrentThemeMode == AppThemeMode.Light)
@@ -64,6 +78,9 @@ public partial class AppearanceDialog : Window
             DensityComfortableRadio.IsChecked = true;
         }
 
+        // Load Meditation & Lockdown Warning preference
+        MeditationWarningToggle.IsChecked = !_settings.SuppressMeditationStartWarning;
+
         _isInitializing = false;
     }
 
@@ -91,6 +108,14 @@ public partial class AppearanceDialog : Window
         if (_isInitializing) return;
 
         _settings.CardDensity = DensityCompactRadio.IsChecked == true ? "Compact" : "Comfortable";
+        UiSettingsStore.Save(_settings);
+    }
+
+    private void MeditationWarningToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isInitializing) return;
+
+        _settings.SuppressMeditationStartWarning = MeditationWarningToggle.IsChecked != true;
         UiSettingsStore.Save(_settings);
     }
 

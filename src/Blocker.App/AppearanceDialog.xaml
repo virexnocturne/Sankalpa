@@ -12,6 +12,10 @@
         Foreground="{DynamicResource TextPrimary}"
         FontFamily="{DynamicResource FontBody}">
 
+    <Window.Resources>
+        <local:InverseBooleanConverter x:Key="InverseBooleanConverter" />
+    </Window.Resources>
+
     <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1" Padding="24">
         <Grid>
             <Grid.RowDefinitions>
@@ -225,6 +229,35 @@
                                 <RadioButton x:Name="DensityCompactRadio" GroupName="DensityGroup"
                                              Checked="DensityRadio_Checked" Content="Compact (High density)" />
                             </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- MEDITATION & LOCKDOWN SAFETY SECTION -->
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="16" Margin="0,16,0,0">
+                        <StackPanel>
+                            <TextBlock Text="MEDITATION &amp; LOCKDOWN" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                                       Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12" />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="Show warning before starting Meditation &amp; Lockdown"
+                                               FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" />
+                                    <TextBlock Text="Displays confirmation dialog with session details and lockout warning"
+                                               FontSize="{DynamicResource FontSize12}"
+                                               Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <CheckBox x:Name="MeditationWarningToggle" Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitchStyle}"
+                                          IsChecked="{Binding ShowMeditationStartWarning, Mode=TwoWay}"
+                                          Click="MeditationWarningToggle_Click"
+                                          VerticalAlignment="Center" />
+                            </Grid>
                         </StackPanel>
                     </Border>
                 </StackPanel>

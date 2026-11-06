@@ -197,4 +197,29 @@ public class UiSettingsStoreTests
         Assert.True(restored.ShowAppAlerts);
         Assert.False(restored.ShowDnsAlerts);
     }
+
+    [Fact]
+    public void SuppressMeditationStartWarning_DefaultsToFalse()
+    {
+        var settings = new UiSettings();
+        Assert.False(settings.SuppressMeditationStartWarning);
+
+        var fromEmpty = UiSettingsStore.FromJson("{}");
+        Assert.False(fromEmpty.SuppressMeditationStartWarning);
+    }
+
+    [Fact]
+    public void RoundTrip_SuppressMeditationStartWarning_Preserved()
+    {
+        var settings = new UiSettings { SuppressMeditationStartWarning = true };
+        string json = UiSettingsStore.ToJson(settings);
+        var restored = UiSettingsStore.FromJson(json);
+        Assert.True(restored.SuppressMeditationStartWarning);
+    }
+
+    [Fact]
+    public void UiSettingsStore_Instance_ReturnsValidSingleton()
+    {
+        Assert.NotNull(UiSettingsStore.Instance);
+    }
 }

@@ -1,0 +1,147 @@
+<Window x:Class="Blocker.App.MeditationStartWarningDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Blocker.App"
+        local:WindowHelper.UseThemeTitleBar="True"
+        Title="Enter Focus Lockdown?"
+        Width="500"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="SingleBorderWindow"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource TextPrimary}"
+        FontFamily="{DynamicResource FontBody}">
+
+    <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1" Padding="24">
+        <Grid>
+            <Grid.RowDefinitions>
+                <!-- Header / Title -->
+                <RowDefinition Height="Auto" />
+                <!-- Summary Card -->
+                <RowDefinition Height="Auto" />
+                <!-- Warning Text Callout -->
+                <RowDefinition Height="Auto" />
+                <!-- Checkbox & Action Buttons -->
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,18">
+                <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" CornerRadius="{DynamicResource RadiusPill}" Padding="10" Margin="0,0,14,0" VerticalAlignment="Center">
+                    <Path Style="{StaticResource Icon}" Data="{StaticResource IconShield}" Width="20" Height="20"
+                          Stroke="{DynamicResource Accent}" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="TitleTextBlock" Text="Enter Focus Lockdown?"
+                               FontFamily="{DynamicResource FontTitle}"
+                               FontWeight="SemiBold"
+                               FontSize="{DynamicResource FontSizeTitle}"
+                               Foreground="{DynamicResource TextPrimary}" />
+                    <TextBlock Text="Review your focus lockdown parameters before starting."
+                               FontSize="{DynamicResource FontSize12}"
+                               Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Summary Card -->
+            <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="16" Margin="0,0,0,14">
+                <StackPanel>
+                    <!-- Session Duration -->
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Path Grid.Column="0" Style="{StaticResource Icon}" Data="{StaticResource IconTimer}" Width="15" Height="15"
+                              Stroke="{DynamicResource TextSecondary}" Margin="0,0,10,0" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="Session Duration" FontSize="{DynamicResource FontSize13}"
+                                   Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" x:Name="DurationValueText" Text="20 minutes" FontSize="{DynamicResource FontSize13}"
+                                   FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,10" />
+
+                    <!-- Lock Rigor / Mode -->
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Path Grid.Column="0" Style="{StaticResource Icon}" Data="{StaticResource IconLock}" Width="15" Height="15"
+                              Stroke="{DynamicResource TextSecondary}" Margin="0,0,10,0" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="Lock Rigor" FontSize="{DynamicResource FontSize13}"
+                                   Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" x:Name="LockModeValueText" Text="Complete Lock" FontSize="{DynamicResource FontSize13}"
+                                   FontWeight="SemiBold" Foreground="{DynamicResource Accent}" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,10" />
+
+                    <!-- Allowed Apps -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Path Grid.Column="0" Style="{StaticResource Icon}" Data="{StaticResource IconLayoutGrid}" Width="15" Height="15"
+                              Stroke="{DynamicResource TextSecondary}" Margin="0,0,10,0" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="Allowed Apps" FontSize="{DynamicResource FontSize13}"
+                                   Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" x:Name="AllowedAppsValueText" Text="0 allowed apps — Full Screen Lockout" FontSize="{DynamicResource FontSize13}"
+                                   FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Explicit Warning Callout -->
+            <Border Grid.Row="2" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource BorderStrong}"
+                    BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="14,12" Margin="0,0,0,18">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Background="#22E5B341" CornerRadius="{DynamicResource RadiusPill}"
+                            Width="26" Height="26" Margin="0,1,12,0" VerticalAlignment="Top">
+                        <Path Style="{StaticResource Icon}" Data="{StaticResource IconShield}" Width="13" Height="13"
+                              Stroke="{DynamicResource Warning}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock x:Name="WarningTextBlock" Grid.Column="1"
+                               Text="You are about to enter full-screen lockdown. Desktop access, task switching, and background applications will be blocked until the session concludes."
+                               FontSize="{DynamicResource FontSize12}" LineHeight="18" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <!-- Checkbox & Buttons -->
+            <Grid Grid.Row="3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Checkbox -->
+                <CheckBox x:Name="DoNotShowAgainCheckBox" Grid.Column="0"
+                          Content="Do not show this warning again"
+                          FontSize="{DynamicResource FontSize12}"
+                          Foreground="{DynamicResource TextSecondary}"
+                          VerticalAlignment="Center" Margin="0,0,16,0" />
+
+                <!-- Buttons -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="CancelButton" Content="Cancel" Style="{StaticResource SecondaryButton}"
+                            Padding="16,8" MinWidth="80" Margin="0,0,10,0" Click="CancelButton_Click" />
+                    <Button x:Name="StartSessionButton" Content="Start Focus Session" Style="{StaticResource PrimaryButton}"
+                            Padding="18,8" FontWeight="SemiBold" Click="StartSessionButton_Click" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
