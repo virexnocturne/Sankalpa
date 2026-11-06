@@ -1,0 +1,273 @@
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+namespace Blocker.Core;
+
+/// <summary>
+/// Thread-safe Win32 low-level keyboard hook (WH_KEYBOARD_LL = 13) that blocks system keys
+/// such as Windows keys, Alt+Tab, and Ctrl/Alt+Esc during system lockdown and meditation mode.
+/// </summary>
+public sealed class LowLevelKeyboardHook : IDisposable
+{
+    private const int WH_KEYBOARD_LL = 13;
+    private const uint WM_QUIT = 0x0012;
+
+    private const int VK_TAB = 0x09;
+    private const int VK_ESCAPE = 0x1B;
+    private const int VK_CONTROL = 0x11;
+    private const int VK_LCONTROL = 0xA2;
+    private const int VK_RCONTROL = 0xA3;
+    private const int VK_MENU = 0x12; // Alt
+    private const int VK_LMENU = 0xA4;
+    private const int VK_RMENU = 0xA5;
+    private const int VK_LWIN = 0x5B;
+    private const int VK_RWIN = 0x5C;
+
+    private const uint LLKHF_ALTDOWN = 0x20;
+
+    private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr GetModuleHandle(string? lpModuleName);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll")]
+    private static extern sbyte GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll")]
+    private static extern bool TranslateMessage([In] ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr DispatchMessage([In] ref MSG lpMsg);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KBDLLHOOKSTRUCT
+    {
+        public uint vkCode;
+        public uint scanCode;
+        public uint flags;
+        public uint time;
+        public UIntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int x;
+        public int y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public IntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
+    }
+
+    private readonly object _syncLock = new();
+    private readonly HookProc _hookProc;
+    private IntPtr _hookHandle = IntPtr.Zero;
+    private Thread? _hookThread;
+    private uint _hookThreadId;
+    private bool _isActive;
+    private bool _disposed;
+
+    public bool IsActive
+    {
+        get
+        {
+            lock (_syncLock)
+            {
+                return _isActive;
+            }
+        }
+    }
+
+    public LowLevelKeyboardHook()
+    {
+        _hookProc = HookCallback;
+    }
+
+    public void Start()
+    {
+        lock (_syncLock)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(LowLevelKeyboardHook));
+            if (_isActive) return;
+
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                _isActive = true;
+                return;
+            }
+
+            using var readyEvent = new ManualResetEventSlim(false);
+            Exception? initError = null;
+
+            _hookThread = new Thread(() =>
+            {
+                _hookThreadId = GetCurrentThreadId();
+                try
+                {
+                    using var curProcess = Process.GetCurrentProcess();
+                    using var curModule = curProcess.MainModule;
+                    IntPtr hMod = curModule?.ModuleName != null ? GetModuleHandle(curModule.ModuleName) : IntPtr.Zero;
+
+                    _hookHandle = SetWindowsHookEx(WH_KEYBOARD_LL, _hookProc, hMod, 0);
+                    if (_hookHandle == IntPtr.Zero)
+                    {
+                        int err = Marshal.GetLastWin32Error();
+                        initError = new InvalidOperationException($"SetWindowsHookEx failed with Win32 error code {err}.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    initError = ex;
+                }
+                finally
+                {
+                    readyEvent.Set();
+                }
+
+                if (_hookHandle != IntPtr.Zero)
+                {
+                    // Run standard Win32 message pump for the low-level hook
+                    while (GetMessage(out MSG msg, IntPtr.Zero, 0, 0) > 0)
+                    {
+                        TranslateMessage(ref msg);
+                        DispatchMessage(ref msg);
+                    }
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "LowLevelKeyboardHookThread"
+            };
+
+            _hookThread.SetApartmentState(ApartmentState.STA);
+            _hookThread.Start();
+
+            if (!readyEvent.Wait(TimeSpan.FromSeconds(5)))
+            {
+                Stop();
+                throw new TimeoutException("Timed out waiting for LowLevelKeyboardHook thread initialization.");
+            }
+
+            if (initError != null)
+            {
+                Stop();
+                throw initError;
+            }
+
+            _isActive = _hookHandle != IntPtr.Zero;
+        }
+    }
+
+    public void Stop()
+    {
+        lock (_syncLock)
+        {
+            if (!_isActive && _hookThread == null) return;
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                if (_hookHandle != IntPtr.Zero)
+                {
+                    UnhookWindowsHookEx(_hookHandle);
+                    _hookHandle = IntPtr.Zero;
+                }
+
+                if (_hookThreadId != 0)
+                {
+                    PostThreadMessage(_hookThreadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+                    _hookThreadId = 0;
+                }
+
+                if (_hookThread != null && _hookThread.IsAlive)
+                {
+                    _hookThread.Join(TimeSpan.FromSeconds(2));
+                    _hookThread = null;
+                }
+            }
+
+            _isActive = false;
+        }
+    }
+
+    private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode >= 0 && lParam != IntPtr.Zero)
+        {
+            var kbd = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+            uint vk = kbd.vkCode;
+            bool altDown = (kbd.flags & LLKHF_ALTDOWN) != 0 ||
+                           (GetAsyncKeyState(VK_MENU) & 0x8000) != 0 ||
+                           (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0 ||
+                           (GetAsyncKeyState(VK_RMENU) & 0x8000) != 0;
+
+            bool ctrlDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 ||
+                            (GetAsyncKeyState(VK_LCONTROL) & 0x8000) != 0 ||
+                            (GetAsyncKeyState(VK_RCONTROL) & 0x8000) != 0;
+
+            bool block = false;
+
+            // 1. VK_LWIN (0x5B) and VK_RWIN (0x5C)
+            if (vk == VK_LWIN || vk == VK_RWIN)
+            {
+                block = true;
+            }
+            // 2. VK_TAB (0x09) when Alt is held
+            else if (vk == VK_TAB && altDown)
+            {
+                block = true;
+            }
+            // 3. VK_ESCAPE (0x1B) when Alt is held or Ctrl is held
+            else if (vk == VK_ESCAPE && (altDown || ctrlDown))
+            {
+                block = true;
+            }
+
+            if (block)
+            {
+                return (IntPtr)1;
+            }
+        }
+
+        return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+    }
+
+    public void Dispose()
+    {
+        lock (_syncLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            Stop();
+        }
+    }
+}

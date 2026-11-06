@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.2.0" /></a>
+  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.3.0" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64)-blue?logo=windows" alt="Platform: Windows" />
   <img src="https://img.shields.io/badge/Framework-.NET%208.0%20WPF-purple?logo=dotnet" alt=".NET 8" />
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20%26%20Local-success?logo=shield" alt="Privacy First" />
@@ -25,13 +25,13 @@
 
 ---
 
-## 🌟 What's New in v1.2.0
+## 🌟 What's New in v1.3.0
 
-- 🔒 **Automatic Schedule Lockdown**: Block profiles with active schedules are now automatically locked during their scheduled time windows (`Schedule 🔒`). The toggle switch is disabled so you cannot simply turn off blocks mid-session.
-- ⏳ **Delayed Unlock**: Added a tamper-resistant cooldown timer option (15m, 30m, 1h, 2h). Must wait out an active timer in front of the screen before a locked block can be modified.
-- 🛑 **Strict Uninstall Guard**: Anti-tamper protection integrated into Windows Add-Remove Programs (`unins000.exe`). If any block session or scheduled block is active, uninstallation is strictly forbidden and aborted immediately.
-- 🎨 **Streamlined Desktop UI**: Removed misleading Stop buttons on locked blocks and eliminated header text clipping in the schedule editor for a cleaner experience.
-- 🌐 **Updated Companion Extension (v1.2.0)**: Fully synchronized with latest engine rules, real-time native messaging, and seamless multi-browser support.
+- 🧘 **Meditation & Computer Lockdown Mode**: Fullscreen, multi-monitor Zen Shield with adaptive monospace timer, gentle breathing ring animation, and tamper-resistant lockdown (DACL hardening, WinKey/Alt+Tab/Ctrl+Esc suppression, boot recovery).
+- 📝 **Obsidian-Style Notes Collection & Slide-Out Drawer**: Card-based reflection notes with `#` headings, interactive `- [ ]` task checkboxes that toggle in real-time, right-edge vertical `"NOTES"` drawer handle, and 3-way flexible Markdown export (Session Bundle, Obsidian Vault files, Master Journal).
+- 🌧️ **Offline Ambient Sound Engine**: 4 high-quality 16-bit PCM soundscapes (`Rain`, `Library`, `Forest`, `Singing Bowls`) looping seamlessly with smooth volume fades, positioned in a compact top-left pill (`🌧 Rain ▾`).
+- 💊 **Whitelisted App Mini-HUD & Quick Notes Overlay**: Floating HUD pill when working inside allowed apps with a 1-click `[ 📝 Notes ]` action and `Alt + N` quick notes overlay.
+- ⌨️ **Global Application Hotkeys**: `Ctrl + B` (New Block), `Ctrl + S` (Settings), `Ctrl + M` (Meditation), `Alt + N` (Quick Notes).
 
 ---
 
@@ -55,17 +55,17 @@
 
 ## 🚀 Download & Quick Start
 
-### 1. Download Latest Release (v1.2.0)
+### 1. Download Latest Release (v1.3.0)
 Download the installer or standalone release directly from [GitHub Releases](https://github.com/virexnocturne/Sankalpa/releases/latest):
 
 | File | Type | Size | SHA-256 Checksum |
 | :--- | :--- | :--- | :--- |
-| **[`Sankalpa-Setup-1.2.0.exe`](https://github.com/virexnocturne/Sankalpa/releases/download/v1.2.0/Sankalpa-Setup-1.2.0.exe)** | **Recommended Installer** | 115 MB | `FB400EBA47A1424E21E14DAA13D50EBABAFD93627452298159567AC4DCE867BF` |
-| **[`Sankalpa.exe`](https://github.com/virexnocturne/Sankalpa/releases/download/v1.2.0/Sankalpa.exe)** | Portable Standalone | 158 MB | `955EE0739B845A99BB2A186F3C9D71FFBDB61D7919F595A034BF5BECC9AD6348` |
-| **[`sankalpa-extension-v1.2.0.zip`](https://github.com/virexnocturne/Sankalpa/releases/download/v1.2.0/sankalpa-extension-v1.2.0.zip)** | Companion Extension | 39 KB | `E0E27ABF25C9E6D74C63A67180CFD83DFCB68A4340A54620C82D97518862EA3E` |
+| **[`Sankalpa-Setup-1.3.0.exe`](https://github.com/virexnocturne/Sankalpa/releases/download/v1.3.0/Sankalpa-Setup-1.3.0.exe)** | **Recommended Installer** | 144 MB | `912E3E86F916F4B555CBA1A3A552D4B90933B9EF2D0D4EDA8B79817E519110AE` |
+| **[`Sankalpa.exe`](https://github.com/virexnocturne/Sankalpa/releases/download/v1.3.0/Sankalpa.exe)** | Portable Standalone | 165 MB | `E2706007EF3AC8DBE1EFD757D93D0B2550C67706A191B81785DF7764891AA722` |
+| **[`sankalpa-extension-v1.3.0.zip`](https://github.com/virexnocturne/Sankalpa/releases/download/v1.3.0/sankalpa-extension-v1.3.0.zip)** | Companion Extension | 39 KB | `07E64CB84B5976E8E0F2A3EC61473DCEE6EA7AA575F6C64DFF46382BD664FCE4` |
 
 ### 2. Run the Setup Wizard
-1. Run **`Sankalpa-Setup-1.2.0.exe`**.
+1. Run **`Sankalpa-Setup-1.3.0.exe`**.
 2. Click **Yes** when Windows User Account Control (UAC) prompts (Administrator rights are needed **once** during installation to register the tamper-resistant background service).
 3. The setup automatically installs the desktop application, background enforcement service, native messaging bridge, and desktop shortcuts.
 

@@ -221,6 +221,16 @@ public static class SecurityHardener
         return raw.Trim();
     }
 
+    public static string CanonicalizeSddlTokens(string sddl)
+    {
+        if (string.IsNullOrEmpty(sddl)) return sddl;
+        return sddl
+            .Replace("0x0020", "WP", StringComparison.OrdinalIgnoreCase)
+            .Replace("0x20", "WP", StringComparison.OrdinalIgnoreCase)
+            .Replace("0x00010000", "SD", StringComparison.OrdinalIgnoreCase)
+            .Replace("0x10000", "SD", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static bool VerifySddlMatch(string actualOutput, string expectedSddl)
     {
         string actual = NormalizeSddl(actualOutput).Replace(" ", "");
@@ -231,7 +241,10 @@ public static class SecurityHardener
             return false;
         }
 
-        if (string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+        string actualNorm = CanonicalizeSddlTokens(actual);
+        string expectedNorm = CanonicalizeSddlTokens(expected);
+
+        if (string.Equals(actualNorm, expectedNorm, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
@@ -246,7 +259,8 @@ public static class SecurityHardener
                 actualDacl = actualDacl.Substring(0, saclIndex);
             }
 
-            if (string.Equals(actualDacl, expected, StringComparison.OrdinalIgnoreCase))
+            string actualDaclNorm = CanonicalizeSddlTokens(actualDacl);
+            if (string.Equals(actualDaclNorm, expectedNorm, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }

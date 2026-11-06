@@ -172,6 +172,55 @@ public class ProfileStateLogicTests
     }
 
     [Fact]
+    public void IsProfileActive_WhenDisabledWithActiveSchedule_ReturnsTrueSchedule()
+    {
+        var profile = new Profile
+        {
+            Id = 1,
+            Name = "Work",
+            Enabled = false,
+            Schedule = new()
+            {
+                new() { Days = DaysOfWeek.Mon, StartMinute = 540, EndMinute = 1020 } // Mon 09:00 - 17:00
+            }
+        };
+
+        DateTime monDuring = new DateTime(2026, 11, 2, 11, 0, 0); // Monday
+        bool active = ProfileStateLogic.IsProfileActive(profile, null, monDuring, out string reason);
+        Assert.True(active);
+        Assert.Equal("Schedule", reason);
+
+        bool activeWithSessions = ProfileStateLogic.IsProfileActiveWithSessions(profile, null, monDuring, out string reasonSessions);
+        Assert.True(activeWithSessions);
+        Assert.Equal("Schedule", reasonSessions);
+    }
+
+    [Fact]
+    public void IsProfileActive_WhenDisabledWithInactiveSchedule_ReturnsFalse()
+    {
+        var profile = new Profile
+        {
+            Id = 1,
+            Name = "Work",
+            Enabled = false,
+            Schedule = new()
+            {
+                new() { Days = DaysOfWeek.Mon, StartMinute = 540, EndMinute = 1020 } // Mon 09:00 - 17:00
+            }
+        };
+
+        DateTime monAfter = new DateTime(2026, 11, 2, 18, 0, 0); // Monday evening
+        bool active1 = ProfileStateLogic.IsProfileActive(profile, null, monAfter, out string reason1);
+        Assert.False(active1);
+        Assert.Equal("None", reason1);
+
+        DateTime tueDuring = new DateTime(2026, 11, 3, 11, 0, 0); // Tuesday
+        bool active2 = ProfileStateLogic.IsProfileActive(profile, null, tueDuring, out string reason2);
+        Assert.False(active2);
+        Assert.Equal("None", reason2);
+    }
+
+    [Fact]
     public void ComputeActiveUnion_CombinesAllActiveProfiles()
     {
         var p1 = new Profile
@@ -276,7 +325,7 @@ public class ProfileStateLogicTests
     }
 
     [Fact]
-    public void IsProfileLockedNow_WithSchedule_NotLockedIfDisabled()
+    public void IsProfileLockedNow_WithSchedule_LockedDuringActiveWindow_EvenIfDisabled()
     {
         var profile = new Profile
         {
@@ -292,7 +341,14 @@ public class ProfileStateLogicTests
 
         DateTime monDuring = new DateTime(2026, 11, 2, 11, 0, 0); // Monday 11:00 AM
         bool locked = ProfileStateLogic.IsProfileLockedNow(profile, null, monDuring);
-        Assert.False(locked);
+        Assert.True(locked);
+
+        bool lockedWithSessions = ProfileStateLogic.IsProfileLockedNowWithSessions(profile, null, monDuring);
+        Assert.True(lockedWithSessions);
+
+        DateTime monAfter = new DateTime(2026, 11, 2, 18, 0, 0); // Monday 18:00
+        bool lockedAfter = ProfileStateLogic.IsProfileLockedNow(profile, null, monAfter);
+        Assert.False(lockedAfter);
     }
 
     [Fact]
@@ -333,5 +389,131 @@ public class ProfileStateLogicTests
 
         Assert.False(res.Ok);
         Assert.StartsWith("Refused: Profile 'ScheduledBlock' is locked until", res.Error);
+    }
+
+    [Fact]
+    public void CommandHandler_DisableProfile_DuringActiveSchedule_WithPasswordOrChallenge_IsRefused()
+    {
+        var store = new TestBlockStore();
+        PasswordSecurity.HashPassword("secret123", out string salt, out string hash);
+        store.Profiles.Add(new Profile
+        {
+            Id = 1,
+            Name = "SchedPwd",
+            Enabled = true,
+            LockMode = LockMode.Password,
+            PasswordSalt = salt,
+            PasswordHash = hash,
+            Schedule = new() { new ScheduleRule { Days = (DaysOfWeek)127, StartMinute = 0, EndMinute = 1439 } }
+        });
+
+        var reqPwd = new Request
+        {
+            Command = "DISABLEPROFILE",
+            Args = new() { ["name"] = "SchedPwd", ["unlock_password"] = "secret123" }
+        };
+        var resPwd = CommandHandler.Handle(reqPwd, store, ClientIdentity.StandardUser());
+        Assert.False(resPwd.Ok);
+        Assert.StartsWith("Refused: Profile 'SchedPwd' is locked until", resPwd.Error);
+
+        store.Profiles.Add(new Profile
+        {
+            Id = 2,
+            Name = "SchedTyping",
+            Enabled = true,
+            LockMode = LockMode.TypingChallenge,
+            Schedule = new() { new ScheduleRule { Days = (DaysOfWeek)127, StartMinute = 0, EndMinute = 1439 } }
+        });
+
+        string challenge = TypingChallengeManager.GenerateChallenge("SchedTyping");
+        var reqTyping = new Request
+        {
+            Command = "DISABLEPROFILE",
+            Args = new() { ["name"] = "SchedTyping", ["unlock_text"] = challenge }
+        };
+        var resTyping = CommandHandler.Handle(reqTyping, store, ClientIdentity.StandardUser());
+        Assert.False(resTyping.Ok);
+        Assert.StartsWith("Refused: Profile 'SchedTyping' is locked until", resTyping.Error);
+    }
+
+    [Fact]
+    public void CommandHandler_SaveProfile_DuringActiveSchedule_NonAdditive_IsRefusedEvenWithPassword()
+    {
+        var store = new TestBlockStore();
+        PasswordSecurity.HashPassword("secret123", out string salt, out string hash);
+        store.Profiles.Add(new Profile
+        {
+            Id = 1,
+            Name = "SchedNonAdditive",
+            Enabled = true,
+            LockMode = LockMode.Password,
+            PasswordSalt = salt,
+            PasswordHash = hash,
+            BlockedProcesses = new() { "notepad.exe" },
+            Schedule = new() { new ScheduleRule { Days = (DaysOfWeek)127, StartMinute = 0, EndMinute = 1439 } }
+        });
+
+        var req = new Request
+        {
+            Command = "SAVEPROFILE",
+            Args = new()
+            {
+                ["name"] = "SchedNonAdditive",
+                ["processes"] = "calc.exe", // removes notepad.exe
+                ["unlock_password"] = "secret123"
+            }
+        };
+        var res = CommandHandler.Handle(req, store, ClientIdentity.StandardUser());
+        Assert.False(res.Ok);
+        Assert.StartsWith("Refused: Profile 'SchedNonAdditive' is locked until", res.Error);
+    }
+
+    [Fact]
+    public void CommandHandler_DisableProfile_InactiveSchedule_EnforcesPassword()
+    {
+        var store = new TestBlockStore();
+        PasswordSecurity.HashPassword("secret123", out string salt, out string hash);
+        var notToday = DateTime.Now.DayOfWeek == DayOfWeek.Sunday ? DaysOfWeek.Mon : DaysOfWeek.Sun;
+        store.Profiles.Add(new Profile
+        {
+            Id = 1,
+            Name = "InactiveSched",
+            Enabled = true,
+            LockMode = LockMode.Password,
+            PasswordSalt = salt,
+            PasswordHash = hash,
+            Schedule = new() { new ScheduleRule { Days = notToday, StartMinute = 0, EndMinute = 1439 } }
+        });
+
+        var reqNoPwd = new Request
+        {
+            Command = "DISABLEPROFILE",
+            Args = new() { ["name"] = "InactiveSched" }
+        };
+        var resNoPwd = CommandHandler.Handle(reqNoPwd, store, ClientIdentity.StandardUser());
+        Assert.False(resNoPwd.Ok);
+        Assert.Contains("requires an unlock password", resNoPwd.Error);
+
+        var reqOk = new Request
+        {
+            Command = "DISABLEPROFILE",
+            Args = new() { ["name"] = "InactiveSched", ["unlock_password"] = "secret123" }
+        };
+        var resOk = CommandHandler.Handle(reqOk, store, ClientIdentity.StandardUser());
+        Assert.True(resOk.Ok);
+        Assert.False(store.GetProfileByName("InactiveSched")!.Enabled);
+    }
+
+    [Fact]
+    public void CommandHandler_CancelDelayedUnlock_MissingToken_IsRefused()
+    {
+        var req = new Request
+        {
+            Command = "CANCELDELAYEDUNLOCK",
+            Args = new() { ["name"] = "AnyProfile" }
+        };
+        var res = CommandHandler.Handle(req, new TestBlockStore(), ClientIdentity.StandardUser());
+        Assert.False(res.Ok);
+        Assert.Equal("Missing required argument: 'token'.", res.Error);
     }
 }

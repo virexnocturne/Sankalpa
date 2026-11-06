@@ -20,6 +20,9 @@
     <sys:Double x:Key="FontSize18">18</sys:Double>
     <sys:Double x:Key="FontSize19">19</sys:Double>
     <sys:Double x:Key="FontSize20">20</sys:Double>
+    <sys:Double x:Key="FontSize64">64</sys:Double>
+    <sys:Double x:Key="FontSize72">72</sys:Double>
+    <sys:Double x:Key="FontSizeTimer">72</sys:Double>
 
     <!-- Semantic Font Size Aliases -->
     <sys:Double x:Key="FontSizeTitle">18</sys:Double>

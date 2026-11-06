@@ -9,7 +9,8 @@ public enum LockMode
     Locked = 1,
     TypingChallenge = 2,
     Password = 3,
-    DelayedUnlock = 4
+    DelayedUnlock = 4,
+    HardLocked = 5
 }
 
 public class Profile

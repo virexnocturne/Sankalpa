@@ -1,12 +1,18 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Blocker.Core;
 
 namespace Blocker.Service;
 
 public class Worker : BackgroundService
 {
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    private const int SW_MINIMIZE = 6;
+    private const int SW_FORCEMINIMIZE = 11;
+
     private readonly ILogger<Worker> _logger;
     private readonly BlockerDatabase _db;
     private readonly HostsFileManager _hostsManager;
@@ -21,6 +27,11 @@ public class Worker : BackgroundService
     }
 
     private readonly ConcurrentDictionary<int, TrackedSession> _trackedSessions = new();
+
+    private MeditationSession? _activeMeditationSession;
+    private readonly Dictionary<int, DateTime> _scheduleWarningNotifiedUtc = new();
+    private readonly Dictionary<int, DateTime> _scheduleTriggeredUtc = new();
+    private readonly HashSet<int> _loggedMeditationPids = new();
 
 
     private readonly ConcurrentDictionary<string, string?> _originalFileNameCache = new(StringComparer.OrdinalIgnoreCase);
@@ -138,22 +149,6 @@ public class Worker : BackgroundService
                     }
                 }
 
-                if (_trackedSessions.Values.Any(t => t.Session.Locked) && !SecurityHardener.IsLockedDown)
-                {
-                    SecurityHardener.LockdownCurrentProcess(out var secErr);
-                    SecurityHardener.LockdownService(out _);
-                    if (secErr == null)
-                    {
-                        string secMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Sankalpa process & service DACLs locked down on boot. Terminate and stop access denied.";
-                        Console.WriteLine(secMsg);
-                        _logger.LogInformation("{Message}", secMsg);
-                    }
-                }
-                else if (!_trackedSessions.Values.Any(t => t.Session.Locked) && SecurityHardener.IsLockedDown)
-                {
-                    SecurityHardener.UnlockCurrentProcess(out _);
-                    SecurityHardener.UnlockService(out _);
-                }
             }
             else
             {
@@ -163,9 +158,84 @@ public class Worker : BackgroundService
                 _logger.LogInformation("{Message}", msg);
             }
 
-            // Enforce active union (scheduled profiles + restored manual session) on startup
+            // Check active meditation session on startup / recovery
+            var activeMeditation = _db.GetActiveMeditationSession();
+            if (activeMeditation != null)
+            {
+                var remainingMeditationSeconds = (activeMeditation.StartUtc.AddSeconds(activeMeditation.TargetDurationSeconds) - DateTime.UtcNow).TotalSeconds;
+                if (remainingMeditationSeconds > 0)
+                {
+                    _activeMeditationSession = activeMeditation;
+                    string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    string msg = $"[{timestamp}] Restored active meditation session on startup: Id={activeMeditation.Id}, Remaining={remainingMeditationSeconds:F0}s, LockMode={activeMeditation.LockMode}.";
+                    Console.WriteLine(msg);
+                    _logger.LogInformation("{Message}", msg);
+                }
+                else
+                {
+                    _db.EndMeditationSession(activeMeditation.Id, completed: true);
+                }
+            }
+
+            // Enforce active union (scheduled profiles + restored manual session + meditation) on startup
             DateTime localNow = DateTime.Now;
             var allProfiles = _db.ListProfiles();
+            bool anySessionLocked = _trackedSessions.Values.Any(t => t.Session.Locked);
+            bool anyScheduleLocked = allProfiles.Any(p => p.Schedule != null && p.Schedule.Count > 0 && ScheduleLogic.IsActive(p.Schedule, localNow));
+            bool anyHardLocked = anySessionLocked || anyScheduleLocked;
+            if (_activeMeditationSession != null &&
+                (_activeMeditationSession.LockMode == LockMode.HardLocked || _activeMeditationSession.LockMode == LockMode.Locked))
+            {
+                anyHardLocked = true;
+            }
+
+            if (anyHardLocked)
+            {
+                if (!SecurityHardener.IsLockedDown)
+                {
+                    if (SecurityHardener.LockdownCurrentProcess(out var procErr))
+                    {
+                        string procMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Process DACL locked down. Terminate access denied.";
+                        Console.WriteLine(procMsg);
+                        _logger.LogInformation("{Message}", procMsg);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[SECURITY] Failed to lock down process DACL: {Error}", procErr);
+                    }
+                }
+
+                if (!SecurityHardener.IsServiceLockedDown)
+                {
+                    if (SecurityHardener.LockdownService(out var svcErr))
+                    {
+                        string svcMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Service DACL locked down. Stop access denied.";
+                        Console.WriteLine(svcMsg);
+                        _logger.LogInformation("{Message}", svcMsg);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[SECURITY] Failed to lock down service DACL: {Error}", svcErr);
+                    }
+                }
+            }
+            else
+            {
+                if (SecurityHardener.IsLockedDown)
+                {
+                    SecurityHardener.UnlockCurrentProcess(out _);
+                    string procMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Process DACL restored.";
+                    Console.WriteLine(procMsg);
+                    _logger.LogInformation("{Message}", procMsg);
+                }
+                if (SecurityHardener.IsServiceLockedDown)
+                {
+                    SecurityHardener.UnlockService(out _);
+                    string svcMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Service DACL restored.";
+                    Console.WriteLine(svcMsg);
+                    _logger.LogInformation("{Message}", svcMsg);
+                }
+            }
             var startupSessions = _trackedSessions.Values.Select(t => t.Session).ToList();
             var activeProfiles = allProfiles.Where(p => ProfileStateLogic.IsProfileActiveWithSessions(p, startupSessions, localNow, out _)).ToList();
 
@@ -219,6 +289,9 @@ public class Worker : BackgroundService
 
                 // Synchronize session state with database
                 SyncSessionState();
+
+                // Check scheduled meditation routines
+                CheckMeditationSchedules(DateTime.Now);
 
                 // Compute active profile set and enforce union of apps and hosts
                 DateTime localNow = DateTime.Now;
@@ -399,6 +472,12 @@ public class Worker : BackgroundService
                 SecurityHardener.UnlockService(out _);
 
                 _db.EndActiveSession();
+                var activeMed = _db.GetActiveMeditationSession();
+                if (activeMed != null)
+                {
+                    _db.EndMeditationSession(activeMed.Id, completed: false);
+                    _activeMeditationSession = null;
+                }
                 _db.DisableAllProfiles();
                 _db.CleanHosts();
                 _db.ConsumeEmergencyUnlock();
@@ -538,26 +617,90 @@ public class Worker : BackgroundService
             }
         }
 
-        // 3. Process & service DACL lockdown maintenance
-        bool anySessionLocked = _trackedSessions.Values.Any(t => t.Session.Locked);
-        if (anySessionLocked && !SecurityHardener.IsLockedDown)
+        // 2b. Synchronize meditation session state
+        var currentMeditation = _db.GetActiveMeditationSession();
+        if (currentMeditation != null)
         {
-            SecurityHardener.LockdownCurrentProcess(out var secErr);
-            SecurityHardener.LockdownService(out _);
-            if (secErr == null)
+            DateTime nowUtc = DateTime.UtcNow;
+            long remMedSec = (long)(currentMeditation.StartUtc.AddSeconds(currentMeditation.TargetDurationSeconds) - nowUtc).TotalSeconds;
+            if (remMedSec <= 0)
             {
-                string secMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Sankalpa process & service DACLs locked down. Terminate and stop access denied.";
-                Console.WriteLine(secMsg);
-                _logger.LogInformation("{Message}", secMsg);
+                _db.EndMeditationSession(currentMeditation.Id, completed: true);
+                string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                string msg = $"[{ts}] Meditation session {currentMeditation.Id} completed.";
+                Console.WriteLine(msg);
+                _logger.LogInformation("{Message}", msg);
+                ServiceNotificationDispatcher.DispatchNotification("MeditationComplete", "Meditation", "Meditation session complete! Well done.");
+                _activeMeditationSession = null;
+            }
+            else
+            {
+                _activeMeditationSession = currentMeditation;
             }
         }
-        else if (!anySessionLocked && SecurityHardener.IsLockedDown)
+        else
         {
-            SecurityHardener.UnlockCurrentProcess(out _);
-            SecurityHardener.UnlockService(out _);
-            string secMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Sankalpa process & service DACLs restored.";
-            Console.WriteLine(secMsg);
-            _logger.LogInformation("{Message}", secMsg);
+            _activeMeditationSession = null;
+        }
+
+        // 3. Process & service DACL lockdown maintenance
+        DateTime localNow = DateTime.Now;
+        var allProfiles = _db.ListProfiles();
+        bool anySessionLocked = _trackedSessions.Values.Any(t => t.Session.Locked);
+        bool anyScheduleLocked = allProfiles.Any(p => p.Schedule != null && p.Schedule.Count > 0 && ScheduleLogic.IsActive(p.Schedule, localNow));
+        bool anyHardLocked = anySessionLocked || anyScheduleLocked;
+        if (_activeMeditationSession != null &&
+            (_activeMeditationSession.LockMode == LockMode.HardLocked || _activeMeditationSession.LockMode == LockMode.Locked))
+        {
+            anyHardLocked = true;
+        }
+
+        if (anyHardLocked)
+        {
+            if (!SecurityHardener.IsLockedDown)
+            {
+                if (SecurityHardener.LockdownCurrentProcess(out var procErr))
+                {
+                    string procMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Process DACL locked down. Terminate access denied.";
+                    Console.WriteLine(procMsg);
+                    _logger.LogInformation("{Message}", procMsg);
+                }
+                else
+                {
+                    _logger.LogWarning("[SECURITY] Failed to lock down process DACL: {Error}", procErr);
+                }
+            }
+
+            if (!SecurityHardener.IsServiceLockedDown)
+            {
+                if (SecurityHardener.LockdownService(out var svcErr))
+                {
+                    string svcMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Service DACL locked down. Stop access denied.";
+                    Console.WriteLine(svcMsg);
+                    _logger.LogInformation("{Message}", svcMsg);
+                }
+                else
+                {
+                    _logger.LogWarning("[SECURITY] Failed to lock down service DACL: {Error}", svcErr);
+                }
+            }
+        }
+        else
+        {
+            if (SecurityHardener.IsLockedDown)
+            {
+                SecurityHardener.UnlockCurrentProcess(out _);
+                string procMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Process DACL restored.";
+                Console.WriteLine(procMsg);
+                _logger.LogInformation("{Message}", procMsg);
+            }
+            if (SecurityHardener.IsServiceLockedDown)
+            {
+                SecurityHardener.UnlockService(out _);
+                string svcMsg = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [SECURITY] Service DACL restored.";
+                Console.WriteLine(svcMsg);
+                _logger.LogInformation("{Message}", svcMsg);
+            }
         }
     }
 
@@ -606,7 +749,9 @@ public class Worker : BackgroundService
         List<Profile> allProfiles,
         DateTime localNow)
     {
-        bool isLockedActive = _trackedSessions.Values.Any(t => t.Session.Locked);
+        bool isLockedMeditation = _activeMeditationSession != null &&
+            (_activeMeditationSession.LockMode == LockMode.HardLocked || _activeMeditationSession.LockMode == LockMode.Locked);
+        bool isLockedActive = _trackedSessions.Values.Any(t => t.Session.Locked) || isLockedMeditation;
         var activeSessions = _trackedSessions.Values.Select(t => t.Session).ToList();
         var activeProfiles = allProfiles.Where(p => ProfileStateLogic.IsProfileActiveWithSessions(p, activeSessions, localNow, out _)).ToList();
         var currentPids = new HashSet<int>();
@@ -772,6 +917,62 @@ public class Worker : BackgroundService
                         }
                     }
                 }
+
+                // 3. Meditation Mode Whitelist enforcement
+                if (_activeMeditationSession != null)
+                {
+                    var allowedApps = _activeMeditationSession.GetAllowedApps() ?? new List<string>();
+                    bool isAppPermitted = IsAppAllowed(processName, exeName, allowedApps);
+                    if (!isAppPermitted &&
+                        !ProtectedProcesses.IsProtected(processName) &&
+                        !ProtectedProcesses.IsProtected(exeName))
+                    {
+                        try
+                        {
+                            using var targetProc = Process.GetProcessById(processId);
+                            IntPtr hwnd = IntPtr.Zero;
+                            try { hwnd = targetProc.MainWindowHandle; } catch { }
+
+                            // Only suppress processes that have a top-level GUI window
+                            if (hwnd != IntPtr.Zero)
+                            {
+                                ShowWindow(hwnd, SW_FORCEMINIMIZE);
+                                ShowWindow(hwnd, SW_MINIMIZE);
+
+                                try
+                                {
+                                    if (!targetProc.CloseMainWindow())
+                                    {
+                                        targetProc.Kill(entireProcessTree: true);
+                                    }
+                                }
+                                catch
+                                {
+                                    try { targetProc.Kill(); } catch { }
+                                }
+
+                                if (_loggedMeditationPids.Add(processId))
+                                {
+                                    string msg = $"[{timestamp}] [MEDITATION WHITELIST] Process '{exeName}' closed/minimized (not in allowed meditation apps).";
+                                    Console.WriteLine(msg);
+                                    _logger.LogInformation("{Message}", msg);
+
+                                    bool dispatched = ServiceNotificationDispatcher.DispatchNotification("MeditationWhitelist", exeName, "Allowed Apps Whitelist");
+                                    _db.RecordBlockEvent(new BlockEvent
+                                    {
+                                        TimeUtc = DateTime.UtcNow,
+                                        Kind = "MeditationWhitelist",
+                                        Name = exeName,
+                                        ProfileName = "Meditation Whitelist",
+                                        ServiceDispatched = dispatched
+                                    });
+                                }
+                            }
+                        }
+                        catch { }
+                        continue;
+                    }
+                }
             }
             catch
             {
@@ -782,6 +983,7 @@ public class Worker : BackgroundService
         // Clean up PIDs for processes that have exited to prevent memory leaks and handle PID recycling
         _loggedKillPids.IntersectWith(currentPids);
         _loggedFailurePids.IntersectWith(currentPids);
+        _loggedMeditationPids.IntersectWith(currentPids);
         foreach (var pid in _pidOriginalFileNameCache.Keys)
         {
             if (!currentPids.Contains(pid))
@@ -861,4 +1063,124 @@ public class Worker : BackgroundService
         }
         catch { }
     }
+
+    #region Meditation Mode Helpers
+
+    private static bool IsAppAllowed(string processName, string exeName, List<string> allowedApps)
+    {
+        string normProc = ProcessMatcher.NormalizeProcessName(processName);
+        string normExe = ProcessMatcher.NormalizeProcessName(exeName);
+
+        foreach (var allowed in allowedApps)
+        {
+            string normAllowed = ProcessMatcher.NormalizeProcessName(allowed);
+            if (!string.IsNullOrEmpty(normProc) && string.Equals(normProc, normAllowed, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            if (!string.IsNullOrEmpty(normExe) && string.Equals(normExe, normAllowed, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void CheckMeditationSchedules(DateTime localNow)
+    {
+        try
+        {
+            var schedules = _db.GetMeditationSchedules();
+            if (schedules == null || schedules.Count == 0) return;
+
+            foreach (var schedule in schedules)
+            {
+                if (!schedule.Enabled) continue;
+
+                var days = schedule.GetDays();
+                if (days.Count > 0 && !days.Contains(localNow.DayOfWeek))
+                {
+                    continue;
+                }
+
+                if (!TimeSpan.TryParse(schedule.TimeOfDay, out TimeSpan schedTime))
+                {
+                    continue;
+                }
+
+                DateTime schedTargetDateTime = localNow.Date.Add(schedTime);
+
+                // Check if currently snoozed
+                bool isSnoozed = schedule.LastSnoozedUtc.HasValue &&
+                                 (DateTime.UtcNow - schedule.LastSnoozedUtc.Value) < TimeSpan.FromMinutes(5);
+
+                DateTime effectiveTriggerTime = isSnoozed
+                    ? schedule.LastSnoozedUtc!.Value.AddMinutes(5).ToLocalTime()
+                    : schedTargetDateTime;
+
+                // 1. 60-second heads-up warning
+                if (localNow >= effectiveTriggerTime.AddSeconds(-60) && localNow < effectiveTriggerTime)
+                {
+                    if (!_scheduleWarningNotifiedUtc.TryGetValue(schedule.Id, out var lastWarn) ||
+                        (DateTime.UtcNow - lastWarn) > TimeSpan.FromMinutes(2))
+                    {
+                        _scheduleWarningNotifiedUtc[schedule.Id] = DateTime.UtcNow;
+
+                        string warnMsg = isSnoozed
+                            ? "Snoozed meditation session will begin in 60 seconds."
+                            : $"Meditation session scheduled for {schedule.TimeOfDay} will begin in 60 seconds.";
+
+                        string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                        string consoleMsg = $"[{ts}] [MEDITATION WARNING] {warnMsg}";
+                        Console.WriteLine(consoleMsg);
+                        _logger.LogInformation("{Message}", consoleMsg);
+
+                        ServiceNotificationDispatcher.DispatchNotification("MeditationWarning", "Meditation Reminder", warnMsg);
+                    }
+                }
+
+                // 2. Scheduled trigger
+                if (localNow >= effectiveTriggerTime && localNow < effectiveTriggerTime.AddMinutes(5))
+                {
+                    if (!_scheduleTriggeredUtc.TryGetValue(schedule.Id, out var lastTrig) ||
+                        (DateTime.UtcNow - lastTrig) > TimeSpan.FromMinutes(10))
+                    {
+                        _scheduleTriggeredUtc[schedule.Id] = DateTime.UtcNow;
+
+                        // Clear snooze state in DB once triggered
+                        if (schedule.LastSnoozedUtc.HasValue)
+                        {
+                            schedule.LastSnoozedUtc = null;
+                            _db.SaveMeditationSchedule(schedule);
+                        }
+
+                        if (_activeMeditationSession == null)
+                        {
+                            var started = _db.StartMeditationSession(
+                                schedule.DurationSeconds,
+                                schedule.GetAllowedApps(),
+                                schedule.LockMode,
+                                schedule.Soundscape);
+
+                            _activeMeditationSession = started;
+
+                            string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                            string msg = $"[{ts}] [MEDITATION START] Scheduled meditation session {started.Id} started ({schedule.DurationSeconds / 60}m).";
+                            Console.WriteLine(msg);
+                            _logger.LogInformation("{Message}", msg);
+
+                            ServiceNotificationDispatcher.DispatchNotification("MeditationStart", "Meditation Started", $"Meditation session started ({schedule.DurationSeconds / 60}m).");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error checking meditation schedules: {Message}", ex.Message);
+        }
+    }
+
+    #endregion
 }

@@ -700,7 +700,7 @@ public class CommandHandlerTests
             Name = "ActiveTyping",
             Enabled = true,
             LockMode = LockMode.TypingChallenge,
-            Schedule = new() { new ScheduleRule { Days = (DaysOfWeek)127, StartMinute = 0, EndMinute = 1439 } }
+            Schedule = new()
         });
 
         // 1. Without challenge
@@ -759,7 +759,7 @@ public class CommandHandlerTests
             LockMode = LockMode.Password,
             PasswordSalt = salt,
             PasswordHash = hash,
-            Schedule = new() { new ScheduleRule { Days = (DaysOfWeek)127, StartMinute = 0, EndMinute = 1439 } }
+            Schedule = new()
         });
 
         // 1. Without password
@@ -1024,6 +1024,98 @@ public class CommandHandlerTests
         Assert.NotNull(data2);
         Assert.Equal(data1.RulesVersion, data2.RulesVersion);
         Assert.NotEmpty(data1.RulesVersion);
+    }
+
+    [Fact]
+    public void GetActiveWebRules_ScheduledActiveProfile_WithLockModeNone_ReturnsLockedTrue()
+    {
+        var store = new FakeBlockStore();
+        var now = DateTime.Now;
+        int currentMinute = now.Hour * 60 + now.Minute;
+        var scheduleRule = new ScheduleRule
+        {
+            Days = DaysOfWeek.All,
+            StartMinute = currentMinute == 1439 ? 1400 : 0,
+            EndMinute = currentMinute == 1439 ? 100 : 1439
+        };
+
+        var profile = new Profile
+        {
+            Name = "ScheduledStudy",
+            Enabled = true,
+            LockMode = LockMode.None,
+            Schedule = new List<ScheduleRule> { scheduleRule },
+            WebRules = new List<WebRule>
+            {
+                new WebRule { Pattern = "distraction.com", Allow = false }
+            }
+        };
+        store.SaveProfile(profile);
+
+        var req = new Request { Command = CommandNames.GetActiveWebRules };
+        var resp = Handle(req, store);
+        Assert.True(resp.Ok);
+
+        var data = JsonSerializer.Deserialize<ActiveWebRulesResponse>(resp.Data!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(data);
+
+        // ActiveProfiles check
+        var activeProfile = Assert.Single(data.ActiveProfiles);
+        Assert.Equal("ScheduledStudy", activeProfile.Name);
+        Assert.True(activeProfile.Locked, "ActiveProfileDto.Locked should be true during an active schedule even when LockMode is None.");
+        Assert.Equal("None", activeProfile.LockMode);
+
+        // AllProfiles summary check
+        var summaryProfile = Assert.Single(data.AllProfiles);
+        Assert.Equal("ScheduledStudy", summaryProfile.Name);
+        Assert.True(summaryProfile.Active, "ProfileSummaryDto.Active should be true.");
+        Assert.True(summaryProfile.Locked, "ProfileSummaryDto.Locked should be true during an active schedule even when LockMode is None.");
+        Assert.Equal("None", summaryProfile.LockMode);
+    }
+
+    [Fact]
+    public void GetActiveWebRules_ScheduledProfile_OutsideScheduleWindow_ReturnsLockedFalse()
+    {
+        var store = new FakeBlockStore();
+        var now = DateTime.Now;
+        // Schedule rule for a day that is NOT today
+        DayOfWeek today = now.DayOfWeek;
+        DayOfWeek otherDay = today == DayOfWeek.Sunday ? DayOfWeek.Monday : DayOfWeek.Sunday;
+        var scheduleRule = new ScheduleRule
+        {
+            Days = ScheduleRule.FromDayOfWeek(otherDay),
+            StartMinute = 0,
+            EndMinute = 1439
+        };
+
+        var profile = new Profile
+        {
+            Name = "OffScheduleBlock",
+            Enabled = true,
+            LockMode = LockMode.None,
+            Schedule = new List<ScheduleRule> { scheduleRule },
+            WebRules = new List<WebRule>
+            {
+                new WebRule { Pattern = "gaming.com", Allow = false }
+            }
+        };
+        store.SaveProfile(profile);
+
+        var req = new Request { Command = CommandNames.GetActiveWebRules };
+        var resp = Handle(req, store);
+        Assert.True(resp.Ok);
+
+        var data = JsonSerializer.Deserialize<ActiveWebRulesResponse>(resp.Data!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(data);
+
+        // Not currently active, so activeProfiles should be empty
+        Assert.Empty(data.ActiveProfiles);
+
+        // In allProfiles, it should be inactive and not locked
+        var summaryProfile = Assert.Single(data.AllProfiles);
+        Assert.Equal("OffScheduleBlock", summaryProfile.Name);
+        Assert.False(summaryProfile.Active);
+        Assert.False(summaryProfile.Locked);
     }
 
     [Fact]
@@ -1728,6 +1820,347 @@ public class CommandHandlerTests
         Assert.False(resp.Ok);
         Assert.Contains("active LOCKED session", resp.Error);
     }
+
+    #region Schedule and Challenge Protection Tests (Bug 3)
+
+    [Fact]
+    public void DisableProfile_DuringActiveSchedule_RefusedEvenWithPassword()
+    {
+        var store = new FakeBlockStore();
+        PasswordSecurity.HashPassword("secret123", out string salt, out string hash);
+        store.SaveProfile(new Profile
+        {
+            Name = "SchedPwd",
+            Enabled = true,
+            LockMode = LockMode.Password,
+            PasswordSalt = salt,
+            PasswordHash = hash,
+            Schedule = new() { new ScheduleRule { Days = (DaysOfWeek)127, StartMinute = 0, EndMinute = 1439 } }
+        });
+
+        var req = new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new()
+            {
+                ["name"] = "SchedPwd",
+                ["unlock_password"] = "secret123"
+            }
+        };
+
+        var resp = Handle(req, store);
+        Assert.False(resp.Ok);
+        Assert.Contains("is locked until", resp.Error);
+        Assert.True(store.GetProfileByName("SchedPwd")!.Enabled);
+    }
+
+    [Fact]
+    public void DisableProfile_DuringActiveSchedule_RefusedEvenWithTypingChallenge()
+    {
+        var store = new FakeBlockStore();
+        store.SaveProfile(new Profile
+        {
+            Name = "SchedTyping",
+            Enabled = true,
+            LockMode = LockMode.TypingChallenge,
+            Schedule = new() { new ScheduleRule { Days = (DaysOfWeek)127, StartMinute = 0, EndMinute = 1439 } }
+        });
+
+        var chResp = Handle(new Request
+        {
+            Command = CommandNames.GetUnlockChallenge,
+            Args = new() { ["name"] = "SchedTyping" }
+        }, store);
+        Assert.True(chResp.Ok);
+        string challenge = chResp.Data!;
+
+        var req = new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new()
+            {
+                ["name"] = "SchedTyping",
+                ["unlock_text"] = challenge
+            }
+        };
+
+        var resp = Handle(req, store);
+        Assert.False(resp.Ok);
+        Assert.Contains("is locked until", resp.Error);
+        Assert.True(store.GetProfileByName("SchedTyping")!.Enabled);
+    }
+
+    [Fact]
+    public void DisableProfile_DuringActiveSchedule_RefusedEvenWithDelayedUnlockToken()
+    {
+        var store = new FakeBlockStore();
+        store.SaveProfile(new Profile
+        {
+            Name = "SchedDelay",
+            Enabled = true,
+            LockMode = LockMode.DelayedUnlock,
+            DelayedUnlockMinutes = 15,
+            Schedule = new() { new ScheduleRule { Days = (DaysOfWeek)127, StartMinute = 0, EndMinute = 1439 } }
+        });
+
+        string token = DelayedUnlockManager.StartDelayedUnlock("SchedDelay", 0);
+
+        var req = new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new()
+            {
+                ["name"] = "SchedDelay",
+                ["delayed_unlock_token"] = token
+            }
+        };
+
+        var resp = Handle(req, store);
+        Assert.False(resp.Ok);
+        Assert.Contains("is locked until", resp.Error);
+        Assert.True(store.GetProfileByName("SchedDelay")!.Enabled);
+    }
+
+    [Fact]
+    public void SaveProfile_DuringActiveSchedule_NonAdditiveChanges_RefusedEvenWithCredentials()
+    {
+        var store = new FakeBlockStore();
+        PasswordSecurity.HashPassword("secret123", out string salt, out string hash);
+        store.SaveProfile(new Profile
+        {
+            Name = "SchedNonAdditive",
+            Enabled = true,
+            LockMode = LockMode.Password,
+            PasswordSalt = salt,
+            PasswordHash = hash,
+            BlockedProcesses = new() { "notepad.exe", "slack.exe" },
+            BlockedDomains = new() { "twitter.com" },
+            Schedule = new() { new ScheduleRule { Days = (DaysOfWeek)127, StartMinute = 0, EndMinute = 1439 } }
+        });
+
+        // 1. Non-additive edit without additive_only, but with correct password -> refused
+        var req1 = new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "SchedNonAdditive",
+                ["processes"] = "notepad.exe", // slacking removed
+                ["unlock_password"] = "secret123"
+            }
+        };
+        var resp1 = Handle(req1, store);
+        Assert.False(resp1.Ok);
+        Assert.Contains("is locked until", resp1.Error);
+
+        // 2. Non-additive edit with additive_only=true and correct password -> refused
+        var req2 = new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "SchedNonAdditive",
+                ["processes"] = "notepad.exe", // slacking removed
+                ["additive_only"] = "true",
+                ["unlock_password"] = "secret123"
+            }
+        };
+        var resp2 = Handle(req2, store);
+        Assert.False(resp2.Ok);
+        Assert.Contains("cannot remove existing blocked application", resp2.Error);
+
+        // 3. Trying to disable profile during active schedule -> refused
+        var req3 = new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "SchedNonAdditive",
+                ["enabled"] = "false",
+                ["additive_only"] = "true",
+                ["unlock_password"] = "secret123"
+            }
+        };
+        var resp3 = Handle(req3, store);
+        Assert.False(resp3.Ok);
+        Assert.Contains("cannot disable profile", resp3.Error);
+    }
+
+    [Fact]
+    public void DisableProfile_InactiveSchedule_WithPassword_EnforcesCredentials()
+    {
+        var store = new FakeBlockStore();
+        PasswordSecurity.HashPassword("secret123", out string salt, out string hash);
+        var notToday = DateTime.Now.DayOfWeek == DayOfWeek.Sunday ? DaysOfWeek.Mon : DaysOfWeek.Sun;
+        store.SaveProfile(new Profile
+        {
+            Name = "InactiveSchedPwd",
+            Enabled = true,
+            LockMode = LockMode.Password,
+            PasswordSalt = salt,
+            PasswordHash = hash,
+            Schedule = new() { new ScheduleRule { Days = notToday, StartMinute = 0, EndMinute = 1439 } }
+        });
+
+        // 1. Missing password -> Refused
+        var req1 = new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new() { ["name"] = "InactiveSchedPwd" }
+        };
+        var resp1 = Handle(req1, store);
+        Assert.False(resp1.Ok);
+        Assert.Contains("requires an unlock password", resp1.Error);
+        Assert.True(store.GetProfileByName("InactiveSchedPwd")!.Enabled);
+
+        // 2. Wrong password -> Refused
+        var req2 = new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new() { ["name"] = "InactiveSchedPwd", ["unlock_password"] = "wrong" }
+        };
+        var resp2 = Handle(req2, store);
+        Assert.False(resp2.Ok);
+        Assert.Contains("Incorrect unlock password", resp2.Error);
+        Assert.True(store.GetProfileByName("InactiveSchedPwd")!.Enabled);
+
+        // 3. Correct password -> Succeeds
+        var req3 = new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new() { ["name"] = "InactiveSchedPwd", ["unlock_password"] = "secret123" }
+        };
+        var resp3 = Handle(req3, store);
+        Assert.True(resp3.Ok);
+        Assert.False(store.GetProfileByName("InactiveSchedPwd")!.Enabled);
+    }
+
+    [Fact]
+    public void DisableProfile_InactiveSchedule_WithTypingChallenge_EnforcesChallenge()
+    {
+        var store = new FakeBlockStore();
+        var notToday = DateTime.Now.DayOfWeek == DayOfWeek.Sunday ? DaysOfWeek.Mon : DaysOfWeek.Sun;
+        store.SaveProfile(new Profile
+        {
+            Name = "InactiveSchedTyping",
+            Enabled = true,
+            LockMode = LockMode.TypingChallenge,
+            Schedule = new() { new ScheduleRule { Days = notToday, StartMinute = 0, EndMinute = 1439 } }
+        });
+
+        // 1. Missing challenge -> Refused
+        var req1 = new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new() { ["name"] = "InactiveSchedTyping" }
+        };
+        var resp1 = Handle(req1, store);
+        Assert.False(resp1.Ok);
+        Assert.Contains("typing challenge", resp1.Error);
+        Assert.True(store.GetProfileByName("InactiveSchedTyping")!.Enabled);
+
+        // 2. Wrong challenge -> Refused
+        var req2 = new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new() { ["name"] = "InactiveSchedTyping", ["unlock_text"] = "wrong" }
+        };
+        var resp2 = Handle(req2, store);
+        Assert.False(resp2.Ok);
+
+        // 3. Valid challenge -> Succeeds
+        var chResp = Handle(new Request
+        {
+            Command = CommandNames.GetUnlockChallenge,
+            Args = new() { ["name"] = "InactiveSchedTyping" }
+        }, store);
+        Assert.True(chResp.Ok);
+        string challenge = chResp.Data!;
+
+        var req3 = new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new() { ["name"] = "InactiveSchedTyping", ["unlock_text"] = challenge }
+        };
+        var resp3 = Handle(req3, store);
+        Assert.True(resp3.Ok);
+        Assert.False(store.GetProfileByName("InactiveSchedTyping")!.Enabled);
+    }
+
+    [Fact]
+    public void CancelDelayedUnlock_WithoutToken_ReturnsMissingTokenArgumentFail()
+    {
+        var reqMissing = new Request
+        {
+            Command = CommandNames.CancelDelayedUnlock,
+            Args = new() { ["name"] = "TestProfile" }
+        };
+        var respMissing = Handle(reqMissing, new FakeBlockStore());
+        Assert.False(respMissing.Ok);
+        Assert.Equal("Missing required argument: 'token'.", respMissing.Error);
+
+        var reqWhitespace = new Request
+        {
+            Command = CommandNames.CancelDelayedUnlock,
+            Args = new() { ["name"] = "TestProfile", ["token"] = "   " }
+        };
+        var respWhitespace = Handle(reqWhitespace, new FakeBlockStore());
+        Assert.False(respWhitespace.Ok);
+        Assert.Equal("Missing required argument: 'token'.", respWhitespace.Error);
+    }
+
+    [Fact]
+    public void DeleteProfile_WithTypingChallengeOrDelayedUnlock_EnforcesChallenge()
+    {
+        var store = new FakeBlockStore();
+        store.SaveProfile(new Profile
+        {
+            Name = "TypingDel",
+            Enabled = false,
+            LockMode = LockMode.TypingChallenge
+        });
+
+        // 1. Delete without challenge -> Refused
+        var delReq1 = new Request
+        {
+            Command = CommandNames.DeleteProfile,
+            Args = new() { ["name"] = "TypingDel" }
+        };
+        var delResp1 = Handle(delReq1, store);
+        Assert.False(delResp1.Ok);
+        Assert.Contains("typing challenge", delResp1.Error);
+
+        // Request challenge and delete with correct challenge
+        var ch = Handle(new Request { Command = CommandNames.GetUnlockChallenge, Args = new() { ["name"] = "TypingDel" } }, store);
+        var delReq2 = new Request
+        {
+            Command = CommandNames.DeleteProfile,
+            Args = new() { ["name"] = "TypingDel", ["unlock_text"] = ch.Data! }
+        };
+        var delResp2 = Handle(delReq2, store);
+        Assert.True(delResp2.Ok);
+        Assert.Null(store.GetProfileByName("TypingDel"));
+
+        // 2. Delayed unlock profile delete without token
+        store.SaveProfile(new Profile
+        {
+            Name = "DelayDel",
+            Enabled = false,
+            LockMode = LockMode.DelayedUnlock,
+            DelayedUnlockMinutes = 15
+        });
+
+        var delReq3 = new Request
+        {
+            Command = CommandNames.DeleteProfile,
+            Args = new() { ["name"] = "DelayDel" }
+        };
+        var delResp3 = Handle(delReq3, store);
+        Assert.False(delResp3.Ok);
+        Assert.Contains("delayed unlock timer", delResp3.Error);
+    }
+
+    #endregion
 
     #endregion
 }

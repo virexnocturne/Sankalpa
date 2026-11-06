@@ -1,0 +1,188 @@
+<Window x:Class="Blocker.App.ZenShieldWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Blocker.App"
+        Title="Zen Shield"
+        WindowStyle="None"
+        WindowState="Maximized"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource TextPrimary}"
+        FontFamily="{DynamicResource FontBody}">
+
+    <Window.Triggers>
+        <!-- Breathing ring gentle continuous pulsing animation (4s inhale / 4s exhale) -->
+        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+            <BeginStoryboard>
+                <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                    <DoubleAnimation Storyboard.TargetName="HaloScale"
+                                     Storyboard.TargetProperty="ScaleX"
+                                     From="1.0" To="1.08"
+                                     Duration="0:0:4">
+                        <DoubleAnimation.EasingFunction>
+                            <SineEase EasingMode="EaseInOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="HaloScale"
+                                     Storyboard.TargetProperty="ScaleY"
+                                     From="1.0" To="1.08"
+                                     Duration="0:0:4">
+                        <DoubleAnimation.EasingFunction>
+                            <SineEase EasingMode="EaseInOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="BreathingHalo"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="0.22" To="0.55"
+                                     Duration="0:0:4">
+                        <DoubleAnimation.EasingFunction>
+                            <SineEase EasingMode="EaseInOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                </Storyboard>
+            </BeginStoryboard>
+        </EventTrigger>
+    </Window.Triggers>
+
+    <Grid>
+        <!-- Top-Left Expandable Soundscape Pill -->
+        <local:SoundscapePillControl HorizontalAlignment="Left"
+                                     VerticalAlignment="Top"
+                                     Margin="24,24,0,0"
+                                     Panel.ZIndex="10" />
+
+        <!-- Subtle Top Center Brand Watermark -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,32,0,0" Opacity="0.4">
+            <Path Style="{StaticResource Icon}" Data="{StaticResource IconShield}" Width="14" Height="14"
+                  Stroke="{DynamicResource TextPrimary}" Margin="0,0,8,0" VerticalAlignment="Center" />
+            <TextBlock Text="SANKALPA ZEN SHIELD"
+                       FontFamily="{DynamicResource FontTitle}"
+                       FontSize="{DynamicResource FontSize12}"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimary}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Center Stage Content (Completely Pure: Breathing Ring, Timer, Dock) -->
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+            
+            <!-- Breathing Ring / Focus Halo Container -->
+            <Grid Width="340" Height="340" HorizontalAlignment="Center">
+                <!-- Outer Breathing Halo (Pulsing via Storyboard) -->
+                <Ellipse x:Name="BreathingHalo"
+                         Width="330" Height="330"
+                         Stroke="{DynamicResource Accent}"
+                         StrokeThickness="2"
+                         Opacity="0.25"
+                         RenderTransformOrigin="0.5,0.5">
+                    <Ellipse.RenderTransform>
+                        <ScaleTransform x:Name="HaloScale" ScaleX="1.0" ScaleY="1.0" />
+                    </Ellipse.RenderTransform>
+                </Ellipse>
+
+                <!-- Inner Concentric Guide Ring -->
+                <Ellipse Width="290" Height="290"
+                         Stroke="{DynamicResource BorderStrong}"
+                         StrokeThickness="1"
+                         Opacity="0.35" />
+
+                <!-- Center Countdown & Subtitle -->
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock x:Name="TimerDisplay"
+                               Text="25:00"
+                               FontFamily="{DynamicResource FontMono}"
+                               FontSize="{DynamicResource FontSizeTimer}"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource TextPrimary}"
+                               HorizontalAlignment="Center" />
+
+                    <TextBlock x:Name="SessionSubtitle"
+                               Text="DEEP FOCUS ACTIVE"
+                               FontFamily="{DynamicResource FontTitle}"
+                               FontSize="{DynamicResource FontSize12}"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}"
+                               HorizontalAlignment="Center"
+                               Margin="0,6,0,0" />
+                </StackPanel>
+            </Grid>
+
+            <!-- Whitelisted Apps Dock (Bottom of Center Stage) -->
+            <StackPanel x:Name="WhitelistedAppsDock" HorizontalAlignment="Center" Margin="0,36,0,0">
+                <TextBlock Text="ALLOWED APPLICATIONS"
+                           FontFamily="{DynamicResource FontTitle}"
+                           FontSize="{DynamicResource FontSize12}"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextDisabled}"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,10" />
+
+                <ItemsControl x:Name="WhitelistedAppsItemsControl">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Margin="6,0"
+                                    Padding="14,8"
+                                    Background="{DynamicResource Surface}"
+                                    BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1"
+                                    Click="WhitelistedAppButton_Click"
+                                    Tag="{Binding}"
+                                    Cursor="Hand"
+                                    ToolTip="{Binding ExecutableName}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Style="{StaticResource Icon}"
+                                          Data="{StaticResource IconApps}"
+                                          Width="14" Height="14"
+                                          Stroke="{DynamicResource Accent}"
+                                          Margin="0,0,8,0"
+                                          VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding DisplayName}"
+                                               FontFamily="{DynamicResource FontBody}"
+                                               FontSize="{DynamicResource FontSize12}"
+                                               FontWeight="Medium"
+                                               Foreground="{DynamicResource TextPrimary}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+        </StackPanel>
+
+        <!-- Lock Status & Stop Button (Fixed Bottom) -->
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,40">
+            <Button x:Name="StopSessionButton"
+                    Content="Stop Session"
+                    Click="StopSession_Click"
+                    Style="{StaticResource DangerButton}"
+                    Padding="24,10"
+                    FontSize="{DynamicResource FontSize13}"
+                    FontWeight="SemiBold"
+                    HorizontalAlignment="Center" />
+
+            <TextBlock x:Name="LockStatusNotice"
+                       Text="Protected by verification challenge"
+                       FontFamily="{DynamicResource FontBody}"
+                       FontSize="{DynamicResource FontSize12}"
+                       Foreground="{DynamicResource TextDisabled}"
+                       HorizontalAlignment="Center"
+                       Margin="0,8,0,0"
+                       Visibility="Collapsed" />
+        </StackPanel>
+
+        <!-- Right-Edge Slide-Out Notes Drawer ("NOTES") -->
+        <local:NotesDrawerControl x:Name="ZenNotesDrawer"
+                                  IsDrawerOpen="{Binding IsNotesDrawerOpen, Mode=TwoWay}"
+                                  HorizontalAlignment="Right"
+                                  VerticalAlignment="Stretch"
+                                  Panel.ZIndex="20" />
+    </Grid>
+</Window>

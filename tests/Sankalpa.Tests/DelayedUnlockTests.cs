@@ -35,21 +35,42 @@ public class DelayedUnlockTests
         Assert.Contains("still running", error);
 
         // Clean up
-        DelayedUnlockManager.CancelDelayedUnlock(profileName);
+        DelayedUnlockManager.CancelDelayedUnlock(profileName, token);
     }
 
     [Fact]
     public void DelayedUnlockManager_ValidateUnlock_RejectsInvalidToken()
     {
         string profileName = "InvalidTokenProfile_" + Guid.NewGuid().ToString("N");
-        DelayedUnlockManager.StartDelayedUnlock(profileName, 900);
+        string token = DelayedUnlockManager.StartDelayedUnlock(profileName, 900);
 
         bool valid = DelayedUnlockManager.ValidateUnlock(profileName, "wrong_token", out var error);
         Assert.False(valid);
         Assert.NotNull(error);
         Assert.Contains("Invalid or expired", error);
 
-        DelayedUnlockManager.CancelDelayedUnlock(profileName);
+        DelayedUnlockManager.CancelDelayedUnlock(profileName, token);
+    }
+
+    [Fact]
+    public void DelayedUnlockManager_CancelDelayedUnlock_WithoutTokenOrWrongToken_IsRefused()
+    {
+        string profileName = "RefuseCancelProfile_" + Guid.NewGuid().ToString("N");
+        string validToken = DelayedUnlockManager.StartDelayedUnlock(profileName, 900);
+
+        // Cancel with empty / whitespace / null / wrong token should return false
+        Assert.False(DelayedUnlockManager.CancelDelayedUnlock(profileName, ""));
+        Assert.False(DelayedUnlockManager.CancelDelayedUnlock(profileName, "   "));
+        Assert.False(DelayedUnlockManager.CancelDelayedUnlock(profileName, null!));
+        Assert.False(DelayedUnlockManager.CancelDelayedUnlock(profileName, "wrong_token"));
+
+        // Verify delayed unlock remains active
+        Assert.True(DelayedUnlockManager.IsDelayedUnlockActive(profileName));
+
+        // Cancel with valid token should succeed
+        bool cancelled = DelayedUnlockManager.CancelDelayedUnlock(profileName, validToken);
+        Assert.True(cancelled);
+        Assert.False(DelayedUnlockManager.IsDelayedUnlockActive(profileName));
     }
 
     [Fact]

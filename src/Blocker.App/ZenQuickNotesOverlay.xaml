@@ -1,0 +1,357 @@
+<Window x:Class="Blocker.App.ZenQuickNotesOverlay"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Session Reflections"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="CanResizeWithGrip"
+        Width="420"
+        Height="540"
+        MinWidth="340"
+        MinHeight="380"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="{DynamicResource FontBody}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <Style x:Key="OverlayIconButton" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource SurfaceRaised}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource Border}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="OverlayMiniButton" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaised}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontFamily" Value="{DynamicResource FontBody}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="btnBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="{DynamicResource BorderStrong}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="{DynamicResource Surface}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <!-- Outer margin so drop shadow is not clipped by window boundary -->
+    <Border CornerRadius="12"
+            Background="{DynamicResource Surface}"
+            BorderBrush="{DynamicResource BorderStrong}"
+            BorderThickness="1"
+            Margin="12">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.65" Direction="270" Color="#000000" />
+        </Border.Effect>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <!-- Row 0: Draggable Header Bar -->
+                <RowDefinition Height="Auto" />
+                <!-- Row 1: Content Area (Cards List or Composer) -->
+                <RowDefinition Height="*" />
+                <!-- Row 2: Status / Footer Bar -->
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Row 0: Draggable Header Bar -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource SurfaceRaised}"
+                    BorderBrush="{DynamicResource Border}"
+                    BorderThickness="0,0,0,1"
+                    CornerRadius="12,12,0,0"
+                    Padding="14,10"
+                    Cursor="SizeAll"
+                    MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <!-- Title & Lotus Icon -->
+                        <ColumnDefinition Width="*" />
+                        <!-- Action buttons -->
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Path Style="{StaticResource Icon}"
+                              Data="{StaticResource IconLotus}"
+                              Width="18" Height="18"
+                              Stroke="{DynamicResource Accent}"
+                              VerticalAlignment="Center"
+                              Margin="0,0,8,0" />
+                        <TextBlock Text="Session Reflections"
+                                   FontFamily="{DynamicResource FontTitle}"
+                                   FontWeight="SemiBold"
+                                   FontSize="{DynamicResource FontSize14}"
+                                   Foreground="{DynamicResource TextPrimary}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- + New Note Button -->
+                        <Button x:Name="NewNoteButton"
+                                Content="+ New Note"
+                                Style="{StaticResource SecondaryButton}"
+                                Padding="10,4"
+                                FontSize="{DynamicResource FontSize12}"
+                                FontWeight="SemiBold"
+                                Click="NewNoteButton_Click"
+                                Margin="0,0,8,0"
+                                ToolTip="Create a new reflection card or task list" />
+
+                        <!-- Close Button -->
+                        <Button x:Name="CloseButton"
+                                Style="{StaticResource OverlayIconButton}"
+                                Click="CloseButton_Click"
+                                Width="26" Height="26"
+                                ToolTip="Close Notes Overlay (Esc / Alt+N)">
+                            <Path Style="{StaticResource Icon}"
+                                  Data="{StaticResource IconX}"
+                                  Width="12" Height="12"
+                                  Stroke="{DynamicResource TextSecondary}" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Row 1: Body Area -->
+            <Grid Grid.Row="1" Margin="14,12,14,8">
+                <!-- VIEW 1: Cards List & Empty State -->
+                <Grid x:Name="CardsViewPanel" Visibility="Visible">
+                    <!-- Empty State (when 0 cards) -->
+                    <StackPanel x:Name="EmptyStatePanel"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                Margin="20"
+                                Visibility="Collapsed">
+                        <Path Style="{StaticResource Icon}"
+                              Data="{StaticResource IconLotus}"
+                              Width="36" Height="36"
+                              Stroke="{DynamicResource TextDisabled}"
+                              HorizontalAlignment="Center"
+                              Margin="0,0,0,12" />
+                        <TextBlock Text="No reflections yet"
+                                   FontFamily="{DynamicResource FontTitle}"
+                                   FontSize="{DynamicResource FontSize15}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimary}"
+                                   TextAlignment="Center"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="Capture ideas, tasks, or contemplation insights while in focus mode."
+                                   FontSize="{DynamicResource FontSize12}"
+                                   Foreground="{DynamicResource TextSecondary}"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   MaxWidth="260"
+                                   Margin="0,0,0,16" />
+                        <Button Content="+ Create First Note"
+                                Style="{StaticResource PrimaryButton}"
+                                Padding="16,6"
+                                FontSize="{DynamicResource FontSize12}"
+                                FontWeight="SemiBold"
+                                HorizontalAlignment="Center"
+                                Click="NewNoteButton_Click" />
+                    </StackPanel>
+
+                    <!-- Scrollable Cards Container -->
+                    <ScrollViewer x:Name="CardsScrollViewer"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="CardsItemsPanel" />
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- VIEW 2: Note Composer -->
+                <Grid x:Name="ComposerPanel" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <!-- Composer Header -->
+                        <RowDefinition Height="Auto" />
+                        <!-- Title Input -->
+                        <RowDefinition Height="Auto" />
+                        <!-- Formatting Helpers -->
+                        <RowDefinition Height="Auto" />
+                        <!-- Content Input -->
+                        <RowDefinition Height="*" />
+                        <!-- Composer Actions Footer -->
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock x:Name="ComposerHeadingText"
+                               Grid.Row="0"
+                               Text="New Reflection Note"
+                               FontFamily="{DynamicResource FontTitle}"
+                               FontWeight="SemiBold"
+                               FontSize="{DynamicResource FontSize14}"
+                               Foreground="{DynamicResource TextPrimary}"
+                               Margin="0,0,0,8" />
+
+                    <!-- Title Input -->
+                    <TextBox x:Name="ComposerTitleInput"
+                             Grid.Row="1"
+                             Background="{DynamicResource SurfaceRaised}"
+                             Foreground="{DynamicResource TextPrimary}"
+                             BorderBrush="{DynamicResource Border}"
+                             BorderThickness="1"
+                             FontSize="{DynamicResource FontSize13}"
+                             Padding="8,5"
+                             Margin="0,0,0,8"
+                             CaretBrush="{DynamicResource Accent}" />
+
+                    <!-- Quick Markdown Toolbar -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Content="+ [ ] Task"
+                                Style="{StaticResource OverlayMiniButton}"
+                                Click="InsertTask_Click"
+                                Margin="0,0,6,0"
+                                ToolTip="Insert interactive markdown checkbox" />
+                        <Button Content="• Bullet"
+                                Style="{StaticResource OverlayMiniButton}"
+                                Click="InsertBullet_Click"
+                                Margin="0,0,6,0"
+                                ToolTip="Insert bullet point" />
+                        <Button Content="**Bold**"
+                                Style="{StaticResource OverlayMiniButton}"
+                                Click="InsertBold_Click"
+                                Margin="0,0,6,0"
+                                ToolTip="Format text as bold" />
+                        <Button Content="## Heading"
+                                Style="{StaticResource OverlayMiniButton}"
+                                Click="InsertHeading_Click"
+                                ToolTip="Insert section heading" />
+                    </StackPanel>
+
+                    <!-- Content Text Area -->
+                    <TextBox x:Name="ComposerContentInput"
+                             Grid.Row="3"
+                             Background="{DynamicResource SurfaceRaised}"
+                             Foreground="{DynamicResource TextPrimary}"
+                             BorderBrush="{DynamicResource Border}"
+                             BorderThickness="1"
+                             FontFamily="{DynamicResource FontMono}"
+                             FontSize="{DynamicResource FontSize13}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto"
+                             Padding="10,8"
+                             CaretBrush="{DynamicResource Accent}"
+                             KeyDown="ComposerContentInput_KeyDown" />
+
+                    <!-- Composer Buttons -->
+                    <Grid Grid.Row="4" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="Ctrl + Enter to save"
+                                   FontSize="{DynamicResource FontSize12}"
+                                   Foreground="{DynamicResource TextDisabled}"
+                                   VerticalAlignment="Center" />
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button Content="Cancel"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Padding="14,5"
+                                    FontSize="{DynamicResource FontSize12}"
+                                    Click="CancelComposer_Click"
+                                    Margin="0,0,8,0" />
+                            <Button Content="Save Note"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Padding="16,5"
+                                    FontSize="{DynamicResource FontSize12}"
+                                    FontWeight="SemiBold"
+                                    Click="SaveComposer_Click" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Grid>
+
+            <!-- Row 2: Status / Footer Bar -->
+            <Border Grid.Row="2"
+                    BorderBrush="{DynamicResource Border}"
+                    BorderThickness="0,1,0,0"
+                    Padding="14,8"
+                    Background="{DynamicResource Surface}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <!-- Auto-save state -->
+                        <ColumnDefinition Width="*" />
+                        <!-- Keyboard badge -->
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Path x:Name="AutoSaveIcon"
+                              Style="{StaticResource Icon}"
+                              Data="{StaticResource IconCheck}"
+                              Width="12" Height="12"
+                              Stroke="{DynamicResource Success}"
+                              Margin="0,0,6,0"
+                              VerticalAlignment="Center" />
+                        <TextBlock x:Name="AutoSaveStatusText"
+                                   Text="✓ Auto-saved"
+                                   FontSize="{DynamicResource FontSize12}"
+                                   Foreground="{DynamicResource Success}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Border Grid.Column="1"
+                            Background="{DynamicResource SurfaceRaised}"
+                            BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="6,2"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="Alt + N to toggle"
+                                   FontFamily="{DynamicResource FontMono}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextDisabled}" />
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

@@ -357,15 +357,16 @@ public class ProfileViewModel : ViewModelBase
                                 || LockMode == LockMode.TypingChallenge;
 
     public bool IsLockedFromToggling => (IsSessionRunning && IsSessionLocked)
-        || (!IsChallengeLock && ((IsActive && LockMode == LockMode.Locked) || (IsActive && Schedule.Count > 0 && LockedNow)));
+        || (IsActive && Schedule.Count > 0 && LockedNow)
+        || (!IsChallengeLock && IsActive && LockMode == LockMode.Locked);
 
     public bool CanToggle => !IsLockedFromToggling;
     public bool CanDelete => !IsLockedFromToggling && !IsActive && !Enabled;
     public bool HasPasswordLock => LockMode == LockMode.Password;
     public bool HasTypingChallenge => LockMode == LockMode.TypingChallenge;
-    public bool IsToggleChecked => IsLockedFromToggling || Enabled;
+    public bool IsToggleChecked => IsLockedFromToggling || Enabled || IsActive;
 
-    public string OnOffText => (IsLockedFromToggling || Enabled) ? "ON" : "OFF";
+    public string OnOffText => (IsLockedFromToggling || Enabled || IsActive) ? "ON" : "OFF";
 
     public int Id
     {

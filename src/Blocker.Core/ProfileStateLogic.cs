@@ -14,6 +14,12 @@ public static class ProfileStateLogic
             return true;
         }
 
+        if (profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, localNow))
+        {
+            activeReason = "Schedule";
+            return true;
+        }
+
         if (!profile.Enabled)
         {
             activeReason = "None";
@@ -23,12 +29,6 @@ public static class ProfileStateLogic
         if (profile.Schedule == null || profile.Schedule.Count == 0)
         {
             activeReason = "AlwaysOn";
-            return true;
-        }
-
-        if (ScheduleLogic.IsActive(profile.Schedule, localNow))
-        {
-            activeReason = "Schedule";
             return true;
         }
 
@@ -54,7 +54,7 @@ public static class ProfileStateLogic
             return true;
         }
 
-        if (profile.Enabled && profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, localNow))
+        if (profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, localNow))
         {
             return true;
         }
@@ -75,7 +75,7 @@ public static class ProfileStateLogic
             return true;
         }
 
-        if (profile.Enabled && profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, localNow))
+        if (profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, localNow))
         {
             return true;
         }

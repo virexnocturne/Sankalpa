@@ -6,14 +6,16 @@ import time
 
 REPO_ROOT = r"C:\Users\virex\.gemini\antigravity\scratch\Blocker"
 DEV_DIR = r"C:\Users\virex\.gemini\antigravity\scratch\Sankalpa dev"
+DEV_LOCAL_DIR = os.path.join(REPO_ROOT, "dist", "Sankalpa dev")
 RELEASE_DIR = os.path.join(REPO_ROOT, "dist", "Sankalpa-Release")
 STAGING_DIR = os.path.join(REPO_ROOT, "dist", "staging")
 
-TARGET_DIRS = [DEV_DIR, RELEASE_DIR]
+TARGET_DIRS = [DEV_DIR, DEV_LOCAL_DIR, RELEASE_DIR]
 
 print(f"=== Publishing Sankalpa to Dev & Release Targets ===")
-print(f"Dev Target:     {DEV_DIR}")
-print(f"Release Target: {RELEASE_DIR}")
+print(f"Dev Target:           {DEV_DIR}")
+print(f"Dev Local Target:     {DEV_LOCAL_DIR}")
+print(f"Release Target:       {RELEASE_DIR}")
 
 for d in TARGET_DIRS:
     os.makedirs(d, exist_ok=True)
@@ -28,9 +30,14 @@ for _ in range(10):
         break
     time.sleep(0.5)
 
+def kill_all_processes():
+    for proc in ["Sankalpa", "Blocker.NativeHost", "Blocker.Service", "sankalpa-cli"]:
+        subprocess.run(["taskkill.exe", "/F", "/T", "/IM", f"{proc}.exe"], capture_output=True)
+    ps_cmd = "Get-Process | Where-Object { $_.ProcessName -like 'Blocker.NativeHost*' -or $_.ProcessName -like 'Sankalpa*' -or $_.ProcessName -like 'Blocker.Service*' -or $_.ProcessName -like 'sankalpa-cli*' } | Stop-Process -Force"
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True)
+
 # Terminate running UI / NativeHost instances before copying
-for proc in ["Sankalpa", "Blocker.NativeHost", "Blocker.Service", "sankalpa-cli"]:
-    subprocess.run(["taskkill.exe", "/F", "/T", "/IM", f"{proc}.exe"], capture_output=True)
+kill_all_processes()
 time.sleep(0.5)
 
 # 2. Publish all projects into STAGING_DIR first
@@ -60,8 +67,7 @@ for name, proj_path in projects:
         print(f"SUCCESS: {name} published.")
 
 # 3. Ensure processes are stopped again if dotnet publish restarted anything
-for proc in ["Sankalpa", "Blocker.NativeHost", "Blocker.Service", "sankalpa-cli"]:
-    subprocess.run(["taskkill.exe", "/F", "/T", "/IM", f"{proc}.exe"], capture_output=True)
+kill_all_processes()
 time.sleep(0.5)
 
 # 4. Deploy staged binaries to both targets
@@ -135,7 +141,15 @@ print("\nStarting SankalpaService...")
 subprocess.run(["sc.exe", "start", "SankalpaService"], capture_output=True)
 time.sleep(1.5)
 
-# 7. Clean up staging directory
+# 7. Clean up staging directory and leftover .old_ files
 shutil.rmtree(STAGING_DIR, ignore_errors=True)
+for d in TARGET_DIRS:
+    if os.path.exists(d):
+        for item in os.listdir(d):
+            if ".old_" in item:
+                try:
+                    os.remove(os.path.join(d, item))
+                except Exception:
+                    pass
 
 print("\n=== Deployment to 'Sankalpa dev' and 'Sankalpa-Release' completed successfully! ===")

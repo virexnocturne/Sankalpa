@@ -28,6 +28,24 @@ public class UiLogicTests
         Assert.Equal(expected, actual);
     }
 
+    [Theory]
+    [InlineData(0, "00:00")]
+    [InlineData(-10, "00:00")]
+    [InlineData(45, "00:45")]
+    [InlineData(300, "05:00")]
+    [InlineData(600, "10:00")]
+    [InlineData(1200, "20:00")]
+    [InlineData(1800, "30:00")]
+    [InlineData(3599, "59:59")]
+    [InlineData(3600, "01:00:00")]
+    [InlineData(4500, "01:15:00")]
+    [InlineData(7200, "02:00:00")]
+    public void FormatMeditationTimer_AdaptiveMinutesAndHours(long seconds, string expected)
+    {
+        string actual = UiLogic.FormatMeditationTimer(seconds);
+        Assert.Equal(expected, actual);
+    }
+
     [Fact]
     public void BlockSessionLogic_EvaluateStopRequest_FormatsTrueCountdownForMultiDaySessions()
     {

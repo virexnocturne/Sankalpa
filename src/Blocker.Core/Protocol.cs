@@ -33,6 +33,15 @@ public static class CommandNames
     public const string GetDnsChallenge = "GetDnsChallenge";
     public const string RequestDelayedUnlock = "RequestDelayedUnlock";
     public const string CancelDelayedUnlock = "CancelDelayedUnlock";
+    public const string StartMeditation = "StartMeditation";
+    public const string StopMeditation = "StopMeditation";
+    public const string GetMeditationStatus = "GetMeditationStatus";
+    public const string SaveMeditationNote = "SaveMeditationNote";
+    public const string GetMeditationHistory = "GetMeditationHistory";
+    public const string SaveMeditationSchedule = "SaveMeditationSchedule";
+    public const string GetMeditationSchedules = "GetMeditationSchedules";
+    public const string SnoozeMeditationSchedule = "SnoozeMeditationSchedule";
+    public const string DeleteMeditationSchedule = "DeleteMeditationSchedule";
 }
 
 public class ActiveWebRuleDto
@@ -174,4 +183,124 @@ public class Response
 
     public static Response Success(string? data = null) => new() { Ok = true, Data = data };
     public static Response Fail(string error) => new() { Ok = false, Error = error };
+}
+
+public class StartMeditationRequest
+{
+    [JsonPropertyName("targetDurationSeconds")]
+    public long TargetDurationSeconds { get; set; }
+
+    [JsonPropertyName("allowedApps")]
+    public List<string> AllowedApps { get; set; } = new();
+
+    [JsonPropertyName("lockMode")]
+    public string LockMode { get; set; } = "None";
+
+    [JsonPropertyName("soundscape")]
+    public string? Soundscape { get; set; }
+}
+
+public class MeditationStatusDto
+{
+    [JsonPropertyName("active")]
+    public bool Active { get; set; }
+
+    [JsonPropertyName("sessionId")]
+    public int? SessionId { get; set; }
+
+    [JsonPropertyName("startUtc")]
+    public DateTime? StartUtc { get; set; }
+
+    [JsonPropertyName("targetDurationSeconds")]
+    public long TargetDurationSeconds { get; set; }
+
+    [JsonPropertyName("remainingSeconds")]
+    public long RemainingSeconds { get; set; }
+
+    [JsonPropertyName("locked")]
+    public bool Locked { get; set; }
+
+    [JsonPropertyName("lockMode")]
+    public string LockMode { get; set; } = "None";
+
+    [JsonPropertyName("allowedApps")]
+    public List<string> AllowedApps { get; set; } = new();
+
+    [JsonPropertyName("soundscape")]
+    public string? Soundscape { get; set; }
+
+    [JsonPropertyName("notes")]
+    public string? Notes { get; set; }
+}
+
+public class MeditationHistoryItemDto
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("startUtc")]
+    public DateTime StartUtc { get; set; }
+
+    [JsonPropertyName("targetDurationSeconds")]
+    public long TargetDurationSeconds { get; set; }
+
+    [JsonPropertyName("completedDurationSeconds")]
+    public long CompletedDurationSeconds { get; set; }
+
+    [JsonPropertyName("completed")]
+    public bool Completed { get; set; }
+
+    [JsonPropertyName("notes")]
+    public string? Notes { get; set; }
+
+    [JsonPropertyName("soundscape")]
+    public string? Soundscape { get; set; }
+
+    [JsonPropertyName("allowedAppsCount")]
+    public int AllowedAppsCount { get; set; }
+}
+
+public class SaveMeditationNoteRequest
+{
+    [JsonPropertyName("sessionId")]
+    public int SessionId { get; set; }
+
+    [JsonPropertyName("notes")]
+    public string Notes { get; set; } = string.Empty;
+}
+
+public class MeditationScheduleDto
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = true;
+
+    [JsonPropertyName("daysOfWeek")]
+    public List<string> DaysOfWeek { get; set; } = new();
+
+    [JsonPropertyName("timeOfDay")]
+    public string TimeOfDay { get; set; } = "15:00";
+
+    [JsonPropertyName("durationSeconds")]
+    public long DurationSeconds { get; set; } = 900;
+
+    [JsonPropertyName("allowedApps")]
+    public List<string> AllowedApps { get; set; } = new();
+
+    [JsonPropertyName("lockMode")]
+    public string LockMode { get; set; } = "None";
+
+    [JsonPropertyName("soundscape")]
+    public string? Soundscape { get; set; }
+
+    [JsonPropertyName("lastSnoozedUtc")]
+    public DateTime? LastSnoozedUtc { get; set; }
+}
+
+public class SnoozeMeditationScheduleRequest
+{
+    [JsonPropertyName("scheduleId")]
+    public int ScheduleId { get; set; }
 }

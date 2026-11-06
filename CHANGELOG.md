@@ -4,6 +4,22 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FEAT-2026-11-06-01] Meditation Mode, System Lockdown, Obsidian Notes & Drawers (v1.3.0)
+- **Timestamp**: 2026-11-06 13:00 IST
+- **Component**: Core Models & IPC (`MeditationSession.cs`, `MeditationSchedule.cs`, `NoteCard.cs`, `NoteCardCollection.cs`, `LowLevelKeyboardHook.cs`, `Protocol.cs`, `CommandHandler.cs`), Service (`BlockerDatabase.cs`, `Worker.cs`), Desktop App (`MainWindow.xaml`, `MeditationViewModel.cs`, `ZenShieldWindow.xaml`, `ZenBackdropWindow.xaml`, `ZenMiniHudWindow.xaml`, `ZenQuickNotesOverlay.xaml`, `NotesDrawerControl.xaml`, `SoundscapePillControl.xaml`, `MeditationEditDialog.xaml`, `UniversalNotesDialog.xaml`, `AmbientSoundEngine.cs`), Installer (`Sankalpa-Setup-1.3.0.exe`)
+- **Status**: **RELEASED & VERIFIED IN LIVE OS**
+- **Features Implemented**:
+  1. **Meditation & System Lockdown Mode**: Fullscreen, multi-monitor Zen Shield kiosk with adaptive countdown timer (`mm:ss`/`hh:mm:ss`), breathing halo animation, WinKey/Alt+Tab/Ctrl+Esc suppression via low-level keyboard hook, process whitelist enforcer, DACL hardening, and boot recovery.
+  2. **Obsidian-Style Notes Collection & Slide-Out Drawer**: Card-based reflection notes, top-anchored cursor fix, right-edge vertical `"NOTES"` drawer handle, inline accordion preview with Markdown rendering, interactive `- [ ]` task checkboxes, and 3-way export (Session Bundle, Vault folder, Master Journal).
+  3. **Offline Ambient Sound Engine**: 4 seamlessly looped 16-bit PCM soundscapes (`Rain`, `Library`, `Forest`, `Singing Bowls`) positioned in a compact top-left expandable pill (`🌧 Rain ▾`).
+  4. **Whitelisted App Mini-HUD & Quick Notes Overlay**: Floating HUD pill when working in allowed apps, equipped with a 1-click `[ 📝 Notes ]` action and `Alt + N` shortcut for the quick notes flyout.
+  5. **App-Wide Keyboard Shortcuts**: `Ctrl + B` (New Block Profile), `Ctrl + S` (Settings), `Ctrl + M` (Meditation Mode), `Alt + N` (Quick Notes Overlay).
+- **Verification**:
+  - All 775 automated tests passing (89 in `Sankalpa.Security.Tests`, 686 in `Sankalpa.Tests`).
+  - Compiled and verified Windows Installer `Sankalpa-Setup-1.3.0.exe` and companion extension `sankalpa-extension-v1.3.0.zip`.
+
+---
+
 ### [FIX-2026-11-05-02] Delayed Unlock Presets & Challenge Toggle Workflow (v1.2.1)
 - **Timestamp**: 2026-11-05 13:50 IST
 - **Component**: Desktop App (BlockEditorDialog.xaml.cs, ProfileViewModel.cs, MainViewModel.cs, MainWindow.xaml.cs), Windows Installer (Sankalpa-Setup-1.2.1.exe)

@@ -164,6 +164,12 @@ public static class DevRenderTester
         RenderBlockEditorCustom(Path.Combine(outputDir, "block-editor-delayed-unlock-light.png"), LockMode.DelayedUnlock, withSchedule: false, tab: "Lock");
         ThemeManager.SetThemeMode(AppThemeMode.Dark);
 
+        // 17. Zen Shield Kiosk, Mini-HUD & Backdrop
+        RenderZenShieldWindow(Path.Combine(outputDir, "zen-shield-kiosk.png"));
+        RenderZenMiniHudWindow(Path.Combine(outputDir, "zen-mini-hud.png"));
+        RenderZenQuickNotesOverlay(Path.Combine(outputDir, "zen-quick-notes.png"));
+        RenderZenBackdropWindow(Path.Combine(outputDir, "zen-backdrop.png"));
+
         Console.WriteLine("[RenderTest] All screenshots rendered successfully.");
         return 0;
     }
@@ -619,5 +625,43 @@ public static class DevRenderTester
     {
         var win = new CoolDownTimerWindow("Social Media Detox", 900);
         SaveWindowToPng(win, filePath, 480, 360);
+    }
+
+    private static void RenderZenShieldWindow(string filePath)
+    {
+        var win = new ZenShieldWindow(
+            totalSeconds: 1125,
+            completeLock: false,
+            lockType: "Password",
+            whitelistedApps: new[] { "Code.exe", "Spotify.exe", "notepad.exe" },
+            profileName: "Deep Focus");
+        win.NotesText = "Session reflections:\n- Completed Zen Shield Kiosk implementation\n- Tested multi-monitor backdrop and Mini-HUD\n- Feeling productive and centered.";
+        SaveWindowToPng(win, filePath, 1280, 800);
+    }
+
+    private static void RenderZenMiniHudWindow(string filePath)
+    {
+        var win = new ZenMiniHudWindow();
+        win.UpdateTimer("18:45");
+        win.UpdateAudioLabel("🌧 Rain [⏸]");
+        SaveWindowToPng(win, filePath, 540, 90);
+    }
+
+    private static void RenderZenQuickNotesOverlay(string filePath)
+    {
+        var win = new ZenQuickNotesOverlay();
+        var cards = new System.Collections.Generic.List<Blocker.Core.NoteCard>
+        {
+            new Blocker.Core.NoteCard("Session Objectives", "- [x] Initial design review\n- [ ] Deep focus coding sprint\n- [ ] Export reflections"),
+            new Blocker.Core.NoteCard("Mindfulness Insight", "Breath awareness helps sustain clarity during complex implementation tasks.")
+        };
+        win.LoadNotes(Blocker.Core.NoteCardCollection.Serialize(cards));
+        SaveWindowToPng(win, filePath, 420, 540);
+    }
+
+    private static void RenderZenBackdropWindow(string filePath)
+    {
+        var win = new ZenBackdropWindow();
+        SaveWindowToPng(win, filePath, 800, 600);
     }
 }

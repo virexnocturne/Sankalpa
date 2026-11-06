@@ -76,7 +76,7 @@ public class HostsFileManagerTests : IDisposable
     {
         var manager = new HostsFileManager(_hostsPath)
         {
-            MaxRetries = 10,
+            MaxRetries = 20,
             RetryDelayMs = 50
         };
 

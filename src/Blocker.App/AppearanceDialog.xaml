@@ -137,6 +137,81 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- KEYBOARD SHORTCUTS SECTION -->
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="16" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="KEYBOARD SHORTCUTS" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                                       Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12" />
+
+                            <!-- Ctrl + B -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="New Block Profile" FontSize="{DynamicResource FontSize13}"
+                                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                                <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                    <TextBlock Text="Ctrl + B" FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,10" />
+
+                            <!-- Ctrl + S -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Open Settings" FontSize="{DynamicResource FontSize13}"
+                                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                                <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                    <TextBlock Text="Ctrl + S" FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,10" />
+
+                            <!-- Ctrl + M -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Meditation Mode" FontSize="{DynamicResource FontSize13}"
+                                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                                <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                    <TextBlock Text="Ctrl + M" FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,10" />
+
+                            <!-- Alt + N -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Quick Notes Overlay" FontSize="{DynamicResource FontSize13}"
+                                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                                <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                    <TextBlock Text="Alt + N" FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                     <!-- CARD DENSITY SECTION -->
                     <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                             BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="16">

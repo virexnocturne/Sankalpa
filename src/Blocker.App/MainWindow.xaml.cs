@@ -115,6 +115,7 @@ public partial class MainWindow : Window
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
         _viewModel.StopPolling();
+        _viewModel.Meditation?.Dispose();
     }
 
     private void ProfileName_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -173,13 +174,14 @@ public partial class MainWindow : Window
     {
         if (sender is CheckBox cb && cb.DataContext is ProfileViewModel profile)
         {
+            // Keep checkbox visual state in sync without clobbering WPF OneWay binding expression
+            cb.SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, (bool?)profile.IsToggleChecked);
+
             if (profile.IsLockedFromToggling)
             {
-                cb.IsChecked = profile.IsToggleChecked;
                 return;
             }
-            // Keep checkbox visual state in sync with actual profile state
-            cb.IsChecked = profile.IsToggleChecked;
+
             try
             {
                 await _viewModel.ToggleBlockAsync(profile, this);
@@ -190,7 +192,9 @@ public partial class MainWindow : Window
             }
             finally
             {
-                cb.IsChecked = profile.IsToggleChecked;
+                cb.SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, (bool?)profile.IsToggleChecked);
+                cb.SetBinding(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty,
+                    new System.Windows.Data.Binding(nameof(ProfileViewModel.IsToggleChecked)) { Mode = System.Windows.Data.BindingMode.OneWay });
             }
         }
     }
@@ -199,8 +203,8 @@ public partial class MainWindow : Window
     {
         if (sender is CheckBox cb)
         {
-            // Keep checkbox visual state in sync with actual DNS state
-            cb.IsChecked = _viewModel.IsDnsEnabled;
+            // Keep checkbox visual state in sync without clobbering WPF OneWay binding expression
+            cb.SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, (bool?)_viewModel.IsDnsEnabled);
             try
             {
                 await _viewModel.ToggleDnsProtectionAsync();
@@ -211,7 +215,9 @@ public partial class MainWindow : Window
             }
             finally
             {
-                cb.IsChecked = _viewModel.IsDnsEnabled;
+                cb.SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, (bool?)_viewModel.IsDnsEnabled);
+                cb.SetBinding(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty,
+                    new System.Windows.Data.Binding(nameof(MainViewModel.IsDnsEnabled)) { Mode = System.Windows.Data.BindingMode.OneWay });
             }
         }
     }

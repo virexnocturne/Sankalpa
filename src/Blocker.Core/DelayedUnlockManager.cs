@@ -47,9 +47,9 @@ public static class DelayedUnlockManager
         return token;
     }
 
-    public static bool CancelDelayedUnlock(string profileName, string? token = null)
+    public static bool CancelDelayedUnlock(string profileName, string token)
     {
-        if (string.IsNullOrWhiteSpace(profileName))
+        if (string.IsNullOrWhiteSpace(profileName) || string.IsNullOrWhiteSpace(token))
         {
             return false;
         }
@@ -57,7 +57,7 @@ public static class DelayedUnlockManager
         string key = profileName.Trim();
         if (ActiveUnlocks.TryGetValue(key, out var entry))
         {
-            if (string.IsNullOrEmpty(token) || string.Equals(entry.Token, token, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(entry.Token, token.Trim(), StringComparison.OrdinalIgnoreCase))
             {
                 return ActiveUnlocks.TryRemove(key, out _);
             }

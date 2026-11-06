@@ -11,7 +11,7 @@
 
 param(
     [switch]$SkipDotnetBuild = $false,
-    [string]$Version = "1.1.1"
+    [string]$Version = "1.3.0"
 )
 
 $ErrorActionPreference = "Stop"

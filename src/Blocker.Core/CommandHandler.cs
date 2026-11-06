@@ -58,6 +58,15 @@ public static class CommandHandler
                 "GETDNSCHALLENGE" => HandleGetDnsChallenge(store),
                 "REQUESTDELAYEDUNLOCK" => HandleRequestDelayedUnlock(request, store),
                 "CANCELDELAYEDUNLOCK" => HandleCancelDelayedUnlock(request),
+                "STARTMEDITATION" => HandleStartMeditation(request, store),
+                "STOPMEDITATION" => HandleStopMeditation(request, store),
+                "GETMEDITATIONSTATUS" => HandleGetMeditationStatus(store),
+                "SAVEMEDITATIONNOTE" => HandleSaveMeditationNote(request, store),
+                "GETMEDITATIONHISTORY" => HandleGetMeditationHistory(request, store),
+                "SAVEMEDITATIONSCHEDULE" => HandleSaveMeditationSchedule(request, store),
+                "GETMEDITATIONSCHEDULES" => HandleGetMeditationSchedules(store),
+                "DELETEMEDITATIONSCHEDULE" => HandleDeleteMeditationSchedule(request, store),
+                "SNOOZEMEDITATIONSCHEDULE" => HandleSnoozeMeditationSchedule(request, store),
                 _ => Response.Fail($"Unknown command: '{request.Command}'.")
             };
         }
@@ -550,7 +559,7 @@ public static class CommandHandler
             return Response.Fail($"Cannot delete profile '{name}' while it is turned On. Please turn it Off first.");
         }
 
-        // Deleting password-protected profile requires password even if inactive
+        // Deleting protected profile requires credentials/challenge even if inactive
         if (profile.LockMode == LockMode.Password)
         {
             if (PasswordSecurity.IsLockedOut(profile.Name, out int remSec))
@@ -565,6 +574,34 @@ public static class CommandHandler
                 return Response.Fail($"Refused: Password required to delete password-protected profile '{name}'.");
             }
             PasswordSecurity.RecordSuccessfulAttempt(profile.Name);
+        }
+        else if (profile.LockMode == LockMode.TypingChallenge)
+        {
+            string? text = GetArg(request, "unlock_text") ?? GetArg(request, "unlockText");
+            if (string.IsNullOrEmpty(text))
+            {
+                return Response.Fail($"Refused: Profile '{profile.Name}' requires completing a typing challenge to delete. Request a challenge first.");
+            }
+
+            if (!TypingChallengeManager.ValidateChallenge(profile.Name, text, out var err))
+            {
+                return Response.Fail($"Refused: {err ?? "Invalid challenge text."}");
+            }
+        }
+        else if (profile.LockMode == LockMode.DelayedUnlock)
+        {
+            string? token = GetArg(request, "delayed_unlock_token")
+                         ?? GetArg(request, "unlock_token")
+                         ?? GetArg(request, "token");
+            if (string.IsNullOrEmpty(token))
+            {
+                return Response.Fail($"Refused: Profile '{profile.Name}' requires waiting out an active delayed unlock timer to delete. Start the timer first.");
+            }
+
+            if (!DelayedUnlockManager.ValidateUnlock(profile.Name, token, out var err))
+            {
+                return Response.Fail($"Refused: {err ?? "Invalid or incomplete delayed unlock timer."}");
+            }
         }
         else
         {
@@ -855,10 +892,15 @@ public static class CommandHandler
     private static Response HandleCancelDelayedUnlock(Request request)
     {
         string? name = GetArg(request, "name");
-        string? token = GetArg(request, "token");
         if (string.IsNullOrWhiteSpace(name))
         {
             return Response.Fail("Missing required argument: 'name'.");
+        }
+
+        string? token = GetArg(request, "token");
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return Response.Fail("Missing required argument: 'token'.");
         }
 
         bool cancelled = DelayedUnlockManager.CancelDelayedUnlock(name, token);
@@ -1215,37 +1257,30 @@ public static class CommandHandler
 
     private static Response? VerifyUnlock(Profile profile, Request request, BlockSession? activeSession)
     {
-        bool lockedNow = ProfileStateLogic.IsProfileLockedNow(profile, activeSession, DateTime.Now);
-        if (!lockedNow)
-        {
-            return null; // Not locked right now
-        }
-
         if (activeSession != null && activeSession.Locked && activeSession.ProfileId == profile.Id)
         {
             var remaining = BlockSessionLogic.GetRemainingTime(activeSession, DateTime.UtcNow);
             return Response.Fail($"Refused: Profile '{profile.Name}' has an active locked session ({UiLogic.FormatCountdown(remaining)} remaining).");
         }
 
-        if ((profile.LockMode == LockMode.None || profile.LockMode == LockMode.Locked) &&
-            profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, DateTime.Now))
+        if (profile.Enabled && profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, DateTime.Now))
         {
             var nextChange = ScheduleLogic.NextChange(profile.Schedule, DateTime.Now);
             string timeStr = nextChange.HasValue ? nextChange.Value.ToString("HH:mm") : "the window ends";
             return Response.Fail($"Refused: Profile '{profile.Name}' is locked until {timeStr}.");
         }
 
+        if (!profile.Enabled)
+        {
+            return null;
+        }
+
         switch (profile.LockMode)
         {
             case LockMode.None:
-                return null;
-
             case LockMode.Locked:
-            {
-                var nextChange = ScheduleLogic.NextChange(profile.Schedule, DateTime.Now);
-                string timeStr = nextChange.HasValue ? nextChange.Value.ToString("HH:mm") : "the window ends";
-                return Response.Fail($"Refused: Profile '{profile.Name}' is locked until {timeStr}.");
-            }
+            case LockMode.HardLocked:
+                return null;
 
             case LockMode.TypingChallenge:
             {
@@ -1330,6 +1365,13 @@ public static class CommandHandler
         if (string.Equals(raw, "typing", StringComparison.OrdinalIgnoreCase))
         {
             return LockMode.TypingChallenge;
+        }
+
+        if (string.Equals(raw, "hardlocked", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(raw, "hard_locked", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(raw, "hardlock", StringComparison.OrdinalIgnoreCase))
+        {
+            return LockMode.HardLocked;
         }
 
         return LockMode.None;
@@ -1472,7 +1514,8 @@ public static class CommandHandler
         foreach (var profile in allProfiles.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
         {
             bool isActive = ProfileStateLogic.IsProfileActive(profile, session, localNow, out string reason);
-            bool isLocked = (session != null && session.Locked && session.ProfileId == profile.Id) ||
+            bool isLocked = ProfileStateLogic.IsProfileLockedNow(profile, session, localNow) ||
+                            (session != null && session.Locked && session.ProfileId == profile.Id) ||
                             (profile.LockMode != LockMode.None);
 
             int ruleCount = profile.WebRules?.Count ?? (profile.BlockedDomains?.Count ?? 0);
@@ -1727,4 +1770,385 @@ public static class CommandHandler
 
         return Response.Success(JsonSerializer.Serialize(current));
     }
+
+    #region Meditation Mode Handlers
+
+    private static Response HandleStartMeditation(Request request, IBlockStore store)
+    {
+        long targetSeconds = 900;
+        var allowedApps = new List<string>();
+        LockMode lockMode = LockMode.None;
+        string? soundscape = null;
+
+        string? payload = GetArg(request, "data") ?? GetArg(request, "payload") ?? GetArg(request, "json");
+        if (!string.IsNullOrWhiteSpace(payload))
+        {
+            try
+            {
+                var reqDto = JsonSerializer.Deserialize<StartMeditationRequest>(payload);
+                if (reqDto != null)
+                {
+                    if (reqDto.TargetDurationSeconds > 0) targetSeconds = reqDto.TargetDurationSeconds;
+                    if (reqDto.AllowedApps != null && reqDto.AllowedApps.Count > 0) allowedApps = reqDto.AllowedApps;
+                    lockMode = ParseLockMode(reqDto.LockMode);
+                    soundscape = reqDto.Soundscape;
+                }
+            }
+            catch { }
+        }
+
+        string? secStr = GetArg(request, "targetDurationSeconds") ?? GetArg(request, "target_duration_seconds") ?? GetArg(request, "seconds") ?? GetArg(request, "duration");
+        string? minStr = GetArg(request, "minutes");
+        if (!string.IsNullOrWhiteSpace(secStr) && long.TryParse(secStr, out long parsedSec) && parsedSec > 0)
+        {
+            targetSeconds = parsedSec;
+        }
+        else if (!string.IsNullOrWhiteSpace(minStr) && long.TryParse(minStr, out long parsedMin) && parsedMin > 0)
+        {
+            targetSeconds = parsedMin * 60;
+        }
+
+        string? appsStr = GetArg(request, "allowedApps") ?? GetArg(request, "allowed_apps") ?? GetArg(request, "apps");
+        if (!string.IsNullOrWhiteSpace(appsStr))
+        {
+            allowedApps = ParseList(appsStr);
+        }
+
+        string? lockStr = GetArg(request, "lockMode") ?? GetArg(request, "lock_mode") ?? GetArg(request, "mode");
+        if (!string.IsNullOrWhiteSpace(lockStr))
+        {
+            lockMode = ParseLockMode(lockStr);
+        }
+
+        string? sound = GetArg(request, "soundscape") ?? GetArg(request, "sound");
+        if (!string.IsNullOrWhiteSpace(sound))
+        {
+            soundscape = sound;
+        }
+
+        var existing = store.GetActiveMeditationSession();
+        if (existing != null)
+        {
+            long rem = Math.Max(0, (long)(existing.StartUtc.AddSeconds(existing.TargetDurationSeconds) - DateTime.UtcNow).TotalSeconds);
+            return Response.Fail($"A meditation session is already active (Session {existing.Id}, remaining {rem}s).");
+        }
+
+        var session = store.StartMeditationSession(targetSeconds, allowedApps, lockMode, soundscape);
+        var statusDto = new MeditationStatusDto
+        {
+            Active = true,
+            SessionId = session.Id,
+            StartUtc = session.StartUtc,
+            TargetDurationSeconds = session.TargetDurationSeconds,
+            RemainingSeconds = session.TargetDurationSeconds,
+            Locked = session.LockMode != LockMode.None,
+            LockMode = session.LockMode.ToString(),
+            AllowedApps = session.GetAllowedApps(),
+            Soundscape = session.Soundscape,
+            Notes = session.Notes
+        };
+
+        return Response.Success(JsonSerializer.Serialize(statusDto));
+    }
+
+    private static Response HandleStopMeditation(Request request, IBlockStore store)
+    {
+        var active = store.GetActiveMeditationSession();
+        if (active == null)
+        {
+            return Response.Success("No active meditation session to stop.");
+        }
+
+        bool emergency = store.IsEmergencyUnlockPresent();
+        if (!emergency && (active.LockMode == LockMode.Locked || active.LockMode == LockMode.HardLocked))
+        {
+            return Response.Fail("Meditation session is locked and cannot be stopped early.");
+        }
+
+        string? notes = GetArg(request, "notes");
+        store.EndMeditationSession(active.Id, completed: false, notes);
+        return Response.Success("Meditation session stopped.");
+    }
+
+    private static Response HandleGetMeditationStatus(IBlockStore store)
+    {
+        var active = store.GetActiveMeditationSession();
+        if (active == null)
+        {
+            return Response.Success(JsonSerializer.Serialize(new MeditationStatusDto
+            {
+                Active = false,
+                RemainingSeconds = 0,
+                Locked = false,
+                LockMode = "None"
+            }));
+        }
+
+        long rem = Math.Max(0, (long)(active.StartUtc.AddSeconds(active.TargetDurationSeconds) - DateTime.UtcNow).TotalSeconds);
+        var dto = new MeditationStatusDto
+        {
+            Active = true,
+            SessionId = active.Id,
+            StartUtc = active.StartUtc,
+            TargetDurationSeconds = active.TargetDurationSeconds,
+            RemainingSeconds = rem,
+            Locked = active.LockMode != LockMode.None,
+            LockMode = active.LockMode.ToString(),
+            AllowedApps = active.GetAllowedApps(),
+            Soundscape = active.Soundscape,
+            Notes = active.Notes
+        };
+        return Response.Success(JsonSerializer.Serialize(dto));
+    }
+
+    private static Response HandleSaveMeditationNote(Request request, IBlockStore store)
+    {
+        int sessionId = 0;
+        string notes = string.Empty;
+
+        string? payload = GetArg(request, "data") ?? GetArg(request, "payload") ?? GetArg(request, "json");
+        if (!string.IsNullOrWhiteSpace(payload))
+        {
+            try
+            {
+                var reqDto = JsonSerializer.Deserialize<SaveMeditationNoteRequest>(payload);
+                if (reqDto != null)
+                {
+                    sessionId = reqDto.SessionId;
+                    notes = reqDto.Notes ?? string.Empty;
+                }
+            }
+            catch { }
+        }
+
+        string? idStr = GetArg(request, "sessionId") ?? GetArg(request, "session_id") ?? GetArg(request, "id");
+        if (!string.IsNullOrWhiteSpace(idStr) && int.TryParse(idStr, out int parsedId))
+        {
+            sessionId = parsedId;
+        }
+
+        string? noteArg = GetArg(request, "notes") ?? GetArg(request, "note");
+        if (!string.IsNullOrWhiteSpace(noteArg))
+        {
+            notes = noteArg;
+        }
+
+        if (sessionId <= 0)
+        {
+            var active = store.GetActiveMeditationSession();
+            if (active != null)
+            {
+                sessionId = active.Id;
+            }
+            else
+            {
+                return Response.Fail("Missing required argument: 'sessionId'.");
+            }
+        }
+
+        store.UpdateMeditationNotes(sessionId, notes);
+        return Response.Success("Meditation note saved.");
+    }
+
+    private static Response HandleGetMeditationHistory(Request request, IBlockStore store)
+    {
+        int limit = 50;
+        string? limitStr = GetArg(request, "limit");
+        if (!string.IsNullOrWhiteSpace(limitStr) && int.TryParse(limitStr, out int l) && l > 0)
+        {
+            limit = l;
+        }
+
+        var sessions = store.GetMeditationHistory(limit);
+        var dtos = sessions.Select(s => new MeditationHistoryItemDto
+        {
+            Id = s.Id,
+            StartUtc = s.StartUtc,
+            TargetDurationSeconds = s.TargetDurationSeconds,
+            CompletedDurationSeconds = s.CompletedDurationSeconds,
+            Completed = s.Completed,
+            Notes = s.Notes,
+            Soundscape = s.Soundscape,
+            AllowedAppsCount = s.GetAllowedApps().Count
+        }).ToList();
+
+        return Response.Success(JsonSerializer.Serialize(dtos));
+    }
+
+    private static Response HandleSaveMeditationSchedule(Request request, IBlockStore store)
+    {
+        var schedule = new MeditationSchedule();
+
+        string? payload = GetArg(request, "data") ?? GetArg(request, "payload") ?? GetArg(request, "json");
+        if (!string.IsNullOrWhiteSpace(payload))
+        {
+            try
+            {
+                var dto = JsonSerializer.Deserialize<MeditationScheduleDto>(payload);
+                if (dto != null)
+                {
+                    schedule.Id = dto.Id;
+                    schedule.Enabled = dto.Enabled;
+                    schedule.TimeOfDay = dto.TimeOfDay ?? "15:00";
+                    schedule.DurationSeconds = dto.DurationSeconds > 0 ? dto.DurationSeconds : 900;
+                    schedule.LockMode = ParseLockMode(dto.LockMode);
+                    schedule.Soundscape = dto.Soundscape;
+                    schedule.LastSnoozedUtc = dto.LastSnoozedUtc;
+                    schedule.SetAllowedApps(dto.AllowedApps ?? new());
+                    if (dto.DaysOfWeek != null && dto.DaysOfWeek.Count > 0)
+                    {
+                        var days = new List<DayOfWeek>();
+                        foreach (var d in dto.DaysOfWeek)
+                        {
+                            if (Enum.TryParse<DayOfWeek>(d, true, out var dow)) days.Add(dow);
+                        }
+                        schedule.SetDays(days);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        string? idStr = GetArg(request, "id") ?? GetArg(request, "scheduleId") ?? GetArg(request, "schedule_id");
+        if (!string.IsNullOrWhiteSpace(idStr) && int.TryParse(idStr, out int sId))
+        {
+            schedule.Id = sId;
+        }
+
+        string? enStr = GetArg(request, "enabled");
+        if (!string.IsNullOrWhiteSpace(enStr) && bool.TryParse(enStr, out bool en))
+        {
+            schedule.Enabled = en;
+        }
+
+        string? timeStr = GetArg(request, "timeOfDay") ?? GetArg(request, "time_of_day") ?? GetArg(request, "time");
+        if (!string.IsNullOrWhiteSpace(timeStr))
+        {
+            schedule.TimeOfDay = timeStr;
+        }
+
+        string? durStr = GetArg(request, "durationSeconds") ?? GetArg(request, "duration_seconds") ?? GetArg(request, "duration");
+        if (!string.IsNullOrWhiteSpace(durStr) && long.TryParse(durStr, out long dur) && dur > 0)
+        {
+            schedule.DurationSeconds = dur;
+        }
+
+        string? daysStr = GetArg(request, "daysOfWeek") ?? GetArg(request, "days_of_week") ?? GetArg(request, "days");
+        if (!string.IsNullOrWhiteSpace(daysStr))
+        {
+            var dayNames = ParseList(daysStr);
+            var days = new List<DayOfWeek>();
+            foreach (var d in dayNames)
+            {
+                if (Enum.TryParse<DayOfWeek>(d, true, out var dow)) days.Add(dow);
+            }
+            schedule.SetDays(days);
+        }
+
+        string? appsStr = GetArg(request, "allowedApps") ?? GetArg(request, "allowed_apps") ?? GetArg(request, "apps");
+        if (!string.IsNullOrWhiteSpace(appsStr))
+        {
+            schedule.SetAllowedApps(ParseList(appsStr));
+        }
+
+        string? lockStr = GetArg(request, "lockMode") ?? GetArg(request, "lock_mode") ?? GetArg(request, "mode");
+        if (!string.IsNullOrWhiteSpace(lockStr))
+        {
+            schedule.LockMode = ParseLockMode(lockStr);
+        }
+
+        string? soundStr = GetArg(request, "soundscape") ?? GetArg(request, "sound");
+        if (!string.IsNullOrWhiteSpace(soundStr))
+        {
+            schedule.Soundscape = soundStr;
+        }
+
+        var saved = store.SaveMeditationSchedule(schedule);
+        var outDto = new MeditationScheduleDto
+        {
+            Id = saved.Id,
+            Enabled = saved.Enabled,
+            DaysOfWeek = saved.GetDays().Select(d => d.ToString()).ToList(),
+            TimeOfDay = saved.TimeOfDay,
+            DurationSeconds = saved.DurationSeconds,
+            AllowedApps = saved.GetAllowedApps(),
+            LockMode = saved.LockMode.ToString(),
+            Soundscape = saved.Soundscape,
+            LastSnoozedUtc = saved.LastSnoozedUtc
+        };
+
+        return Response.Success(JsonSerializer.Serialize(outDto));
+    }
+
+    private static Response HandleGetMeditationSchedules(IBlockStore store)
+    {
+        var schedules = store.GetMeditationSchedules();
+        var dtos = schedules.Select(s => new MeditationScheduleDto
+        {
+            Id = s.Id,
+            Enabled = s.Enabled,
+            DaysOfWeek = s.GetDays().Select(d => d.ToString()).ToList(),
+            TimeOfDay = s.TimeOfDay,
+            DurationSeconds = s.DurationSeconds,
+            AllowedApps = s.GetAllowedApps(),
+            LockMode = s.LockMode.ToString(),
+            Soundscape = s.Soundscape,
+            LastSnoozedUtc = s.LastSnoozedUtc
+        }).ToList();
+
+        return Response.Success(JsonSerializer.Serialize(dtos));
+    }
+
+    private static Response HandleDeleteMeditationSchedule(Request request, IBlockStore store)
+    {
+        string? idStr = GetArg(request, "id") ?? GetArg(request, "scheduleId") ?? GetArg(request, "schedule_id");
+        if (string.IsNullOrWhiteSpace(idStr) || !int.TryParse(idStr, out int id))
+        {
+            return Response.Fail("Missing required argument: 'id'.");
+        }
+
+        bool deleted = store.DeleteMeditationSchedule(id);
+        return deleted ? Response.Success("Meditation schedule deleted.") : Response.Fail("Schedule not found.");
+    }
+
+    private static Response HandleSnoozeMeditationSchedule(Request request, IBlockStore store)
+    {
+        int scheduleId = 0;
+        string? payload = GetArg(request, "data") ?? GetArg(request, "payload") ?? GetArg(request, "json");
+        if (!string.IsNullOrWhiteSpace(payload))
+        {
+            try
+            {
+                var reqDto = JsonSerializer.Deserialize<SnoozeMeditationScheduleRequest>(payload);
+                if (reqDto != null && reqDto.ScheduleId > 0)
+                {
+                    scheduleId = reqDto.ScheduleId;
+                }
+            }
+            catch { }
+        }
+
+        string? idStr = GetArg(request, "scheduleId") ?? GetArg(request, "schedule_id") ?? GetArg(request, "id");
+        if (!string.IsNullOrWhiteSpace(idStr) && int.TryParse(idStr, out int parsedId))
+        {
+            scheduleId = parsedId;
+        }
+
+        if (scheduleId <= 0)
+        {
+            return Response.Fail("Missing required argument: 'scheduleId'.");
+        }
+
+        int minutes = 5;
+        string? minStr = GetArg(request, "minutes");
+        if (!string.IsNullOrWhiteSpace(minStr) && int.TryParse(minStr, out int m) && m > 0)
+        {
+            minutes = m;
+        }
+
+        bool snoozed = store.SnoozeMeditationSchedule(scheduleId, minutes);
+        return snoozed ? Response.Success($"Meditation schedule snoozed for {minutes} minutes.") : Response.Fail("Schedule not found.");
+    }
+
+    #endregion
 }

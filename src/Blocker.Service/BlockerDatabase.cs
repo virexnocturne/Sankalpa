@@ -132,6 +132,31 @@ public class BlockerDatabase : IBlockStore
             );
 
             INSERT OR IGNORE INTO DnsSettings (Id) VALUES (1);
+
+            CREATE TABLE IF NOT EXISTS MeditationSessions (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                StartUtc TEXT NOT NULL,
+                TargetDurationSeconds INTEGER NOT NULL,
+                CompletedDurationSeconds INTEGER NOT NULL DEFAULT 0,
+                Completed INTEGER NOT NULL DEFAULT 0,
+                Notes TEXT NULL,
+                AllowedAppsJson TEXT NOT NULL DEFAULT '[]',
+                LockMode INTEGER NOT NULL DEFAULT 0,
+                Soundscape TEXT NULL,
+                EndedUtc TEXT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS MeditationSchedules (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Enabled INTEGER NOT NULL DEFAULT 1,
+                DaysOfWeekJson TEXT NOT NULL DEFAULT '[]',
+                TimeOfDay TEXT NOT NULL DEFAULT '00:00',
+                DurationSeconds INTEGER NOT NULL DEFAULT 900,
+                AllowedAppsJson TEXT NOT NULL DEFAULT '[]',
+                LockMode INTEGER NOT NULL DEFAULT 0,
+                Soundscape TEXT NULL,
+                LastSnoozedUtc TEXT NULL
+            );
             """;
             cmd.ExecuteNonQuery();
         }
@@ -210,6 +235,25 @@ public class BlockerDatabase : IBlockStore
             {
                 using var alterCmd = connection.CreateCommand();
                 alterCmd.CommandText = "ALTER TABLE DnsSettings ADD COLUMN SecondaryIpv6 TEXT NOT NULL DEFAULT '2606:4700:4700::1003';";
+                alterCmd.ExecuteNonQuery();
+            }
+        }
+        catch { }
+
+        try
+        {
+            var medCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using var medColsCmd = connection.CreateCommand();
+            medColsCmd.CommandText = "PRAGMA table_info(MeditationSessions);";
+            using var r = medColsCmd.ExecuteReader();
+            while (r.Read())
+            {
+                medCols.Add(r.GetString(1));
+            }
+            if (medCols.Count > 0 && !medCols.Contains("EndedUtc"))
+            {
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE MeditationSessions ADD COLUMN EndedUtc TEXT NULL;";
                 alterCmd.ExecuteNonQuery();
             }
         }
@@ -929,4 +973,301 @@ public class BlockerDatabase : IBlockStore
             _cachedDnsConfig = config;
         }
     }
+
+    #region Meditation Mode & System Lockdown
+
+    private static MeditationSession ReadMeditationSession(SqliteDataReader reader)
+    {
+        return new MeditationSession
+        {
+            Id = reader.GetInt32(0),
+            StartUtc = DateTime.Parse(reader.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            TargetDurationSeconds = reader.GetInt64(2),
+            CompletedDurationSeconds = reader.GetInt64(3),
+            Completed = reader.GetInt32(4) != 0,
+            Notes = reader.IsDBNull(5) ? null : reader.GetString(5),
+            AllowedAppsJson = reader.IsDBNull(6) ? "[]" : reader.GetString(6),
+            LockMode = (LockMode)reader.GetInt32(7),
+            Soundscape = reader.IsDBNull(8) ? null : reader.GetString(8),
+            EndedUtc = reader.IsDBNull(9) ? null : DateTime.Parse(reader.GetString(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+        };
+    }
+
+    private static MeditationSchedule ReadMeditationSchedule(SqliteDataReader reader)
+    {
+        return new MeditationSchedule
+        {
+            Id = reader.GetInt32(0),
+            Enabled = reader.GetInt32(1) != 0,
+            DaysOfWeekJson = reader.IsDBNull(2) ? "[]" : reader.GetString(2),
+            TimeOfDay = reader.IsDBNull(3) ? "00:00" : reader.GetString(3),
+            DurationSeconds = reader.GetInt64(4),
+            AllowedAppsJson = reader.IsDBNull(5) ? "[]" : reader.GetString(5),
+            LockMode = (LockMode)reader.GetInt32(6),
+            Soundscape = reader.IsDBNull(7) ? null : reader.GetString(7),
+            LastSnoozedUtc = reader.IsDBNull(8) ? null : DateTime.Parse(reader.GetString(8), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+        };
+    }
+
+    public MeditationSession? GetActiveMeditationSession()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+        SELECT Id, StartUtc, TargetDurationSeconds, CompletedDurationSeconds, Completed, Notes, AllowedAppsJson, LockMode, Soundscape, EndedUtc
+        FROM MeditationSessions
+        WHERE EndedUtc IS NULL AND Completed = 0
+        ORDER BY Id DESC
+        LIMIT 1;
+        """;
+
+        using var reader = cmd.ExecuteReader();
+        if (reader.Read())
+        {
+            var session = ReadMeditationSession(reader);
+            var elapsed = (DateTime.UtcNow - session.StartUtc).TotalSeconds;
+            if (elapsed >= session.TargetDurationSeconds)
+            {
+                reader.Close();
+                EndMeditationSession(session.Id, completed: true);
+                return null;
+            }
+            return session;
+        }
+
+        return null;
+    }
+
+    public MeditationSession StartMeditationSession(long targetDurationSeconds, List<string> allowedApps, LockMode lockMode, string? soundscape)
+    {
+        var active = GetActiveMeditationSession();
+        if (active != null)
+        {
+            EndMeditationSession(active.Id, completed: false);
+        }
+
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+        INSERT INTO MeditationSessions (StartUtc, TargetDurationSeconds, CompletedDurationSeconds, Completed, Notes, AllowedAppsJson, LockMode, Soundscape, EndedUtc)
+        VALUES (@startUtc, @targetDuration, 0, 0, NULL, @allowedApps, @lockMode, @soundscape, NULL);
+        SELECT last_insert_rowid();
+        """;
+
+        var startUtc = DateTime.UtcNow;
+        string allowedJson = JsonSerializer.Serialize(allowedApps ?? new List<string>());
+
+        cmd.Parameters.AddWithValue("@startUtc", startUtc.ToString("o", CultureInfo.InvariantCulture));
+        cmd.Parameters.AddWithValue("@targetDuration", targetDurationSeconds);
+        cmd.Parameters.AddWithValue("@allowedApps", allowedJson);
+        cmd.Parameters.AddWithValue("@lockMode", (int)lockMode);
+        cmd.Parameters.AddWithValue("@soundscape", (object?)soundscape ?? DBNull.Value);
+
+        long newId = Convert.ToInt64(cmd.ExecuteScalar());
+        return new MeditationSession
+        {
+            Id = (int)newId,
+            StartUtc = startUtc,
+            TargetDurationSeconds = targetDurationSeconds,
+            CompletedDurationSeconds = 0,
+            Completed = false,
+            Notes = null,
+            AllowedAppsJson = allowedJson,
+            LockMode = lockMode,
+            Soundscape = soundscape,
+            EndedUtc = null
+        };
+    }
+
+    public void EndMeditationSession(int id, bool completed, string? finalNotes = null)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        var now = DateTime.UtcNow;
+        DateTime startUtc = now;
+        long targetSec = 0;
+
+        using (var getCmd = connection.CreateCommand())
+        {
+            getCmd.CommandText = "SELECT StartUtc, TargetDurationSeconds FROM MeditationSessions WHERE Id = @id;";
+            getCmd.Parameters.AddWithValue("@id", id);
+            using var r = getCmd.ExecuteReader();
+            if (r.Read())
+            {
+                startUtc = DateTime.Parse(r.GetString(0), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+                targetSec = r.GetInt64(1);
+            }
+            else
+            {
+                return;
+            }
+        }
+
+        long elapsedSec = (long)(now - startUtc).TotalSeconds;
+        if (elapsedSec < 0) elapsedSec = 0;
+        long completedSec = completed ? Math.Max(elapsedSec, targetSec) : elapsedSec;
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+        UPDATE MeditationSessions
+        SET Completed = @completed,
+            CompletedDurationSeconds = @completedSec,
+            EndedUtc = @endedUtc,
+            Notes = CASE WHEN @finalNotes IS NOT NULL THEN @finalNotes ELSE Notes END
+        WHERE Id = @id;
+        """;
+
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@completed", completed ? 1 : 0);
+        cmd.Parameters.AddWithValue("@completedSec", completedSec);
+        cmd.Parameters.AddWithValue("@endedUtc", now.ToString("o", CultureInfo.InvariantCulture));
+        cmd.Parameters.AddWithValue("@finalNotes", (object?)finalNotes ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void UpdateMeditationNotes(int id, string notes)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE MeditationSessions SET Notes = @notes WHERE Id = @id;";
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+
+    public List<MeditationSession> GetMeditationHistory(int limit = 50)
+    {
+        var list = new List<MeditationSession>();
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+        SELECT Id, StartUtc, TargetDurationSeconds, CompletedDurationSeconds, Completed, Notes, AllowedAppsJson, LockMode, Soundscape, EndedUtc
+        FROM MeditationSessions
+        ORDER BY Id DESC
+        LIMIT @limit;
+        """;
+        cmd.Parameters.AddWithValue("@limit", limit > 0 ? limit : 50);
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(ReadMeditationSession(reader));
+        }
+
+        return list;
+    }
+
+    public List<MeditationSchedule> GetMeditationSchedules()
+    {
+        var list = new List<MeditationSchedule>();
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+        SELECT Id, Enabled, DaysOfWeekJson, TimeOfDay, DurationSeconds, AllowedAppsJson, LockMode, Soundscape, LastSnoozedUtc
+        FROM MeditationSchedules
+        ORDER BY Id ASC;
+        """;
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(ReadMeditationSchedule(reader));
+        }
+
+        return list;
+    }
+
+    public MeditationSchedule SaveMeditationSchedule(MeditationSchedule schedule)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        if (schedule.Id > 0)
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+            UPDATE MeditationSchedules
+            SET Enabled = @enabled,
+                DaysOfWeekJson = @days,
+                TimeOfDay = @time,
+                DurationSeconds = @dur,
+                AllowedAppsJson = @apps,
+                LockMode = @lock,
+                Soundscape = @sound,
+                LastSnoozedUtc = @snoozed
+            WHERE Id = @id;
+            """;
+            cmd.Parameters.AddWithValue("@id", schedule.Id);
+            cmd.Parameters.AddWithValue("@enabled", schedule.Enabled ? 1 : 0);
+            cmd.Parameters.AddWithValue("@days", schedule.DaysOfWeekJson ?? "[]");
+            cmd.Parameters.AddWithValue("@time", schedule.TimeOfDay ?? "00:00");
+            cmd.Parameters.AddWithValue("@dur", schedule.DurationSeconds);
+            cmd.Parameters.AddWithValue("@apps", schedule.AllowedAppsJson ?? "[]");
+            cmd.Parameters.AddWithValue("@lock", (int)schedule.LockMode);
+            cmd.Parameters.AddWithValue("@sound", (object?)schedule.Soundscape ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@snoozed", schedule.LastSnoozedUtc.HasValue ? schedule.LastSnoozedUtc.Value.ToString("o", CultureInfo.InvariantCulture) : DBNull.Value);
+            cmd.ExecuteNonQuery();
+            return schedule;
+        }
+        else
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+            INSERT INTO MeditationSchedules (Enabled, DaysOfWeekJson, TimeOfDay, DurationSeconds, AllowedAppsJson, LockMode, Soundscape, LastSnoozedUtc)
+            VALUES (@enabled, @days, @time, @dur, @apps, @lock, @sound, @snoozed);
+            SELECT last_insert_rowid();
+            """;
+            cmd.Parameters.AddWithValue("@enabled", schedule.Enabled ? 1 : 0);
+            cmd.Parameters.AddWithValue("@days", schedule.DaysOfWeekJson ?? "[]");
+            cmd.Parameters.AddWithValue("@time", schedule.TimeOfDay ?? "00:00");
+            cmd.Parameters.AddWithValue("@dur", schedule.DurationSeconds);
+            cmd.Parameters.AddWithValue("@apps", schedule.AllowedAppsJson ?? "[]");
+            cmd.Parameters.AddWithValue("@lock", (int)schedule.LockMode);
+            cmd.Parameters.AddWithValue("@sound", (object?)schedule.Soundscape ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@snoozed", schedule.LastSnoozedUtc.HasValue ? schedule.LastSnoozedUtc.Value.ToString("o", CultureInfo.InvariantCulture) : DBNull.Value);
+            long newId = Convert.ToInt64(cmd.ExecuteScalar());
+            schedule.Id = (int)newId;
+            return schedule;
+        }
+    }
+
+    public bool DeleteMeditationSchedule(int id)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM MeditationSchedules WHERE Id = @id;";
+        cmd.Parameters.AddWithValue("@id", id);
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    public bool SnoozeMeditationSchedule(int id, int snoozeMinutes = 5)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+        UPDATE MeditationSchedules
+        SET LastSnoozedUtc = @snoozed
+        WHERE Id = @id;
+        """;
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@snoozed", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    #endregion
 }

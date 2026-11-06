@@ -1,0 +1,21 @@
+<Window x:Class="Blocker.App.ZenBackdropWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Zen Shield Backdrop"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="#000000"
+        WindowStartupLocation="Manual">
+    <Grid Background="#000000">
+        <!-- Subtle dark centered watermark logo with 15% opacity -->
+        <Image Source="pack://application:,,,/Assets/logo.png"
+               Width="110"
+               Height="110"
+               Opacity="0.15"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"
+               RenderOptions.BitmapScalingMode="HighQuality" />
+    </Grid>
+</Window>

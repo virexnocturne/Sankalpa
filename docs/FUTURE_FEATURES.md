@@ -31,6 +31,27 @@ This document tracks planned features, enhancements, and long-term architectural
   - **Strict Whitelist Engine**: A dedicated mode in `Worker.cs` that checks active processes against an allowed list, terminating or minimizing any non-whitelisted executable.
   - **Fail-Safes**: Monotonic timer tracking across reboots, emergency challenge support, and graceful recovery when duration elapses.
 
+---
+
+### 2. In-App Modal & Overlay Dialog System (Unified Window Experience)
+
+- **Priority**: `High`
+- **Reason for Priority Rating**: Major quality-of-life and visual polish requirement. Eliminates disjointed multi-window behavior where dialogs (such as the Block Editor) open as separate floating OS windows with native title bars (`—`, `□`, `✕`), replacing them with a seamless, modern single-window experience standard in contemporary desktop applications.
+- **Category**: UI/UX & Desktop Architecture
+- **Description**:
+  Replace standalone operating system dialog windows with an integrated in-app modal overlay system hosted inside `MainWindow`:
+  1. **Integrated Modal Presentation**: Heavy editors and dialogs (Block Editor, Appearance settings, App Picker) render as styled cards centered inside `MainWindow` instead of spawning separate Windows OS windows.
+  2. **Backdrop & Focus Trapping**: Dims/blurs the background view while a dialog is active, visually anchoring the user and keeping keyboard/tab navigation trapped within the active dialog.
+  3. **Elimination of Secondary Window Controls**: Removes OS-level minimize, maximize, and title bar drag areas from dialog screens, preventing child dialogs from being detached or moved outside the app boundaries.
+  4. **Responsive Sizing & Scrollability**: Ensures embedded dialogs adaptively fit within `MainWindow` dimensions with internal scrolling, preventing controls or action buttons from being cut off at smaller window sizes.
+- **Proposed Implementation Details**:
+  - Convert dialog windows (beginning with `BlockEditorDialog.xaml`) from `<Window>` to `<UserControl>`.
+  - Add a dedicated `<Grid x:Name="ModalHost">` overlay container in `MainWindow.xaml` featuring a semi-transparent scrim (`#80000000`) and centered modal presenter.
+  - Transition dialog invocation from blocking `ShowDialog()` calls to an asynchronous modal manager (e.g., `ShowModalAsync<TResult>(UserControl content)`) or ViewModel-driven state bindings.
+  - Implement nested modal management or hierarchical modal stack support for child dialogs (e.g., launching `AppPickerDialog` from within the Block Editor).
+
+---
+
 ### 3. Comprehensive Statistics, Screentime & Distraction Insights
 
 - **Priority**: `High`

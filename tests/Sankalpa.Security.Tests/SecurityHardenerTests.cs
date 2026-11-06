@@ -419,6 +419,7 @@ public class SecurityHardenerTests : IDisposable
     [InlineData("D:(D;;0x0020;;;BA)(D;;0x0020;;;WD)", "D:(D;;0x0020;;;BA)(D;;0x0020;;;WD)", true)]
     [InlineData("  D:(D;;0x0020;;;BA)(D;;0x0020;;;WD)\r\n", "D:(D;;0x0020;;;BA)(D;;0x0020;;;WD)", true)]
     [InlineData("O:BAG:BAD:(D;;0x0020;;;BA)(D;;0x0020;;;WD)", "D:(D;;0x0020;;;BA)(D;;0x0020;;;WD)", true)]
+    [InlineData("D:(D;;WP;;;BA)(D;;WP;;;WD)(D;;SD;;;BA)(D;;SD;;;WD)S:(AU;FA;CCDCLCSWRPWPDTLOSDRCWDWO;;;WD)", "D:(D;;0x0020;;;BA)(D;;0x0020;;;WD)(D;;0x00010000;;;BA)(D;;0x00010000;;;WD)", true)]
     [InlineData("D:(A;;FA;;;WD)", "D:(D;;0x0020;;;BA)(D;;0x0020;;;WD)", false)]
     [InlineData("", "D:(D;;0x0020;;;BA)(D;;0x0020;;;WD)", false)]
     public void VerifySddlMatch_MatchesCorrectly(string actual, string expected, bool shouldMatch)

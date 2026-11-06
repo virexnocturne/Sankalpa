@@ -58,6 +58,7 @@ public class MainViewModel : ViewModelBase
 
     private readonly UiSettings _uiSettings;
     private bool _isSettingsViewActive;
+    private bool _isMeditationViewActive;
     private string _theme = "black";
     private string _accentColor = "Emerald";
     private string _cardDensity = "Comfortable";
@@ -77,9 +78,29 @@ public class MainViewModel : ViewModelBase
     public ICommand OpenSettingsCommand { get; }
     public ICommand BackToBlocksCommand { get; }
     public ICommand ToggleSettingsCommand { get; }
+    public ICommand OpenMeditationCommand { get; }
     public ICommand DeleteBlockCommand { get; }
     public ICommand SwitchDesignThemeCommand { get; }
     public bool IsDarkMode => ThemeManager.IsDark;
+
+    public MeditationViewModel Meditation { get; }
+
+    public bool IsMeditationViewActive
+    {
+        get => _isMeditationViewActive;
+        set
+        {
+            if (SetProperty(ref _isMeditationViewActive, value))
+            {
+                if (value)
+                {
+                    _isSettingsViewActive = false;
+                    OnPropertyChanged(nameof(IsSettingsViewActive));
+                }
+                OnPropertyChanged(nameof(IsBlocksViewActive));
+            }
+        }
+    }
 
     public bool IsSettingsViewActive
     {
@@ -88,12 +109,17 @@ public class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _isSettingsViewActive, value))
             {
+                if (value)
+                {
+                    _isMeditationViewActive = false;
+                    OnPropertyChanged(nameof(IsMeditationViewActive));
+                }
                 OnPropertyChanged(nameof(IsBlocksViewActive));
             }
         }
     }
 
-    public bool IsBlocksViewActive => !_isSettingsViewActive;
+    public bool IsBlocksViewActive => !_isSettingsViewActive && !_isMeditationViewActive;
 
     public string Theme
     {
@@ -737,12 +763,41 @@ public class MainViewModel : ViewModelBase
         _timeFormat = _uiSettings.TimeFormat;
 
         // Commands
+        Meditation = new MeditationViewModel(_pipeClient);
         NewBlockCommand = new RelayCommand(() => RequestOpenEditorDialog?.Invoke(null));
         OpenExtensionDialogCommand = new RelayCommand(() => RequestOpenExtensionDialog?.Invoke());
-        OpenSettingsCommand = new RelayCommand(() => IsSettingsViewActive = true);
-        BackToBlocksCommand = new RelayCommand(() => IsSettingsViewActive = false);
-        ToggleSettingsCommand = new RelayCommand(() => IsSettingsViewActive = !IsSettingsViewActive);
-        OpenAppearanceDialogCommand = new RelayCommand(() => IsSettingsViewActive = true);
+        OpenSettingsCommand = new RelayCommand(() =>
+        {
+            IsMeditationViewActive = false;
+            IsSettingsViewActive = true;
+        });
+        BackToBlocksCommand = new RelayCommand(() =>
+        {
+            IsSettingsViewActive = false;
+            IsMeditationViewActive = false;
+        });
+        OpenMeditationCommand = new RelayCommand(() =>
+        {
+            IsSettingsViewActive = false;
+            IsMeditationViewActive = true;
+        });
+        ToggleSettingsCommand = new RelayCommand(() =>
+        {
+            if (IsSettingsViewActive)
+            {
+                IsSettingsViewActive = false;
+            }
+            else
+            {
+                IsMeditationViewActive = false;
+                IsSettingsViewActive = true;
+            }
+        });
+        OpenAppearanceDialogCommand = new RelayCommand(() =>
+        {
+            IsMeditationViewActive = false;
+            IsSettingsViewActive = true;
+        });
         EditBlockCommand = new RelayCommand<ProfileViewModel>(p =>
         {
             if (p != null && p.CanEdit)
@@ -1127,6 +1182,7 @@ public class MainViewModel : ViewModelBase
 
     public RelayCommand NewBlockCommand { get; }
     public RelayCommand OpenNewBlockDialogCommand => NewBlockCommand;
+    public RelayCommand CreateProfileCommand => NewBlockCommand;
     public RelayCommand OpenExtensionDialogCommand { get; }
     public RelayCommand<ProfileViewModel> EditBlockCommand { get; }
     public RelayCommand<ProfileViewModel> OpenLockTabCommand { get; }
@@ -1451,7 +1507,7 @@ public class MainViewModel : ViewModelBase
                     {
                         string chipText = item.NextChangeLocal.HasValue
                             ? $"{item.Name} until {UiLogic.FormatTime(item.NextChangeLocal.Value, TimeFormat)}"
-                            : $"{item.Name} (always on)";
+                            : (item.ActiveReason == "Schedule" ? $"{item.Name} (scheduled)" : $"{item.Name} (always on)");
 
                         ActiveChips.Add(new ActiveBlockChipItem
                         {

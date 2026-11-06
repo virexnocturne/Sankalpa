@@ -70,6 +70,20 @@ public static class UiLogic
         return FormatCountdown(TimeSpan.FromSeconds(totalSeconds));
     }
 
+    public static string FormatMeditationTimer(long totalSeconds)
+    {
+        if (totalSeconds < 0) totalSeconds = 0;
+        long hours = totalSeconds / 3600;
+        long minutes = (totalSeconds % 3600) / 60;
+        long seconds = totalSeconds % 60;
+
+        if (totalSeconds >= 3600)
+        {
+            return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
+        }
+        return $"{minutes:D2}:{seconds:D2}";
+    }
+
     public static string FormatTime(DateTime dateTime, string timeFormat = "24h")
     {
         return string.Equals(timeFormat, "12h", StringComparison.OrdinalIgnoreCase)
