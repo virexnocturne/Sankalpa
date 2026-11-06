@@ -24,7 +24,7 @@
         <KeyBinding Modifiers="Control+Alt" Key="M" Command="{Binding Meditation.OpenEditDialogCommand}" />
         <KeyBinding Modifiers="Control+Shift" Key="U" Command="{Binding Meditation.ToggleSoundscapeCommand}" />
         <KeyBinding Modifiers="Control" Key="N" Command="{Binding Meditation.NewNoteCommand}" />
-        <KeyBinding Modifiers="Control+Shift" Key="N" Command="{Binding Meditation.ToggleNotesDrawerCommand}" />
+
     </Window.InputBindings>
 
     <Window.Resources>
@@ -1396,13 +1396,40 @@
                                              Panel.ZIndex="10" />
 
                 <!-- Centered Focus Stage (Completely Pure) -->
-                <Grid>
+                <Grid Margin="24">
+                    <Grid.RenderTransform>
+                        <TranslateTransform X="0" />
+                    </Grid.RenderTransform>
                     <Grid.Style>
                         <Style TargetType="Grid">
-                            <Setter Property="Margin" Value="24" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding Meditation.IsNotesDrawerOpen}" Value="True">
-                                    <Setter Property="Margin" Value="24,24,340,24" />
+                                    <DataTrigger.EnterActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                                 To="-170"
+                                                                 Duration="0:0:0.22">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <CubicEase EasingMode="EaseInOut" />
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </DataTrigger.EnterActions>
+                                    <DataTrigger.ExitActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                                 To="0"
+                                                                 Duration="0:0:0.22">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <CubicEase EasingMode="EaseInOut" />
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </DataTrigger.ExitActions>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -1491,7 +1518,8 @@
                 </Grid>
 
                 <!-- Right-Edge Slide-Out Notes Drawer -->
-                <local:NotesDrawerControl DataContext="{Binding Meditation}"
+                <local:NotesDrawerControl x:Name="NotesDrawer"
+                                          DataContext="{Binding Meditation}"
                                           IsDrawerOpen="{Binding Meditation.IsNotesDrawerOpen, Mode=TwoWay}"
                                           HorizontalAlignment="Right"
                                           VerticalAlignment="Stretch"

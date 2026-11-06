@@ -21,6 +21,7 @@ using Rectangle = System.Windows.Shapes.Rectangle;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using Cursors = System.Windows.Input.Cursors;
 using DataObject = System.Windows.DataObject;
+using DispatcherPriority = System.Windows.Threading.DispatcherPriority;
 
 namespace Blocker.App;
 
@@ -164,6 +165,21 @@ public partial class NotesDrawerControl : System.Windows.Controls.UserControl
     private void ComposerPreviewTab_Click(object sender, RoutedEventArgs e)
     {
         SwitchComposerToPreviewMode();
+    }
+
+    public void FocusComposer()
+    {
+        SwitchComposerToEditMode();
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            SwitchComposerToEditMode();
+            if (MarkdownBox != null)
+            {
+                MarkdownBox.Focus();
+                Keyboard.Focus(MarkdownBox);
+                MarkdownBox.CaretIndex = MarkdownBox.Text.Length;
+            }
+        }));
     }
 
     private void SwitchComposerToEditMode()
@@ -797,10 +813,13 @@ public partial class NotesDrawerControl : System.Windows.Controls.UserControl
             }
             else if (e.PropertyName == nameof(MeditationViewModel.IsComposerOpen))
             {
-                if (vm.IsComposerOpen && MarkdownBox != null)
+                if (vm.IsComposerOpen)
                 {
-                    MarkdownBox.Text = vm.ComposerMarkdown ?? string.Empty;
-                    SwitchComposerToEditMode();
+                    if (MarkdownBox != null)
+                    {
+                        MarkdownBox.Text = vm.ComposerMarkdown ?? string.Empty;
+                    }
+                    FocusComposer();
                 }
             }
         }
