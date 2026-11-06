@@ -131,23 +131,31 @@ public partial class MainWindow : Window
                 }
             }
 
-            // Ctrl + N: New Note
+            // Ctrl + N: New Note (Opens drawer and focuses composer)
             if (e.Key == Key.N && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & (ModifierKeys.Shift | ModifierKeys.Alt)) == 0)
             {
                 if (_viewModel.Meditation != null)
                 {
+                    _viewModel.IsSettingsViewActive = false;
+                    _viewModel.IsMeditationViewActive = true;
                     _viewModel.Meditation.IsNotesDrawerOpen = true;
                     _viewModel.Meditation.NewNoteCommand?.Execute(null);
+                    NotesDrawer?.FocusComposer();
                     e.Handled = true;
                     return;
                 }
             }
 
             // Ctrl + Shift + N: Toggle Notes Drawer
-            if (e.Key == Key.N && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift))
+            if (e.Key == Key.N && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift) && (Keyboard.Modifiers & ModifierKeys.Alt) == 0)
             {
                 if (_viewModel.Meditation != null)
                 {
+                    if (!_viewModel.Meditation.IsNotesDrawerOpen)
+                    {
+                        _viewModel.IsSettingsViewActive = false;
+                        _viewModel.IsMeditationViewActive = true;
+                    }
                     _viewModel.Meditation.ToggleNotesDrawerCommand?.Execute(null);
                     e.Handled = true;
                     return;

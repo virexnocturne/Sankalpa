@@ -203,9 +203,45 @@ Contemplating silent awareness.";
         Assert.Contains("FontSize=\"{DynamicResource FontSize72}\"", xaml);
         Assert.Contains("Padding=\"48,28\"", xaml);
 
-        // Dynamic side-shift when Notes drawer is open
+        // Smooth side-shift animation when Notes drawer is open (no violent snapping)
         Assert.Contains("Binding=\"{Binding Meditation.IsNotesDrawerOpen}\"", xaml);
-        Assert.Contains("Value=\"24,24,340,24\"", xaml);
+        Assert.Contains("TranslateTransform", xaml);
+        Assert.Contains("To=\"-170\"", xaml);
+        Assert.DoesNotContain("Value=\"24,24,340,24\"", xaml);
+    }
+
+    [Fact]
+    public void MainWindow_Shortcuts_NoDuplicateKeyBindingForToggleNotesDrawer()
+    {
+        string root = GetRepoRoot();
+        string mainWindowXaml = Path.Combine(root, "src", "Blocker.App", "MainWindow.xaml");
+        string mainWindowCs = Path.Combine(root, "src", "Blocker.App", "MainWindow.xaml.cs");
+        Assert.True(File.Exists(mainWindowXaml));
+        Assert.True(File.Exists(mainWindowCs));
+
+        string xaml = File.ReadAllText(mainWindowXaml);
+        string cs = File.ReadAllText(mainWindowCs);
+
+        // MainWindow.xaml should NOT have a duplicate KeyBinding for ToggleNotesDrawerCommand
+        Assert.DoesNotContain("Command=\"{Binding Meditation.ToggleNotesDrawerCommand}\"", xaml);
+
+        // MainWindow.xaml.cs should handle Ctrl+Shift+N and Ctrl+N cleanly
+        Assert.Contains("ToggleNotesDrawerCommand", cs);
+        Assert.Contains("FocusComposer", cs);
+        Assert.Contains("CancelNoteComposerCommand", cs);
+    }
+
+    [Fact]
+    public void NotesDrawerControl_HasFocusComposerMethod_ForFastKeyboardNoteEntry()
+    {
+        string root = GetRepoRoot();
+        string drawerCs = Path.Combine(root, "src", "Blocker.App", "NotesDrawerControl.xaml.cs");
+        Assert.True(File.Exists(drawerCs));
+
+        string cs = File.ReadAllText(drawerCs);
+        Assert.Contains("public void FocusComposer()", cs);
+        Assert.Contains("MarkdownBox.Focus()", cs);
+        Assert.Contains("Keyboard.Focus(MarkdownBox)", cs);
     }
 
     [Fact]
