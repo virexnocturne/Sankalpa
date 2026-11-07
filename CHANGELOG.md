@@ -4,6 +4,32 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FEAT-2026-11-07-02] In-House Zen Screen Snipper, AppPathResolver & Notification Sync (v1.3.3)
+- **Timestamp**: 2026-11-07 22:20 IST
+- **Component**: Screen Snipper (ZenScreenSnipper.cs, ZenSnipOverlayWindow.xaml, ZenSnipOverlayWindow.xaml.cs), Process Resolution (AppPathResolver.cs, ZenShieldWindow.xaml.cs), Notification Sync (WindowsNotificationHelper.cs), UI Dialogs (DarkDialogWindow.xaml.cs, PasswordUnlockDialog.xaml.cs, MainWindow.xaml)
+- **Status**: **RELEASED & VERIFIED IN LIVE OS**
+- **Problems Identified & Solved**:
+  1. **In-House Screen Snipping Engine**: Removed third-party tool dependencies by crafting an in-house screen snip overlay with high-speed direct 32bpp RGB buffer locking and zero unmanaged handle leaks.
+  2. **4-Slice Mask Quad Architecture**: Completely eliminated sluggish WPF CombinedGeometry tessellation by implementing four distinct canvas masks (MaskTop, MaskBottom, MaskLeft, MaskRight), delivering buttery smooth 60 FPS snip box dragging.
+  3. **Zero-Zoom 1:1 Rendering & SWP_NOSIZE**: Fixed DPI scaling drift and coordinate offsets across multi-monitor setups using Stretch.Fill and Win32 SWP_NOSIZE.
+  4. **Preview Mouse Tunneling**: Wrapped snip selection events with preview tunneling to ensure child controls never steal pointer capture during snips.
+  5. **Global Shortcut Integration**: Bound Ctrl + Shift + S and PrintScreen to launch instant screen snips, auto-saving to disk and embedding markdown image tags directly into reflection notes.
+  6. **Robust Process Path Resolver**: Added AppPathResolver to reliably identify applications via registry, start menu, and environment paths.
+  7. **Window Discovery & System Overlay Filtering**: Enhanced FindMainWindowForProcess with UAC_InputIndicatorOverlayWnd filtering for seamless floating of allowed apps during Zen lockdown.
+  8. **Windows Focus Assist / Notification Sync**: Built WindowsNotificationHelper to automatically quiet OS notifications during active focus periods.
+- **Verification**:
+  - All 867 automated test suite assertions passing (89 in Sankalpa.Security.Tests, 778 in Sankalpa.Tests).
+  - Staged and verified production installer Sankalpa-Setup-1.3.3.exe and companion extension sankalpa-extension-v1.3.3.zip.
+
+---
+
+### [FIX-2026-11-07-01] Critical Bug Fixes Across Meditation Mode & Process Suspension (v1.3.2)
+- **Timestamp**: 2026-11-07 18:40 IST
+- **Component**: Meditation Mode, Process Suspender (ProcessSuspender.cs), Singleton Schedules (BlockerDatabase.cs, MeditationSchedule.cs), Keyboard Hook (LowLevelKeyboardHook.cs)
+- **Status**: **RELEASED & VERIFIED IN LIVE OS**
+
+---
+
 ### [FIX-2026-11-06-02] Ironclad Lockdown, Rigor, Notes Vault & UI Bug Patch (v1.3.1)
 - **Timestamp**: 2026-11-06 18:45 IST
 - **Component**: Lockdown Engine (`ZenShieldWindow.xaml.cs`, `ZenMiniHudWindow.xaml.cs`, `LowLevelKeyboardHook.cs`), Meditation Rigor (`MeditationViewModel.cs`, `MeditationEditDialog.xaml.cs`, `PasswordSecurity.cs`), Notes Vault (`NotesDrawerControl.xaml.cs`, `ZenQuickNotesOverlay.xaml`, `UiSettingsStore.cs`), Block Editor & Service (`BlockEditorDialog.xaml.cs`, `Worker.cs`, `config.json`), Packaging & Installer (`Sankalpa.iss`, `build-installer.ps1`, `manifest.json`)

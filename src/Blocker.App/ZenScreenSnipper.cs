@@ -17,12 +17,9 @@ namespace Blocker.App;
 /// </summary>
 public static class ZenScreenSnipper
 {
-    [DllImport("gdi32.dll")]
-    private static extern bool DeleteObject(IntPtr hObject);
-
     /// <summary>
     /// Captures the full virtual desktop (all monitors combined) into an immutable BitmapSource.
-    /// Safely frees unmanaged GDI handles immediately.
+    /// Uses high-performance direct buffer locking without intermediate GDI bitmap handle allocations.
     /// </summary>
     public static BitmapSource? CaptureVirtualScreen()
     {
@@ -38,26 +35,34 @@ public static class ZenScreenSnipper
                 return null;
             }
 
-            using var bmp = new System.Drawing.Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using var bmp = new System.Drawing.Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
             using (var g = System.Drawing.Graphics.FromImage(bmp))
             {
                 g.CopyFromScreen(left, top, 0, 0, new System.Drawing.Size(width, height), System.Drawing.CopyPixelOperation.SourceCopy);
             }
 
-            IntPtr hBitmap = bmp.GetHbitmap();
+            var bmpData = bmp.LockBits(
+                new System.Drawing.Rectangle(0, 0, width, height),
+                System.Drawing.Imaging.ImageLockMode.ReadOnly,
+                System.Drawing.Imaging.PixelFormat.Format32bppRgb);
             try
             {
-                var source = Imaging.CreateBitmapSourceFromHBitmap(
-                    hBitmap,
-                    IntPtr.Zero,
-                    Int32Rect.Empty,
-                    BitmapSizeOptions.FromEmptyOptions());
+                var source = BitmapSource.Create(
+                    width,
+                    height,
+                    96,
+                    96,
+                    System.Windows.Media.PixelFormats.Bgr32,
+                    null,
+                    bmpData.Scan0,
+                    bmpData.Stride * height,
+                    bmpData.Stride);
                 source.Freeze();
                 return source;
             }
             finally
             {
-                DeleteObject(hBitmap);
+                bmp.UnlockBits(bmpData);
             }
         }
         catch (Exception ex)

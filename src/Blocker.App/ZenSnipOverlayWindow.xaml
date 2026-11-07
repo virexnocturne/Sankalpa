@@ -11,22 +11,29 @@
         WindowStartupLocation="Manual">
     
     <Grid x:Name="RootGrid" Background="Transparent" Cursor="Cross"
-          MouseLeftButtonDown="RootGrid_MouseLeftButtonDown"
-          MouseMove="RootGrid_MouseMove"
-          MouseLeftButtonUp="RootGrid_MouseLeftButtonUp">
+          PreviewMouseLeftButtonDown="RootGrid_PreviewMouseLeftButtonDown"
+          PreviewMouseMove="RootGrid_PreviewMouseMove"
+          PreviewMouseLeftButtonUp="RootGrid_PreviewMouseLeftButtonUp"
+          LostMouseCapture="RootGrid_LostMouseCapture">
         
-        <!-- Frozen Screen Background Image -->
-        <Image x:Name="BackgroundImage" Stretch="None" HorizontalAlignment="Left" VerticalAlignment="Top" />
+        <!-- Frozen Screen Background Image: mapped 1:1 with screen DIP dimensions (Zero Zoom) -->
+        <Image x:Name="BackgroundImage" Stretch="Fill" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False" />
 
-        <!-- Dimming Mask with Cutout -->
-        <Path x:Name="MaskPath" Fill="{DynamicResource Bg}" Opacity="0.55" />
+        <!-- Dimming Mask Rectangles (4-slice overlay: buttery smooth, zero geometry tessellation) -->
+        <Canvas x:Name="MaskCanvas" IsHitTestVisible="False">
+            <Border x:Name="MaskTop" Background="{DynamicResource Bg}" Opacity="0.55" IsHitTestVisible="False" />
+            <Border x:Name="MaskBottom" Background="{DynamicResource Bg}" Opacity="0.55" IsHitTestVisible="False" />
+            <Border x:Name="MaskLeft" Background="{DynamicResource Bg}" Opacity="0.55" IsHitTestVisible="False" />
+            <Border x:Name="MaskRight" Background="{DynamicResource Bg}" Opacity="0.55" IsHitTestVisible="False" />
+        </Canvas>
 
         <!-- Selection Rubberband Border -->
-        <Canvas x:Name="OverlayCanvas">
+        <Canvas x:Name="OverlayCanvas" IsHitTestVisible="False">
             <Border x:Name="SelectionBorder"
                     BorderBrush="{DynamicResource Accent}"
                     BorderThickness="1.5"
                     Background="Transparent"
+                    IsHitTestVisible="False"
                     Visibility="Collapsed">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="{DynamicResource ColorAccent}" Opacity="0.6" />
@@ -40,8 +47,9 @@
                     BorderThickness="1"
                     CornerRadius="6"
                     Padding="10,5"
+                    IsHitTestVisible="False"
                     Visibility="Collapsed">
-                <StackPanel Orientation="Horizontal">
+                <StackPanel Orientation="Horizontal" IsHitTestVisible="False">
                     <TextBlock x:Name="DimensionText"
                                Text="0 × 0"
                                FontFamily="{DynamicResource FontMono}"

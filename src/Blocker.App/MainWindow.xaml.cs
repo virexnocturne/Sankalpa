@@ -165,7 +165,7 @@ public partial class MainWindow : Window
             // Ctrl + Shift + S or PrintScreen: Trigger Snip
             if (((e.Key == Key.S && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)) || e.Key == Key.Snapshot) && (Keyboard.Modifiers & ModifierKeys.Alt) == 0)
             {
-                if (_viewModel.Meditation != null && _viewModel.Meditation.IsNotesDrawerOpen)
+                if (true)
                 {
                     ZenScreenSnipper.StartSnip(this, (filePath, markdownTag) =>
                     {

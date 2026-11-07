@@ -172,5 +172,48 @@ public class AppPathResolverAndKioskTests
 
         // 5. Mini-HUD only launched when allowed window discovered or activated
         Assert.Contains("ShowMiniHud();", code);
+
+        // 6. Robust FindMainWindowForProcess window discovery
+        Assert.Contains("FindMainWindowForProcess", code);
+        Assert.Contains("UAC_InputIndicatorOverlayWnd", code);
+    }
+
+    [Fact]
+    public void MainWindow_Settings_ListsScreenSnipShortcut()
+    {
+        string root = GetRepoRoot();
+        string mainWindowXaml = Path.Combine(root, "src", "Blocker.App", "MainWindow.xaml");
+        Assert.True(File.Exists(mainWindowXaml));
+
+        string code = File.ReadAllText(mainWindowXaml);
+        Assert.Contains("Screen Snip Tool", code);
+        Assert.Contains("Ctrl + Shift + S", code);
+    }
+
+    [Fact]
+    public void ZenSnipOverlay_HasZeroZoomAndZeroGeometryTessellation()
+    {
+        string root = GetRepoRoot();
+        string xamlPath = Path.Combine(root, "src", "Blocker.App", "ZenSnipOverlayWindow.xaml");
+        Assert.True(File.Exists(xamlPath));
+
+        string xaml = File.ReadAllText(xamlPath);
+        // Verify 4-slice mask
+        Assert.Contains("MaskTop", xaml);
+        Assert.Contains("MaskBottom", xaml);
+        Assert.Contains("MaskLeft", xaml);
+        Assert.Contains("MaskRight", xaml);
+        // Verify HitTest protection
+        Assert.Contains("IsHitTestVisible=\"False\"", xaml);
+        // Verify preview mouse tunneling
+        Assert.Contains("PreviewMouseLeftButtonDown", xaml);
+        Assert.Contains("PreviewMouseLeftButtonUp", xaml);
+
+        string csPath = Path.Combine(root, "src", "Blocker.App", "ZenSnipOverlayWindow.xaml.cs");
+        Assert.True(File.Exists(csPath));
+        string cs = File.ReadAllText(csPath);
+        // Verify zero zoom stretch fill and 1:1 DIP matching
+        Assert.Contains("Stretch.Fill", cs);
+        Assert.Contains("SWP_NOSIZE", cs);
     }
 }

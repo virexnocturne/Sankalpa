@@ -1534,6 +1534,27 @@
 
                             <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,12" />
 
+                            <!-- Ctrl + Shift + S -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Screen Snip Tool" FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,3" />
+                                    <TextBlock Text="Capture screen snips or notes attachments during meditation and focus sessions."
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                                    <TextBlock Text="Ctrl + Shift + S" FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,12" />
+
                             <!-- Esc -->
                             <Grid>
                                 <Grid.ColumnDefinitions>

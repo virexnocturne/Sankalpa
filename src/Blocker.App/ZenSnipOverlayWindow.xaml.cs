@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -16,6 +17,8 @@ public partial class ZenSnipOverlayWindow : Window
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
     private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_SHOWWINDOW = 0x0040;
 
     private readonly BitmapSource _capturedSource;
@@ -39,17 +42,12 @@ public partial class ZenSnipOverlayWindow : Window
 
     private void ZenSnipOverlayWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        // 1. Determine DPI Scaling
-        var source = PresentationSource.FromVisual(this);
-        if (source?.CompositionTarget != null)
-        {
-            _dpiX = source.CompositionTarget.TransformToDevice.M11;
-            _dpiY = source.CompositionTarget.TransformToDevice.M22;
-            if (_dpiX <= 0) _dpiX = 1.0;
-            if (_dpiY <= 0) _dpiY = 1.0;
-        }
+        // 1. Determine accurate monitor DPI scaling
+        var dpi = VisualTreeHelper.GetDpi(this);
+        _dpiX = dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1.0;
+        _dpiY = dpi.DpiScaleY > 0 ? dpi.DpiScaleY : 1.0;
 
-        // 2. Position accurately over the Virtual Screen across all displays
+        // 2. Position accurately over Virtual Screen (all monitors combined) in WPF DIPs
         int vLeft = SystemInformation.VirtualScreen.Left;
         int vTop = SystemInformation.VirtualScreen.Top;
         int vWidth = SystemInformation.VirtualScreen.Width;
@@ -60,10 +58,16 @@ public partial class ZenSnipOverlayWindow : Window
         Width = vWidth / _dpiX;
         Height = vHeight / _dpiY;
 
+        // 3. Size BackgroundImage strictly to match overlay DIP dimensions
+        // When rendered at screen DPI, this maps 1:1 with physical desktop pixels (Zero Zoom)
+        BackgroundImage.Width = Width;
+        BackgroundImage.Height = Height;
+        BackgroundImage.Stretch = Stretch.Fill;
+
         var handle = new WindowInteropHelper(this).Handle;
         if (handle != IntPtr.Zero)
         {
-            SetWindowPos(handle, HWND_TOPMOST, vLeft, vTop, vWidth, vHeight, SWP_SHOWWINDOW);
+            SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
         }
 
         UpdateSelection(Rect.Empty);
@@ -79,22 +83,38 @@ public partial class ZenSnipOverlayWindow : Window
         else if (e.Key == Key.Enter || e.Key == Key.Space)
         {
             e.Handled = true;
-            // Fullscreen capture
-            CommitCrop(new Rect(0, 0, ActualWidth, ActualHeight));
+            if (_currentRect.Width > 5 && _currentRect.Height > 5)
+            {
+                CommitCrop(_currentRect);
+            }
+            else
+            {
+                double actW = ActualWidth > 0 ? ActualWidth : Width;
+                double actH = ActualHeight > 0 ? ActualHeight : Height;
+                CommitCrop(new Rect(0, 0, actW, actH));
+            }
         }
     }
 
-    private void RootGrid_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void RootGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _startPoint = e.GetPosition(RootGrid);
         _isSelecting = true;
         RootGrid.CaptureMouse();
         UpdateSelection(new Rect(_startPoint, new System.Windows.Size(0, 0)));
+        e.Handled = true;
     }
 
-    private void RootGrid_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    private void RootGrid_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (!_isSelecting) return;
+
+        // If mouse/touchpad button was released during drag, commit immediately
+        if (e.LeftButton == MouseButtonState.Released)
+        {
+            FinishSelection();
+            return;
+        }
 
         var currentPoint = e.GetPosition(RootGrid);
         double x = Math.Min(_startPoint.X, currentPoint.X);
@@ -105,10 +125,24 @@ public partial class ZenSnipOverlayWindow : Window
         UpdateSelection(new Rect(x, y, w, h));
     }
 
-    private void RootGrid_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private void RootGrid_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (!_isSelecting) return;
+        FinishSelection();
+        e.Handled = true;
+    }
 
+    private void RootGrid_LostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_isSelecting)
+        {
+            FinishSelection();
+        }
+    }
+
+    private void FinishSelection()
+    {
+        if (!_isSelecting) return;
         _isSelecting = false;
         RootGrid.ReleaseMouseCapture();
 
@@ -128,19 +162,41 @@ public partial class ZenSnipOverlayWindow : Window
 
         double actW = ActualWidth > 0 ? ActualWidth : Width;
         double actH = ActualHeight > 0 ? ActualHeight : Height;
-        var fullRect = new RectangleGeometry(new Rect(0, 0, actW, actH));
 
         if (rect.Width > 0 && rect.Height > 0)
         {
-            var cutout = new RectangleGeometry(rect);
-            MaskPath.Data = new CombinedGeometry(GeometryCombineMode.Exclude, fullRect, cutout);
+            // Top mask
+            System.Windows.Controls.Canvas.SetLeft(MaskTop, 0);
+            System.Windows.Controls.Canvas.SetTop(MaskTop, 0);
+            MaskTop.Width = actW;
+            MaskTop.Height = Math.Max(0, rect.Top);
 
+            // Bottom mask
+            System.Windows.Controls.Canvas.SetLeft(MaskBottom, 0);
+            System.Windows.Controls.Canvas.SetTop(MaskBottom, rect.Bottom);
+            MaskBottom.Width = actW;
+            MaskBottom.Height = Math.Max(0, actH - rect.Bottom);
+
+            // Left mask
+            System.Windows.Controls.Canvas.SetLeft(MaskLeft, 0);
+            System.Windows.Controls.Canvas.SetTop(MaskLeft, rect.Top);
+            MaskLeft.Width = Math.Max(0, rect.Left);
+            MaskLeft.Height = rect.Height;
+
+            // Right mask
+            System.Windows.Controls.Canvas.SetLeft(MaskRight, rect.Right);
+            System.Windows.Controls.Canvas.SetTop(MaskRight, rect.Top);
+            MaskRight.Width = Math.Max(0, actW - rect.Right);
+            MaskRight.Height = rect.Height;
+
+            // Selection border
             SelectionBorder.Visibility = Visibility.Visible;
             System.Windows.Controls.Canvas.SetLeft(SelectionBorder, rect.Left);
             System.Windows.Controls.Canvas.SetTop(SelectionBorder, rect.Top);
             SelectionBorder.Width = rect.Width;
             SelectionBorder.Height = rect.Height;
 
+            // Info badge
             InfoBadge.Visibility = Visibility.Visible;
             int pxW = (int)Math.Round(rect.Width * _dpiX);
             int pxH = (int)Math.Round(rect.Height * _dpiY);
@@ -157,7 +213,18 @@ public partial class ZenSnipOverlayWindow : Window
         }
         else
         {
-            MaskPath.Data = fullRect;
+            System.Windows.Controls.Canvas.SetLeft(MaskTop, 0);
+            System.Windows.Controls.Canvas.SetTop(MaskTop, 0);
+            MaskTop.Width = actW;
+            MaskTop.Height = actH;
+
+            MaskBottom.Width = 0;
+            MaskBottom.Height = 0;
+            MaskLeft.Width = 0;
+            MaskLeft.Height = 0;
+            MaskRight.Width = 0;
+            MaskRight.Height = 0;
+
             SelectionBorder.Visibility = Visibility.Collapsed;
             InfoBadge.Visibility = Visibility.Collapsed;
         }

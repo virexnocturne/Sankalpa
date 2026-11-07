@@ -5,7 +5,7 @@
 
 #define MyAppName "Sankalpa"
 #ifndef MyAppVersion
-#define MyAppVersion "1.3.2"
+#define MyAppVersion "1.3.3"
 #endif
 #define MyAppPublisher "Sankalpa"
 #define MyAppURL "https://github.com/virex/Sankalpa"

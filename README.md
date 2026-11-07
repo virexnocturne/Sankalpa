@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.3.1" /></a>
+  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.3.3" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64)-blue?logo=windows" alt="Platform: Windows" />
   <img src="https://img.shields.io/badge/Framework-.NET%208.0%20WPF-purple?logo=dotnet" alt=".NET 8" />
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20%26%20Local-success?logo=shield" alt="Privacy First" />
@@ -22,6 +22,17 @@
 <p align="center">
   <img src="docs/screenshots/dashboard-black.png" alt="Sankalpa Dashboard - Obsidian Black Theme" width="850" />
 </p>
+
+---
+
+## 🌟 What's New in v1.3.3 (In-House Zen Snipper & System Ergonomics)
+
+- ✂️ **In-House Zen Screen Snipper (`Ctrl + Shift + S` / `PrintScreen`)**: Instant, hardware-accelerated screen capture with quad-slice canvas masking (`MaskTop`, `MaskBottom`, `MaskLeft`, `MaskRight`), zero WPF geometry tessellation overhead, and direct 32bpp RGB buffer locking.
+- 📐 **Zero-Zoom 1:1 Rendering & Mixed DPI Support**: High-precision snipping across multi-monitor displays with zero scale drift using `Stretch.Fill` and Win32 `SWP_NOSIZE`.
+- 📁 **Seamless Notes Image Integration**: Captures are immediately converted and referenced as markdown attachments (`![snip](...)`) inside active reflection notes and Obsidian vault backups.
+- 🔎 **Robust AppPathResolver**: Non-intrusive executable discovery across registry, system PATH, and Start Menu with `UAC_InputIndicatorOverlayWnd` filtering for smooth whitelisted app floating.
+- 🔕 **Windows Focus Assist & Notification Sync**: Automatically quiets Windows toasts and distraction banners during meditation sessions.
+- 🎨 **Polished Dialog Ergonomics**: Upgraded dialog interfaces with uniform dark themes, centered modals, and intuitive `Enter`/`Esc` key handling.
 
 ---
 

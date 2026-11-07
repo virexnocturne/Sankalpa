@@ -140,6 +140,28 @@ public partial class ZenShieldWindow : Window
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
     private static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
     private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
     private static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
@@ -779,45 +801,128 @@ public partial class ZenShieldWindow : Window
 
 
 
+    /// <summary>
+    /// Robust, non-caching top-level window locator for processes.
+    /// Filters out dummy, UAC, tooltip, and IME windows (e.g. UAC_InputIndicatorOverlayWnd, QTrayIconMessageWindowClass),
+    /// correctly returning the primary application window for VLC, Notepad, Obsidian, etc.
+    /// </summary>
+    public static IntPtr FindMainWindowForProcess(string processName, int? targetPid = null)
+    {
+        string normTarget = ProcessMatcher.NormalizeProcessName(processName);
+        IntPtr bestHwnd = IntPtr.Zero;
+        long bestArea = 0;
+
+        try
+        {
+            EnumWindows((hWnd, lParam) =>
+            {
+                if (!IsWindow(hWnd) || !IsWindowVisible(hWnd))
+                    return true;
+
+                GetWindowThreadProcessId(hWnd, out uint pid);
+                if (pid == 0) return true;
+
+                bool pidMatch = (targetPid.HasValue && pid == (uint)targetPid.Value);
+                bool nameMatch = false;
+
+                if (!pidMatch)
+                {
+                    try
+                    {
+                        using var p = Process.GetProcessById((int)pid);
+                        string normProc = ProcessMatcher.NormalizeProcessName(p.ProcessName);
+                        if (string.Equals(normProc, normTarget, StringComparison.OrdinalIgnoreCase))
+                        {
+                            nameMatch = true;
+                        }
+                    }
+                    catch { }
+                }
+
+                if (!pidMatch && !nameMatch)
+                    return true;
+
+                // Exclude known dummy / indicator / tool / IME classes
+                var sbClass = new System.Text.StringBuilder(128);
+                GetClassName(hWnd, sbClass, sbClass.Capacity);
+                string cls = sbClass.ToString();
+
+                if (cls.StartsWith("UAC_", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cls, "UAC Input Indicator", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cls, "Touch Tooltip Window", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cls, "CicLoaderWndClass", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cls, "CiceroUIWndFrame", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cls, "MSCTFIME UI", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cls, "Default IME", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cls, "IME", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cls, "Static", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cls, "GDI+ Hook Window Class", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cls, "QTrayIconMessageWindowClass", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (GetWindowRect(hWnd, out RECT r))
+                {
+                    int w = r.Right - r.Left;
+                    int h = r.Bottom - r.Top;
+                    if (w >= 100 && h >= 100)
+                    {
+                        long area = (long)w * h;
+                        var sbTitle = new System.Text.StringBuilder(256);
+                        GetWindowText(hWnd, sbTitle, sbTitle.Capacity);
+                        bool hasTitle = sbTitle.Length > 0;
+
+                        // Prefer windows with actual titles, or largest area
+                        if (hasTitle && area > bestArea)
+                        {
+                            bestArea = area;
+                            bestHwnd = hWnd;
+                        }
+                        else if (bestHwnd == IntPtr.Zero && area > bestArea)
+                        {
+                            bestArea = area;
+                            bestHwnd = hWnd;
+                        }
+                    }
+                }
+
+                return true;
+            }, IntPtr.Zero);
+        }
+        catch { }
+
+        return bestHwnd;
+    }
+
     public async void SwitchToAllowedApp(WhitelistedAppItem app)
     {
         if (_isSwitchingAllowedApp) return;
         _isSwitchingAllowedApp = true;
+        _isAllowedAppMode = true;
         _unauthorizedBreachCount = 0;
 
         try
         {
+            // Immediately bring up Mini-HUD so the user sees instant feedback
+            ShowMiniHud();
+
             string processName = app.ExecutableName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
                 ? app.ExecutableName[..^4]
                 : app.ExecutableName;
 
-            var runningProcesses = Process.GetProcessesByName(processName);
-            IntPtr targetHwnd = IntPtr.Zero;
-
-            foreach (var proc in runningProcesses)
-            {
-                try
-                {
-                    if (proc.MainWindowHandle != IntPtr.Zero && IsWindow(proc.MainWindowHandle))
-                    {
-                        targetHwnd = proc.MainWindowHandle;
-                        break;
-                    }
-                }
-                catch { }
-            }
-
+            // 1. Check if application window is already running and accessible
+            IntPtr targetHwnd = FindMainWindowForProcess(processName);
             if (targetHwnd != IntPtr.Zero)
             {
                 _lastAllowedAppHwnd = targetHwnd;
-                SetWindowPos(targetHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
                 ShowWindow(targetHwnd, SW_RESTORE);
+                SetWindowPos(targetHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
                 SetForegroundWindow(targetHwnd);
-                ShowMiniHud();
                 return;
             }
 
-            // Not running or has no main window yet. Resolve full executable path!
+            // 2. Not running or has no main window yet. Resolve full executable path and launch!
             string? resolvedPath = AppPathResolver.ResolveExecutablePath(app.ExecutableName);
             string launchTarget = !string.IsNullOrWhiteSpace(resolvedPath) ? resolvedPath : app.ExecutableName;
 
@@ -835,53 +940,28 @@ public partial class ZenShieldWindow : Window
                 return;
             }
 
-            // Asynchronous top-level window discovery (up to 5.0 seconds)
+            int? launchedPid = null;
+            try { if (launchedProc != null && !launchedProc.HasExited) launchedPid = launchedProc.Id; } catch { }
+
+            // 3. Asynchronous top-level window discovery (up to 5.0 seconds)
             IntPtr discoveredHwnd = IntPtr.Zero;
             for (int i = 0; i < 50; i++)
             {
                 await Task.Delay(100);
 
-                // 1. Check launched process if handle is valid
-                if (launchedProc != null)
+                discoveredHwnd = FindMainWindowForProcess(processName, launchedPid);
+                if (discoveredHwnd != IntPtr.Zero)
                 {
-                    try
-                    {
-                        if (launchedProc.MainWindowHandle != IntPtr.Zero && IsWindow(launchedProc.MainWindowHandle))
-                        {
-                            discoveredHwnd = launchedProc.MainWindowHandle;
-                            break;
-                        }
-                    }
-                    catch { }
+                    break;
                 }
-
-                // 2. Check running processes by name (handles Electron / launcher worker processes)
-                try
-                {
-                    var procs = Process.GetProcessesByName(processName);
-                    foreach (var p in procs)
-                    {
-                        using (p)
-                        {
-                            if (p.MainWindowHandle != IntPtr.Zero && IsWindow(p.MainWindowHandle) && IsWindowVisible(p.MainWindowHandle))
-                            {
-                                discoveredHwnd = p.MainWindowHandle;
-                                break;
-                            }
-                        }
-                    }
-                    if (discoveredHwnd != IntPtr.Zero) break;
-                }
-                catch { }
             }
 
             if (discoveredHwnd != IntPtr.Zero)
             {
                 _lastAllowedAppHwnd = discoveredHwnd;
-                SetWindowPos(discoveredHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
                 ShowWindow(discoveredHwnd, SW_RESTORE);
+                SetWindowPos(discoveredHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
                 SetForegroundWindow(discoveredHwnd);
-                ShowMiniHud();
             }
         }
         catch (Exception ex)
@@ -916,14 +996,17 @@ public partial class ZenShieldWindow : Window
         _miniHudWindow.PositionAtTopCenter();
         _miniHudWindow.Activate();
 
-        // Keep ZenShieldWindow and secondary backdrops topmost
-        Topmost = true;
+        // While an allowed application is active, the primary ZenShieldWindow yields topmost
+        // so the allowed app floats comfortably without flickering or focus battles.
+        Topmost = false;
+
+        // Keep secondary backdrops topmost
         foreach (var backdrop in _secondaryBackdrops)
         {
             backdrop.Topmost = true;
         }
 
-        // Keep the allowed application window floating above ZenShieldWindow
+        // Keep the allowed application window floating cleanly above ZenShieldWindow
         if (_lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
         {
             SetWindowPos(_lastAllowedAppHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
@@ -1356,23 +1439,36 @@ public partial class ZenShieldWindow : Window
                     RestoreTopmostAfterSnipping();
                 }
 
-                if (_isAllowedAppMode &&
-                    (_allowedAppProcessNames.Contains(procName) || _allowedAppProcessNames.Contains(procName + ".exe")))
+                bool isAllowedApp = _allowedAppProcessNames.Contains(procName) ||
+                                    _allowedAppProcessNames.Contains(procName + ".exe");
+
+                if (isAllowedApp)
                 {
                     _lastAllowedAppHwnd = fgHwnd;
                     _unauthorizedBreachCount = 0;
+                    if (!_isAllowedAppMode)
+                    {
+                        _isAllowedAppMode = true;
+                        ShowMiniHud();
+                    }
                     return;
                 }
 
-                // Whitelist OS text and frame host helpers during allowed app mode so they aren't minimized
+                // Whitelist OS text and frame host helpers during allowed app mode or app switching so they aren't minimized
                 bool isOsInputHelper = string.Equals(procName, "TextInputHost", StringComparison.OrdinalIgnoreCase) ||
                                        string.Equals(procName, "ApplicationFrameHost", StringComparison.OrdinalIgnoreCase) ||
                                        string.Equals(procName, "dwm", StringComparison.OrdinalIgnoreCase) ||
                                        string.Equals(procName, "ctfmon", StringComparison.OrdinalIgnoreCase);
 
-                if (_isAllowedAppMode && isOsInputHelper)
+                if ((_isAllowedAppMode || _isSwitchingAllowedApp) && isOsInputHelper)
                 {
                     _unauthorizedBreachCount = 0;
+                    return;
+                }
+
+                if (_isSwitchingAllowedApp)
+                {
+                    // While actively launching or discovering an allowed app, do not suppress foreground window
                     return;
                 }
             }
@@ -1492,22 +1588,12 @@ public partial class ZenShieldWindow : Window
         // Fallback: check if any allowed app has an active top-level window
         foreach (var allowedName in _allowedAppProcessNames)
         {
-            try
+            IntPtr found = FindMainWindowForProcess(allowedName);
+            if (found != IntPtr.Zero)
             {
-                var procs = Process.GetProcessesByName(allowedName);
-                foreach (var p in procs)
-                {
-                    using (p)
-                    {
-                        if (p.MainWindowHandle != IntPtr.Zero && IsWindow(p.MainWindowHandle))
-                        {
-                            _lastAllowedAppHwnd = p.MainWindowHandle;
-                            return true;
-                        }
-                    }
-                }
+                _lastAllowedAppHwnd = found;
+                return true;
             }
-            catch { }
         }
 
         return false;
