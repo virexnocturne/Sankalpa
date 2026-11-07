@@ -196,6 +196,7 @@ public partial class ZenShieldWindow : Window
     private LowLevelKeyboardHook? _keyboardHook;
 
     private bool _isAllowedAppMode;
+    private bool _isSwitchingAllowedApp;
 
     private bool _isSnippingActive;
 
@@ -507,6 +508,21 @@ public partial class ZenShieldWindow : Window
 
 
 
+    public void TriggerSnip()
+    {
+        ZenScreenSnipper.StartSnip(this, (filePath, markdownTag) =>
+        {
+            if (IsNotesDrawerOpen && ZenNotesDrawer != null)
+            {
+                ZenNotesDrawer.InsertAtCursor($"\n{markdownTag}\n");
+            }
+            else if (_quickNotesOverlay != null && _quickNotesOverlay.IsVisible)
+            {
+                _quickNotesOverlay.InsertAtCursor($"\n{markdownTag}\n");
+            }
+        });
+    }
+
     private void ZenShieldWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         bool ctrlDown = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
@@ -526,6 +542,11 @@ public partial class ZenShieldWindow : Window
         else if (e.Key == Key.Escape && IsNotesDrawerOpen)
         {
             IsNotesDrawerOpen = false;
+            e.Handled = true;
+        }
+        else if ((e.Key == Key.S && ctrlDown && shiftDown) || e.Key == Key.Snapshot)
+        {
+            TriggerSnip();
             e.Handled = true;
         }
     }
@@ -549,6 +570,12 @@ public partial class ZenShieldWindow : Window
             Debug.WriteLine($"[ZenShield] Error spawning backdrops: {ex.Message}");
         }
 
+        // Wire Snip Action to Notes Drawer
+        if (ZenNotesDrawer != null)
+        {
+            ZenNotesDrawer.OnSnipRequested = TriggerSnip;
+        }
+
         // 2. Start countdown timer
         _sessionTimer.Start();
 
@@ -560,7 +587,7 @@ public partial class ZenShieldWindow : Window
                 _keyboardHook = new LowLevelKeyboardHook();
                 _keyboardHook.OnSnippingRequested = () =>
                 {
-                    Dispatcher.InvokeAsync(YieldTopmostForSnipping);
+                    Dispatcher.InvokeAsync(TriggerSnip);
                 };
                 _keyboardHook.EmergencyEscapeTriggered += () => Dispatcher.Invoke(CloseSessionAndUnlock);
                 _keyboardHook.Start();
@@ -752,80 +779,119 @@ public partial class ZenShieldWindow : Window
 
 
 
-    public void SwitchToAllowedApp(WhitelistedAppItem app)
-
+    public async void SwitchToAllowedApp(WhitelistedAppItem app)
     {
+        if (_isSwitchingAllowedApp) return;
+        _isSwitchingAllowedApp = true;
         _unauthorizedBreachCount = 0;
 
-        // 1. Try to activate existing process window or launch executable
-
         try
-
         {
-
             string processName = app.ExecutableName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-
                 ? app.ExecutableName[..^4]
-
                 : app.ExecutableName;
 
-
-
             var runningProcesses = Process.GetProcessesByName(processName);
-
             IntPtr targetHwnd = IntPtr.Zero;
 
             foreach (var proc in runningProcesses)
-
             {
-
-                if (proc.MainWindowHandle != IntPtr.Zero)
-
+                try
                 {
-
-                    targetHwnd = proc.MainWindowHandle;
-
-                    break;
-
+                    if (proc.MainWindowHandle != IntPtr.Zero && IsWindow(proc.MainWindowHandle))
+                    {
+                        targetHwnd = proc.MainWindowHandle;
+                        break;
+                    }
                 }
-
+                catch { }
             }
-
-
 
             if (targetHwnd != IntPtr.Zero)
             {
                 _lastAllowedAppHwnd = targetHwnd;
-                SetWindowPos(targetHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                SetWindowPos(targetHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
                 ShowWindow(targetHwnd, SW_RESTORE);
                 SetForegroundWindow(targetHwnd);
+                ShowMiniHud();
+                return;
             }
-            else
+
+            // Not running or has no main window yet. Resolve full executable path!
+            string? resolvedPath = AppPathResolver.ResolveExecutablePath(app.ExecutableName);
+            string launchTarget = !string.IsNullOrWhiteSpace(resolvedPath) ? resolvedPath : app.ExecutableName;
+
+            Process? launchedProc = null;
+            try
             {
+                launchedProc = Process.Start(new ProcessStartInfo(launchTarget)
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ZenShield] App launch error for '{launchTarget}': {ex.Message}");
+                return;
+            }
+
+            // Asynchronous top-level window discovery (up to 5.0 seconds)
+            IntPtr discoveredHwnd = IntPtr.Zero;
+            for (int i = 0; i < 50; i++)
+            {
+                await Task.Delay(100);
+
+                // 1. Check launched process if handle is valid
+                if (launchedProc != null)
+                {
+                    try
+                    {
+                        if (launchedProc.MainWindowHandle != IntPtr.Zero && IsWindow(launchedProc.MainWindowHandle))
+                        {
+                            discoveredHwnd = launchedProc.MainWindowHandle;
+                            break;
+                        }
+                    }
+                    catch { }
+                }
+
+                // 2. Check running processes by name (handles Electron / launcher worker processes)
                 try
                 {
-                    var proc = Process.Start(new ProcessStartInfo(app.ExecutableName)
+                    var procs = Process.GetProcessesByName(processName);
+                    foreach (var p in procs)
                     {
-                        UseShellExecute = true
-                    });
-                    if (proc != null)
-                    {
-                        try { _lastAllowedAppHwnd = proc.MainWindowHandle; } catch { }
+                        using (p)
+                        {
+                            if (p.MainWindowHandle != IntPtr.Zero && IsWindow(p.MainWindowHandle) && IsWindowVisible(p.MainWindowHandle))
+                            {
+                                discoveredHwnd = p.MainWindowHandle;
+                                break;
+                            }
+                        }
                     }
+                    if (discoveredHwnd != IntPtr.Zero) break;
                 }
-                catch
-                {
-                    // Fallback if full path is not directly executable by simple name
-                }
+                catch { }
+            }
+
+            if (discoveredHwnd != IntPtr.Zero)
+            {
+                _lastAllowedAppHwnd = discoveredHwnd;
+                SetWindowPos(discoveredHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                ShowWindow(discoveredHwnd, SW_RESTORE);
+                SetForegroundWindow(discoveredHwnd);
+                ShowMiniHud();
             }
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[ZenShield] App switch error: {ex.Message}");
         }
-
-        // 2. Keep Zen Shield in bottom Z-order backdrop and show floating topmost Mini-HUD
-        ShowMiniHud();
+        finally
+        {
+            _isSwitchingAllowedApp = false;
+        }
     }
 
     private void ShowMiniHud()
@@ -838,7 +904,8 @@ public partial class ZenShieldWindow : Window
             {
                 OnReturnToZenRequested = RestoreZenScreen,
                 OnToggleAudioRequested = ToggleAudioPlayback,
-                OnToggleNotesRequested = ToggleQuickNotes
+                OnToggleNotesRequested = ToggleQuickNotes,
+                OnSnipRequested = TriggerSnip
             };
         }
 
@@ -854,6 +921,13 @@ public partial class ZenShieldWindow : Window
         foreach (var backdrop in _secondaryBackdrops)
         {
             backdrop.Topmost = true;
+        }
+
+        // Keep the allowed application window floating above ZenShieldWindow
+        if (_lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
+        {
+            SetWindowPos(_lastAllowedAppHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            SetForegroundWindow(_lastAllowedAppHwnd);
         }
     }
 
@@ -1092,7 +1166,8 @@ public partial class ZenShieldWindow : Window
         {
             var pwdDlg = new PasswordUnlockDialog(_profileName)
             {
-                Owner = this
+                Owner = this,
+                ValidatePassword = VerifyPassword
             };
 
             pwdDlg.Closing += (s, ev) =>
@@ -1285,7 +1360,18 @@ public partial class ZenShieldWindow : Window
                     (_allowedAppProcessNames.Contains(procName) || _allowedAppProcessNames.Contains(procName + ".exe")))
                 {
                     _lastAllowedAppHwnd = fgHwnd;
-                    SetWindowPos(fgHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    _unauthorizedBreachCount = 0;
+                    return;
+                }
+
+                // Whitelist OS text and frame host helpers during allowed app mode so they aren't minimized
+                bool isOsInputHelper = string.Equals(procName, "TextInputHost", StringComparison.OrdinalIgnoreCase) ||
+                                       string.Equals(procName, "ApplicationFrameHost", StringComparison.OrdinalIgnoreCase) ||
+                                       string.Equals(procName, "dwm", StringComparison.OrdinalIgnoreCase) ||
+                                       string.Equals(procName, "ctfmon", StringComparison.OrdinalIgnoreCase);
+
+                if (_isAllowedAppMode && isOsInputHelper)
+                {
                     _unauthorizedBreachCount = 0;
                     return;
                 }

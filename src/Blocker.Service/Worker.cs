@@ -508,11 +508,14 @@ public class Worker : BackgroundService
     private void CheckEmergencyUnlock()
     {
         string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
         string[] emergencyFiles = new[]
         {
             Path.Combine(AppContext.BaseDirectory, "EMERGENCY_UNLOCK"),
             Path.Combine(appData, "Blocker", "EMERGENCY_UNLOCK"),
-            Path.Combine(appData, "Sankalpa", "EMERGENCY_UNLOCK")
+            Path.Combine(appData, "Sankalpa", "EMERGENCY_UNLOCK"),
+            Path.Combine(programData, "Sankalpa", "EMERGENCY_UNLOCK"),
+            Path.Combine(programData, "Blocker", "EMERGENCY_UNLOCK")
         };
 
         bool fileFound = emergencyFiles.Any(File.Exists);

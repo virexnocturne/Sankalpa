@@ -71,6 +71,9 @@
     <!-- Arrow Left -->
     <PathGeometry x:Key="IconArrowLeft" Figures="M 12,19 L 5,12 L 12,5 M 19,12 H 5" />
 
+    <!-- Bell (Notifications) -->
+    <PathGeometry x:Key="IconBell" Figures="M 18,8 A 6,6 0 0,0 6,8 C 6,15 3,17 3,17 H 21 C 21,17 18,15 18,8 Z M 10.3,21 A 2,2 0 0,0 13.7,21" />
+
     <!-- Info -->
     <PathGeometry x:Key="IconInfo" Figures="M 2,12 A 10,10 0 1,1 22,12 A 10,10 0 1,1 2,12 M 12,16 V 12 M 12,8 H 12.01" />
 

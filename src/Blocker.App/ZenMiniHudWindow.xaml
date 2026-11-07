@@ -182,6 +182,17 @@
                 <!-- Vertical Separator -->
                 <Rectangle Width="1" Height="16" Fill="{DynamicResource BorderStrong}" Margin="0,0,10,0" VerticalAlignment="Center" />
 
+                <!-- Snip / Screenshot Button -->
+                <Button x:Name="SnipButton"
+                        Content="Snip"
+                        Style="{StaticResource HudSecondaryButton}"
+                        Click="SnipButton_Click"
+                        Margin="0,0,10,0"
+                        ToolTip="Take Screenshot / Snip (Ctrl+Shift+S)" />
+
+                <!-- Vertical Separator -->
+                <Rectangle Width="1" Height="16" Fill="{DynamicResource BorderStrong}" Margin="0,0,10,0" VerticalAlignment="Center" />
+
                 <!-- Emerald Return to Zen Button -->
                 <Button x:Name="ReturnButton"
                         Content="Return to Zen Screen"

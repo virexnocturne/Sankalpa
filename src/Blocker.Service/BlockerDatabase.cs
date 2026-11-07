@@ -917,22 +917,30 @@ public class BlockerDatabase : IBlockStore
 
     public bool IsEmergencyUnlockPresent()
     {
+        string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
         string emergencyFile1 = Path.Combine(AppContext.BaseDirectory, "EMERGENCY_UNLOCK");
         string emergencyFile2 = Path.Combine(Directory.GetCurrentDirectory(), "EMERGENCY_UNLOCK");
-        return File.Exists(emergencyFile1) || File.Exists(emergencyFile2);
+        string emergencyFile3 = Path.Combine(programData, "Sankalpa", "EMERGENCY_UNLOCK");
+        string emergencyFile4 = Path.Combine(programData, "Blocker", "EMERGENCY_UNLOCK");
+
+        return File.Exists(emergencyFile1) || File.Exists(emergencyFile2) || File.Exists(emergencyFile3) || File.Exists(emergencyFile4);
     }
 
     public void ConsumeEmergencyUnlock()
     {
+        string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
         string emergencyFile1 = Path.Combine(AppContext.BaseDirectory, "EMERGENCY_UNLOCK");
         string emergencyFile2 = Path.Combine(Directory.GetCurrentDirectory(), "EMERGENCY_UNLOCK");
-        if (File.Exists(emergencyFile1))
+        string emergencyFile3 = Path.Combine(programData, "Sankalpa", "EMERGENCY_UNLOCK");
+        string emergencyFile4 = Path.Combine(programData, "Blocker", "EMERGENCY_UNLOCK");
+
+        var targets = new[] { emergencyFile1, emergencyFile2, emergencyFile3, emergencyFile4 };
+        foreach (var file in targets)
         {
-            try { File.Delete(emergencyFile1); } catch { }
-        }
-        if (File.Exists(emergencyFile2))
-        {
-            try { File.Delete(emergencyFile2); } catch { }
+            if (File.Exists(file))
+            {
+                try { File.Delete(file); } catch { }
+            }
         }
     }
 

@@ -597,17 +597,21 @@ public class MeditationViewModel : ViewModelBase, IDisposable
                 {
                     var dlg = new PasswordUnlockDialog("Meditation Session")
                     {
-                        Owner = _activeZenShield
+                        Owner = _activeZenShield,
+                        ValidatePassword = VerifyPassword
                     };
-                    if (dlg.ShowDialog() == true)
+                    dlg.Closing += (s, ev) =>
                     {
-                        if (VerifyPassword(dlg.ResultPassword))
+                        if (dlg.DialogResult == true)
                         {
-                            return true;
+                            if (!VerifyPassword(dlg.ResultPassword))
+                            {
+                                ev.Cancel = true;
+                                dlg.SetError("Incorrect password. Access denied.");
+                            }
                         }
-                        DarkDialogWindow.Show("Incorrect password. Access denied.", "Verification Failed", isConfirmation: false);
-                    }
-                    return false;
+                    };
+                    return dlg.ShowDialog() == true && VerifyPassword(dlg.ResultPassword);
                 }
                 else if (LockMode == LockMode.TypingChallenge)
                 {
@@ -727,15 +731,22 @@ public class MeditationViewModel : ViewModelBase, IDisposable
         {
             var dlg = new PasswordUnlockDialog("Meditation Session")
             {
-                Owner = Application.Current?.MainWindow
+                Owner = Application.Current?.MainWindow,
+                ValidatePassword = VerifyPassword
             };
-            if (dlg.ShowDialog() != true)
+            dlg.Closing += (s, ev) =>
             {
-                return;
-            }
-            if (!VerifyPassword(dlg.ResultPassword))
+                if (dlg.DialogResult == true)
+                {
+                    if (!VerifyPassword(dlg.ResultPassword))
+                    {
+                        ev.Cancel = true;
+                        dlg.SetError("Incorrect password. Access denied.");
+                    }
+                }
+            };
+            if (dlg.ShowDialog() != true || !VerifyPassword(dlg.ResultPassword))
             {
-                DarkDialogWindow.Show("Incorrect password. Access denied.", "Verification Failed", isConfirmation: false);
                 return;
             }
         }
@@ -1261,17 +1272,21 @@ public class MeditationViewModel : ViewModelBase, IDisposable
                 {
                     var dlg = new PasswordUnlockDialog("Meditation Session")
                     {
-                        Owner = _activeZenShield
+                        Owner = _activeZenShield,
+                        ValidatePassword = VerifyPassword
                     };
-                    if (dlg.ShowDialog() == true)
+                    dlg.Closing += (s, ev) =>
                     {
-                        if (VerifyPassword(dlg.ResultPassword))
+                        if (dlg.DialogResult == true)
                         {
-                            return true;
+                            if (!VerifyPassword(dlg.ResultPassword))
+                            {
+                                ev.Cancel = true;
+                                dlg.SetError("Incorrect password. Access denied.");
+                            }
                         }
-                        DarkDialogWindow.Show("Incorrect password. Access denied.", "Verification Failed", isConfirmation: false);
-                    }
-                    return false;
+                    };
+                    return dlg.ShowDialog() == true && VerifyPassword(dlg.ResultPassword);
                 }
                 else if (LockMode == LockMode.TypingChallenge)
                 {

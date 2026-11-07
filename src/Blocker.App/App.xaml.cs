@@ -16,6 +16,10 @@ public partial class App : Wpf.Application
     private EventWaitHandle? _showWindowEvent;
     private bool _hasMutex;
     private Forms.NotifyIcon? _notifyIcon;
+    private Forms.ToolStripMenuItem? _masterNotifItem;
+    private Forms.ToolStripMenuItem? _browserNotifItem;
+    private Forms.ToolStripMenuItem? _appNotifItem;
+    private Forms.ToolStripMenuItem? _dnsNotifItem;
     private bool _balloonShown;
     private bool _isExiting;
 
@@ -251,53 +255,57 @@ public partial class App : Wpf.Application
         ShowDnsAlerts = currentSettings.ShowDnsAlerts;
 
         var notifMenu = new Forms.ToolStripMenuItem("Notifications");
-        var masterNotifItem = new Forms.ToolStripMenuItem("Enable All Notifications")
+        _masterNotifItem = new Forms.ToolStripMenuItem("Enable All Notifications")
         {
             Checked = AreNotificationsEnabled,
             CheckOnClick = true
         };
-        masterNotifItem.Click += (s, e) =>
+        _masterNotifItem.Click += (s, e) =>
         {
-            AreNotificationsEnabled = masterNotifItem.Checked;
+            AreNotificationsEnabled = _masterNotifItem.Checked;
             SaveNotificationSettings();
+            NotifyMainWindowOfSettingsChange();
         };
-        notifMenu.DropDownItems.Add(masterNotifItem);
+        notifMenu.DropDownItems.Add(_masterNotifItem);
 
-        var browserNotifItem = new Forms.ToolStripMenuItem("Browser Security Warnings")
+        _browserNotifItem = new Forms.ToolStripMenuItem("Browser Security Warnings")
         {
             Checked = ShowBrowserAlerts,
             CheckOnClick = true
         };
-        browserNotifItem.Click += (s, e) =>
+        _browserNotifItem.Click += (s, e) =>
         {
-            ShowBrowserAlerts = browserNotifItem.Checked;
+            ShowBrowserAlerts = _browserNotifItem.Checked;
             SaveNotificationSettings();
+            NotifyMainWindowOfSettingsChange();
         };
-        notifMenu.DropDownItems.Add(browserNotifItem);
+        notifMenu.DropDownItems.Add(_browserNotifItem);
 
-        var appNotifItem = new Forms.ToolStripMenuItem("App Block Notifications")
+        _appNotifItem = new Forms.ToolStripMenuItem("App Block Notifications")
         {
             Checked = ShowAppAlerts,
             CheckOnClick = true
         };
-        appNotifItem.Click += (s, e) =>
+        _appNotifItem.Click += (s, e) =>
         {
-            ShowAppAlerts = appNotifItem.Checked;
+            ShowAppAlerts = _appNotifItem.Checked;
             SaveNotificationSettings();
+            NotifyMainWindowOfSettingsChange();
         };
-        notifMenu.DropDownItems.Add(appNotifItem);
+        notifMenu.DropDownItems.Add(_appNotifItem);
 
-        var dnsNotifItem = new Forms.ToolStripMenuItem("DNS Security Alerts")
+        _dnsNotifItem = new Forms.ToolStripMenuItem("DNS Security Alerts")
         {
             Checked = ShowDnsAlerts,
             CheckOnClick = true
         };
-        dnsNotifItem.Click += (s, e) =>
+        _dnsNotifItem.Click += (s, e) =>
         {
-            ShowDnsAlerts = dnsNotifItem.Checked;
+            ShowDnsAlerts = _dnsNotifItem.Checked;
             SaveNotificationSettings();
+            NotifyMainWindowOfSettingsChange();
         };
-        notifMenu.DropDownItems.Add(dnsNotifItem);
+        notifMenu.DropDownItems.Add(_dnsNotifItem);
 
         contextMenu.Items.Add(notifMenu);
 
@@ -325,6 +333,26 @@ public partial class App : Wpf.Application
     public bool ShowBrowserAlerts { get; set; } = true;
     public bool ShowAppAlerts { get; set; } = true;
     public bool ShowDnsAlerts { get; set; } = true;
+
+    private void NotifyMainWindowOfSettingsChange()
+    {
+        if (MainWindow is MainWindow mw && mw.DataContext is MainViewModel vm)
+        {
+            vm.SyncNotificationSettingsFromStore();
+        }
+    }
+
+    public void SyncNotificationTray(bool master, bool browser, bool app, bool dns)
+    {
+        AreNotificationsEnabled = master;
+        ShowBrowserAlerts = browser;
+        ShowAppAlerts = app;
+        ShowDnsAlerts = dns;
+        if (_masterNotifItem != null) _masterNotifItem.Checked = master;
+        if (_browserNotifItem != null) _browserNotifItem.Checked = browser;
+        if (_appNotifItem != null) _appNotifItem.Checked = app;
+        if (_dnsNotifItem != null) _dnsNotifItem.Checked = dns;
+    }
 
     private void SaveNotificationSettings()
     {

@@ -9,6 +9,12 @@ public partial class PasswordUnlockDialog : Window
 {
     public string ResultPassword { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// Optional validator function to verify the password before closing the dialog.
+    /// Returning false keeps the dialog open and displays an inline error message.
+    /// </summary>
+    public Func<string, bool>? ValidatePassword { get; set; }
+
     public PasswordUnlockDialog(string profileName)
     {
         InitializeComponent();
@@ -46,8 +52,25 @@ public partial class PasswordUnlockDialog : Window
         }
 
         ResultPassword = pwd;
-        DialogResult = true;
-        Close();
+
+        // Perform inline validation before setting DialogResult to keep modal frame healthy
+        if (ValidatePassword != null)
+        {
+            if (!ValidatePassword(pwd))
+            {
+                SetError("Incorrect password. Access denied.");
+                return;
+            }
+        }
+
+        try
+        {
+            DialogResult = true;
+        }
+        catch
+        {
+            Close();
+        }
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)

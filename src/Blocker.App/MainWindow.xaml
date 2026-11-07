@@ -830,7 +830,130 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- CATEGORY 3: SECURE DNS SHIELD & CONTENT FILTER -->
+                    <!-- CATEGORY 3: NOTIFICATIONS & ALERTS -->
+                    <TextBlock Text="NOTIFICATIONS &amp; ALERTS" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                               Foreground="{DynamicResource TextSecondary}" Margin="2,0,0,10" />
+
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="{DynamicResource RadiusCard}" Padding="20" Margin="0,0,0,24">
+                        <StackPanel>
+                            <!-- Windows Disabled Warning Banner -->
+                            <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Warning}" BorderThickness="1"
+                                    CornerRadius="{DynamicResource RadiusButton}" Padding="14,12" Margin="0,0,0,18"
+                                    Visibility="{Binding IsWindowsNotificationDisabled, Converter={StaticResource BoolToVis}}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Path Grid.Column="0" Style="{StaticResource Icon}" Data="{StaticResource IconInfo}"
+                                          Stroke="{DynamicResource Warning}" Width="16" Height="16" Margin="0,2,12,0" VerticalAlignment="Top" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="Notifications are turned off in Windows Settings" FontWeight="SemiBold"
+                                                   FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource Warning}" Margin="0,0,0,2" />
+                                        <TextBlock Text="Windows is currently blocking all notifications for Sankalpa. You will not receive alerts for blocked apps, browsers, or DNS security until allowed in Windows."
+                                                   FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Button Grid.Column="2" Content="Open Windows Settings"
+                                            Command="{Binding OpenWindowsNotificationSettingsCommand}"
+                                            Style="{StaticResource SecondaryButton}"
+                                            VerticalAlignment="Center" Margin="14,0,0,0" Padding="12,6"
+                                            FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
+                                </Grid>
+                            </Border>
+
+                            <!-- Master Notifications Switch -->
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,4">
+                                        <Path Style="{StaticResource Icon}" Data="{StaticResource IconBell}"
+                                              Stroke="{DynamicResource Accent}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="Desktop Toast Notifications" FontFamily="{DynamicResource FontTitle}"
+                                                   FontSize="{DynamicResource FontSize14}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock Text="Display on-screen alerts when a blocked app, browser session, or DNS tamper event occurs."
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                                </StackPanel>
+
+                                <CheckBox Grid.Column="1"
+                                          IsChecked="{Binding AreNotificationsEnabled, Mode=TwoWay}"
+                                          Style="{StaticResource ToggleSwitchStyle}"
+                                          ToolTip="Toggle All Notifications"
+                                          VerticalAlignment="Center" />
+                            </Grid>
+
+                            <!-- Sub-channels -->
+                            <StackPanel IsEnabled="{Binding AreNotificationsEnabled}">
+                                <Border Height="1" Background="{DynamicResource Border}" Margin="0,0,0,16" />
+
+                                <TextBlock Text="Notification Channels" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12" />
+
+                                <!-- App Block Alerts -->
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="App Block Notifications" FontSize="{DynamicResource FontSize13}" FontWeight="Medium"
+                                                   Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,2" />
+                                        <TextBlock Text="Show a notification popup when a blocked desktop app or game is terminated."
+                                                   FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1"
+                                              IsChecked="{Binding ShowAppAlerts, Mode=TwoWay}"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Center" />
+                                </Grid>
+
+                                <!-- Browser Security Warnings -->
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="Browser Security Warnings" FontSize="{DynamicResource FontSize13}" FontWeight="Medium"
+                                                   Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,2" />
+                                        <TextBlock Text="Warn before browser closure if the Sankalpa companion extension is inactive or disabled."
+                                                   FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1"
+                                              IsChecked="{Binding ShowBrowserAlerts, Mode=TwoWay}"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Center" />
+                                </Grid>
+
+                                <!-- DNS Security Alerts -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="DNS Security Alerts" FontSize="{DynamicResource FontSize13}" FontWeight="Medium"
+                                                   Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,2" />
+                                        <TextBlock Text="Alert when DNS tampering is detected and filtered DNS resolvers are restored."
+                                                   FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1"
+                                              IsChecked="{Binding ShowDnsAlerts, Mode=TwoWay}"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Center" />
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- CATEGORY 4: SECURE DNS SHIELD & CONTENT FILTER -->
                     <TextBlock Text="DNS SHIELD &amp; CONTENT FILTER" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
                                Foreground="{DynamicResource TextSecondary}" Margin="2,0,0,10" />
 
@@ -1167,7 +1290,7 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- CATEGORY 4: KEYBOARD SHORTCUTS -->
+                    <!-- CATEGORY 5: KEYBOARD SHORTCUTS -->
                     <TextBlock Text="KEYBOARD SHORTCUTS" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
                                Foreground="{DynamicResource TextSecondary}" Margin="2,0,0,10" />
 
@@ -1569,7 +1692,7 @@
                 <!-- Right-Edge Slide-Out Notes Drawer -->
                 <local:NotesDrawerControl x:Name="NotesDrawer"
                                           DataContext="{Binding Meditation}"
-                                          IsDrawerOpen="{Binding Meditation.IsNotesDrawerOpen, Mode=TwoWay}"
+                                          IsDrawerOpen="{Binding IsNotesDrawerOpen, Mode=TwoWay}"
                                           HorizontalAlignment="Right"
                                           VerticalAlignment="Stretch"
                                           Panel.ZIndex="20" />

@@ -34,6 +34,7 @@ public sealed class LowLevelKeyboardHook : IDisposable
     private const int VK_LWIN = 0x5B;
     private const int VK_RWIN = 0x5C;
     private const int VK_S = 0x53;
+    private const int VK_SNAPSHOT = 0x2C;
 
     private const uint LLKHF_ALTDOWN = 0x20;
 
@@ -107,6 +108,8 @@ public sealed class LowLevelKeyboardHook : IDisposable
     private bool _isActive;
     private bool _disposed;
     private DateTime _emergencyChordStartTime = DateTime.MinValue;
+    private CancellationTokenSource? _emergencyHoldCts;
+    private readonly object _emergencyLock = new();
 
     public bool IsActive
     {
@@ -216,6 +219,16 @@ public sealed class LowLevelKeyboardHook : IDisposable
         {
             if (!_isActive && _hookThread == null) return;
 
+            lock (_emergencyLock)
+            {
+                if (_emergencyHoldCts != null)
+                {
+                    _emergencyHoldCts.Cancel();
+                    _emergencyHoldCts.Dispose();
+                    _emergencyHoldCts = null;
+                }
+            }
+
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 if (_hookHandle != IntPtr.Zero)
@@ -265,45 +278,74 @@ public sealed class LowLevelKeyboardHook : IDisposable
                             (GetAsyncKeyState(VK_LCONTROL) & 0x8000) != 0 ||
                             (GetAsyncKeyState(VK_RCONTROL) & 0x8000) != 0;
 
-            // Emergency Escape Chord: Ctrl + Shift + Alt + Escape held for 3 seconds
-            if (vk == VK_ESCAPE && ctrlDown && altDown && shiftDown)
-            {
-                if (_emergencyChordStartTime == DateTime.MinValue)
-                {
-                    _emergencyChordStartTime = DateTime.UtcNow;
-                }
-                else if ((DateTime.UtcNow - _emergencyChordStartTime).TotalSeconds >= 3.0)
-                {
-                    _emergencyChordStartTime = DateTime.MinValue;
-                    try
-                    {
-                        string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                        string f1 = Path.Combine(AppContext.BaseDirectory, "EMERGENCY_UNLOCK");
-                        string f2 = Path.Combine(appData, "Blocker", "EMERGENCY_UNLOCK");
-                        string f3 = Path.Combine(appData, "Sankalpa", "EMERGENCY_UNLOCK");
-                        Directory.CreateDirectory(Path.GetDirectoryName(f2)!);
-                        Directory.CreateDirectory(Path.GetDirectoryName(f3)!);
-                        File.WriteAllText(f1, "EMERGENCY_RELEASE");
-                        File.WriteAllText(f2, "EMERGENCY_RELEASE");
-                        File.WriteAllText(f3, "EMERGENCY_RELEASE");
-                    }
-                    catch { }
+            // Emergency Escape Chord: Ctrl + Shift + Alt + Escape held continuously for 3.0 seconds
+            bool isEscDown = (vk == VK_ESCAPE) || ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0);
+            bool isChordDown = isEscDown && ctrlDown && altDown && shiftDown;
 
-                    try
-                    {
-                        EmergencyEscapeTriggered?.Invoke();
-                    }
-                    catch { }
-                }
-                return (IntPtr)1;
-            }
-            else if (vk == VK_ESCAPE)
+            lock (_emergencyLock)
             {
-                _emergencyChordStartTime = DateTime.MinValue;
+                if (isChordDown)
+                {
+                    if (_emergencyHoldCts == null)
+                    {
+                        _emergencyHoldCts = new CancellationTokenSource();
+                        var token = _emergencyHoldCts.Token;
+                        Task.Run(async () =>
+                        {
+                            try
+                            {
+                                var sw = Stopwatch.StartNew();
+                                while (sw.ElapsedMilliseconds < 3000)
+                                {
+                                    await Task.Delay(100, token).ConfigureAwait(false);
+                                    if (token.IsCancellationRequested) return;
+
+                                    bool stillDown = ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 || (GetAsyncKeyState(VK_LCONTROL) & 0x8000) != 0 || (GetAsyncKeyState(VK_RCONTROL) & 0x8000) != 0) &&
+                                                     ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0 || (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0 || (GetAsyncKeyState(VK_RMENU) & 0x8000) != 0) &&
+                                                     ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 || (GetAsyncKeyState(VK_LSHIFT) & 0x8000) != 0 || (GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0) &&
+                                                     ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0);
+                                    if (!stillDown)
+                                    {
+                                        return;
+                                    }
+                                }
+
+                                WriteEmergencyUnlockFiles();
+                                EmergencyEscapeTriggered?.Invoke();
+                            }
+                            catch (OperationCanceledException) { }
+                            catch { }
+                            finally
+                            {
+                                lock (_emergencyLock)
+                                {
+                                    _emergencyHoldCts?.Dispose();
+                                    _emergencyHoldCts = null;
+                                }
+                            }
+                        }, token);
+                    }
+
+                    if (vk == VK_ESCAPE)
+                    {
+                        return (IntPtr)1;
+                    }
+                }
+                else
+                {
+                    if (_emergencyHoldCts != null)
+                    {
+                        _emergencyHoldCts.Cancel();
+                        _emergencyHoldCts.Dispose();
+                        _emergencyHoldCts = null;
+                    }
+                }
             }
 
-            // Whitelist Win + Shift + S for Snipping Tool / Screen Clipping
-            if (vk == VK_S && winDown && shiftDown)
+            // Whitelist Win + Shift + S, Ctrl + Shift + S, and PrintScreen for In-House Sankalpa Snip
+            if ((vk == VK_S && winDown && shiftDown) ||
+                (vk == VK_S && ctrlDown && shiftDown) ||
+                (vk == VK_SNAPSHOT))
             {
                 if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
                 {
@@ -312,19 +354,6 @@ public sealed class LowLevelKeyboardHook : IDisposable
                         OnSnippingRequested?.Invoke();
                     }
                     catch { }
-
-                    try
-                    {
-                        Process.Start(new ProcessStartInfo("ms-screenclip:") { UseShellExecute = true });
-                    }
-                    catch
-                    {
-                        try
-                        {
-                            Process.Start(new ProcessStartInfo("snippingtool.exe", "/clip") { UseShellExecute = true });
-                        }
-                        catch { }
-                    }
                 }
                 return (IntPtr)1;
             }
@@ -368,6 +397,36 @@ public sealed class LowLevelKeyboardHook : IDisposable
         }
 
         return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+    }
+
+    public static void WriteEmergencyUnlockFiles()
+    {
+        try
+        {
+            string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string f1 = Path.Combine(AppContext.BaseDirectory, "EMERGENCY_UNLOCK");
+            string f2 = Path.Combine(appData, "Blocker", "EMERGENCY_UNLOCK");
+            string f3 = Path.Combine(appData, "Sankalpa", "EMERGENCY_UNLOCK");
+            string f4 = Path.Combine(programData, "Sankalpa", "EMERGENCY_UNLOCK");
+            string f5 = Path.Combine(programData, "Blocker", "EMERGENCY_UNLOCK");
+
+            var targets = new[] { f1, f2, f3, f4, f5 };
+            foreach (var file in targets)
+            {
+                try
+                {
+                    var dir = Path.GetDirectoryName(file);
+                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    {
+                        Directory.CreateDirectory(dir);
+                    }
+                    File.WriteAllText(file, "EMERGENCY_RELEASE");
+                }
+                catch { }
+            }
+        }
+        catch { }
     }
 
     public void Dispose()

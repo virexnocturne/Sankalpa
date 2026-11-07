@@ -232,6 +232,21 @@ Contemplating silent awareness.";
     }
 
     [Fact]
+    public void MainWindow_NotesDrawer_IsDrawerOpenBinding_BindsDirectlyToIsNotesDrawerOpen()
+    {
+        string root = GetRepoRoot();
+        string mainWindowXaml = Path.Combine(root, "src", "Blocker.App", "MainWindow.xaml");
+        Assert.True(File.Exists(mainWindowXaml));
+
+        string xaml = File.ReadAllText(mainWindowXaml);
+
+        // NotesDrawerControl has DataContext="{Binding Meditation}".
+        // Therefore, IsDrawerOpen must bind directly to IsNotesDrawerOpen (not Meditation.IsNotesDrawerOpen, which fails because DataContext is already MeditationViewModel).
+        Assert.DoesNotContain("IsDrawerOpen=\"{Binding Meditation.IsNotesDrawerOpen", xaml);
+        Assert.Contains("IsDrawerOpen=\"{Binding IsNotesDrawerOpen", xaml);
+    }
+
+    [Fact]
     public void NotesDrawerControl_HasFocusComposerMethod_ForFastKeyboardNoteEntry()
     {
         string root = GetRepoRoot();
@@ -542,5 +557,35 @@ Contemplating silent awareness.";
 
         // LowLevelKeyboardHook blocks VK_TAB on winDown (Win+Tab / Task View)
         Assert.Contains("vk == VK_TAB && (winDown || altDown)", hookCode);
+    }
+
+    [Fact]
+    public void MeditationViewModel_PasswordUnlock_UsesInlineError_AndNeverSpawnsDarkDialogWindow()
+    {
+        string root = GetRepoRoot();
+        string vmPath = Path.Combine(root, "src", "Blocker.App", "MeditationViewModel.cs");
+        Assert.True(File.Exists(vmPath));
+
+        string vmCode = File.ReadAllText(vmPath);
+
+        // Verification must hook Closing and use inline SetError rather than spawning DarkDialogWindow
+        Assert.DoesNotContain("DarkDialogWindow.Show(\"Incorrect password. Access denied.\"", vmCode);
+        Assert.Contains("dlg.Closing += (s, ev) =>", vmCode);
+        Assert.Contains("dlg.SetError(\"Incorrect password. Access denied.\");", vmCode);
+        Assert.Contains("ev.Cancel = true;", vmCode);
+    }
+
+    [Fact]
+    public void DarkDialogWindow_InheritsTopmost_ToPreventOrphaningBehindZenShield()
+    {
+        string root = GetRepoRoot();
+        string dlgPath = Path.Combine(root, "src", "Blocker.App", "DarkDialogWindow.xaml.cs");
+        Assert.True(File.Exists(dlgPath));
+
+        string dlgCode = File.ReadAllText(dlgPath);
+
+        // DarkDialogWindow must propagate Topmost = true if owner or any visible app window is Topmost
+        Assert.Contains("win.Topmost = true;", dlgCode);
+        Assert.Contains("targetOwner.Topmost", dlgCode);
     }
 }

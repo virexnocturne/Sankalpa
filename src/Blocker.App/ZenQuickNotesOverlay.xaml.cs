@@ -859,7 +859,7 @@ public partial class ZenQuickNotesOverlay : Window
         ComposerContentInput.Focus();
     }
 
-    private void InsertAtCursor(string text)
+    public void InsertAtCursor(string text)
     {
         int caret = ComposerContentInput.SelectionStart;
         ComposerContentInput.Text = ComposerContentInput.Text.Insert(caret, text);

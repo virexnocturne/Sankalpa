@@ -26,6 +26,34 @@ public static class NotesAttachmentManager
     }
 
     /// <summary>
+    /// Saves a BitmapSource to the attachments directory as a PNG file and returns the file path and markdown tag.
+    /// </summary>
+    public static (string filePath, string markdownTag)? SaveBitmap(BitmapSource? bitmapSource, string prefix = "Snip")
+    {
+        if (bitmapSource == null) return null;
+
+        try
+        {
+            string timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmssfff");
+            string fileName = $"{prefix}_{timestamp}.png";
+            string destination = Path.Combine(GetAttachmentsDirectory(), fileName);
+
+            using (var fileStream = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmapSource));
+                encoder.Save(fileStream);
+            }
+
+            return (destination, $"![[{fileName}]]");
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Checks if the clipboard contains an image bitmap or image file drops.
     /// If present, saves the image to the attachments directory and returns the markdown tag, e.g. ![[Pasted_Image_...png]].
     /// Returns null if no image is present or an error occurs.
@@ -40,18 +68,11 @@ public static class NotesAttachmentManager
                 var bitmapSource = Clipboard.GetImage();
                 if (bitmapSource != null)
                 {
-                    string timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmssfff");
-                    string fileName = $"Pasted_Image_{timestamp}.png";
-                    string destination = Path.Combine(GetAttachmentsDirectory(), fileName);
-
-                    using (var fileStream = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None))
+                    var saved = SaveBitmap(bitmapSource, "Pasted_Image");
+                    if (saved != null)
                     {
-                        var encoder = new PngBitmapEncoder();
-                        encoder.Frames.Add(BitmapFrame.Create(bitmapSource));
-                        encoder.Save(fileStream);
+                        return saved.Value.markdownTag;
                     }
-
-                    return $"![[{fileName}]]";
                 }
             }
 

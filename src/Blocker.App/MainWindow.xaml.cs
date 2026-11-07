@@ -161,6 +161,20 @@ public partial class MainWindow : Window
                     return;
                 }
             }
+
+            // Ctrl + Shift + S or PrintScreen: Trigger Snip
+            if (((e.Key == Key.S && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)) || e.Key == Key.Snapshot) && (Keyboard.Modifiers & ModifierKeys.Alt) == 0)
+            {
+                if (_viewModel.Meditation != null && _viewModel.Meditation.IsNotesDrawerOpen)
+                {
+                    ZenScreenSnipper.StartSnip(this, (filePath, markdownTag) =>
+                    {
+                        NotesDrawer?.InsertAtCursor($"\n{markdownTag}\n");
+                    });
+                    e.Handled = true;
+                    return;
+                }
+            }
         };
 
         ThemeManager.ThemeChanged += () =>
@@ -182,6 +196,17 @@ public partial class MainWindow : Window
             };
 
             Loaded += MainWindow_Loaded;
+            if (NotesDrawer != null)
+            {
+                NotesDrawer.OnSnipRequested = () =>
+                {
+                    ZenScreenSnipper.StartSnip(this, (filePath, markdownTag) =>
+                    {
+                        NotesDrawer?.InsertAtCursor($"\n{markdownTag}\n");
+                    });
+                };
+            }
+            Activated += (s, e) => _viewModel?.CheckWindowsNotificationStatus();
             Closing += MainWindow_Closing;
             Closed += MainWindow_Closed;
         }

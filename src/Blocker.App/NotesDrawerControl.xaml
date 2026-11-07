@@ -551,6 +551,13 @@
                                         Padding="2"
                                         VerticalAlignment="Center">
                                     <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="ComposerSnipBtn"
+                                                Content="Snip"
+                                                Style="{StaticResource DrawerMiniButton}"
+                                                Padding="8,2"
+                                                Click="ComposerSnip_Click"
+                                                ToolTip="Take Screenshot (Ctrl+Shift+S)"
+                                                Margin="0,0,2,0" />
                                         <Button x:Name="ComposerEditTabBtn"
                                                 Content="Edit"
                                                 Style="{StaticResource DrawerMiniButton}"

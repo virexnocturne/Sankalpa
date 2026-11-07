@@ -182,9 +182,6 @@ public static class InstalledAppScanner
 
         string cleanExe = exeName.Trim().Trim('"', '\'');
         string nameWithoutExt = Path.GetFileNameWithoutExtension(cleanExe);
-        string fileName = cleanExe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? cleanExe
-            : cleanExe + ".exe";
 
         try
         {
@@ -200,146 +197,12 @@ public static class InstalledAppScanner
             }
             catch { }
 
-            // 2. Check registry keys on Windows
-            if (OperatingSystem.IsWindows())
-            {
-                try
-                {
-                    using var hklmAppPath = Registry.LocalMachine.OpenSubKey($@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{fileName}");
-                    if (hklmAppPath != null)
-                    {
-                        object? val = hklmAppPath.GetValue(null);
-                        if (val is string p && !string.IsNullOrWhiteSpace(p))
-                        {
-                            string target = p.Trim('"', ' ');
-                            if (File.Exists(target)) return true;
-                        }
-                        return true;
-                    }
-                }
-                catch { }
-
-                try
-                {
-                    using var hkcuAppPath = Registry.CurrentUser.OpenSubKey($@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{fileName}");
-                    if (hkcuAppPath != null)
-                    {
-                        object? val = hkcuAppPath.GetValue(null);
-                        if (val is string p && !string.IsNullOrWhiteSpace(p))
-                        {
-                            string target = p.Trim('"', ' ');
-                            if (File.Exists(target)) return true;
-                        }
-                        return true;
-                    }
-                }
-                catch { }
-            }
-
-            // 3. Check SystemDirectory and Windows directory (e.g. C:\Windows\System32\<exeName>)
-            try
-            {
-                string sysDir = Environment.SystemDirectory;
-                if (!string.IsNullOrEmpty(sysDir) && File.Exists(Path.Combine(sysDir, fileName)))
-                {
-                    return true;
-                }
-
-                string winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-                if (!string.IsNullOrEmpty(winDir) && File.Exists(Path.Combine(winDir, fileName)))
-                {
-                    return true;
-                }
-            }
-            catch { }
-
-            // 4. Check SpecialFolder.LocalApplicationData (\Programs\..., \Microsoft\WindowsApps\...)
-            try
-            {
-                string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                if (!string.IsNullOrEmpty(localApp))
-                {
-                    string localPrograms = Path.Combine(localApp, "Programs");
-                    if (Directory.Exists(localPrograms))
-                    {
-                        if (File.Exists(Path.Combine(localPrograms, fileName))) return true;
-                        if (File.Exists(Path.Combine(localPrograms, nameWithoutExt, fileName))) return true;
-                        if (File.Exists(Path.Combine(localPrograms, "Microsoft VS Code", fileName))) return true;
-                    }
-
-                    string winApps = Path.Combine(localApp, "Microsoft", "WindowsApps");
-                    if (Directory.Exists(winApps) && File.Exists(Path.Combine(winApps, fileName)))
-                    {
-                        return true;
-                    }
-
-                    if (File.Exists(Path.Combine(localApp, nameWithoutExt, fileName))) return true;
-                }
-            }
-            catch { }
-
-            // 5. Check SpecialFolder.ApplicationData (e.g. %APPDATA%\Spotify\Spotify.exe)
-            try
-            {
-                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                if (!string.IsNullOrEmpty(appData))
-                {
-                    if (File.Exists(Path.Combine(appData, nameWithoutExt, fileName))) return true;
-                    if (File.Exists(Path.Combine(appData, "Spotify", "Spotify.exe")) && string.Equals(fileName, "spotify.exe", StringComparison.OrdinalIgnoreCase)) return true;
-                }
-            }
-            catch { }
-
-            // 6. Check ProgramFiles and ProgramFilesX86
-            try
-            {
-                string pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-                if (!string.IsNullOrEmpty(pf))
-                {
-                    if (File.Exists(Path.Combine(pf, fileName))) return true;
-                    if (File.Exists(Path.Combine(pf, nameWithoutExt, fileName))) return true;
-                    if (File.Exists(Path.Combine(pf, "VideoLAN", "VLC", fileName))) return true;
-                    if (File.Exists(Path.Combine(pf, "Google", "Chrome", "Application", fileName))) return true;
-                    if (File.Exists(Path.Combine(pf, "Microsoft VS Code", fileName))) return true;
-                    if (File.Exists(Path.Combine(pf, "Spotify", fileName))) return true;
-                }
-
-                string pfX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-                if (!string.IsNullOrEmpty(pfX86))
-                {
-                    if (File.Exists(Path.Combine(pfX86, fileName))) return true;
-                    if (File.Exists(Path.Combine(pfX86, nameWithoutExt, fileName))) return true;
-                    if (File.Exists(Path.Combine(pfX86, "VideoLAN", "VLC", fileName))) return true;
-                    if (File.Exists(Path.Combine(pfX86, "Google", "Chrome", "Application", fileName))) return true;
-                    if (File.Exists(Path.Combine(pfX86, "Spotify", fileName))) return true;
-                }
-            }
-            catch { }
-
-            // 7. Check PATH environment variable
-            try
-            {
-                string? pathEnv = Environment.GetEnvironmentVariable("PATH");
-                if (!string.IsNullOrWhiteSpace(pathEnv))
-                {
-                    var paths = pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    foreach (var dir in paths)
-                    {
-                        try
-                        {
-                            if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, fileName)))
-                            {
-                                return true;
-                            }
-                        }
-                        catch { }
-                    }
-                }
-            }
-            catch { }
+            // 2. Resolve via comprehensive AppPathResolver
+            return AppPathResolver.ResolveExecutablePath(cleanExe) != null;
         }
-        catch { }
-
-        return false;
+        catch
+        {
+            return false;
+        }
     }
 }

@@ -42,6 +42,13 @@ public partial class NotesDrawerControl : System.Windows.Controls.UserControl
         set => SetValue(IsDrawerOpenProperty, value);
     }
 
+    public Action? OnSnipRequested { get; set; }
+
+    private void ComposerSnip_Click(object sender, RoutedEventArgs e)
+    {
+        OnSnipRequested?.Invoke();
+    }
+
     private static void OnIsDrawerOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is NotesDrawerControl control && e.NewValue is bool isOpen)
@@ -122,6 +129,14 @@ public partial class NotesDrawerControl : System.Windows.Controls.UserControl
         if (e.Key == Key.T && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             WrapOrInsert("\n- [ ] ");
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl + Shift + S: Snip / Screenshot
+        if ((e.Key == Key.S && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)) || e.Key == Key.Snapshot)
+        {
+            OnSnipRequested?.Invoke();
             e.Handled = true;
             return;
         }
@@ -256,7 +271,7 @@ public partial class NotesDrawerControl : System.Windows.Controls.UserControl
         MarkdownBox.Focus();
     }
 
-    private void InsertAtCursor(string text)
+    public void InsertAtCursor(string text)
     {
         if (MarkdownBox == null) return;
         int caret = MarkdownBox.SelectionStart;

@@ -114,6 +114,7 @@ public class MainViewModel : ViewModelBase
                 {
                     _isMeditationViewActive = false;
                     OnPropertyChanged(nameof(IsMeditationViewActive));
+                    CheckWindowsNotificationStatus();
                 }
                 OnPropertyChanged(nameof(IsBlocksViewActive));
             }
@@ -255,6 +256,107 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+
+    private bool _areNotificationsEnabled = true;
+    private bool _showBrowserAlerts = true;
+    private bool _showAppAlerts = true;
+    private bool _showDnsAlerts = true;
+    private bool _isWindowsNotificationDisabled = false;
+
+    public bool IsWindowsNotificationDisabled
+    {
+        get => _isWindowsNotificationDisabled;
+        set => SetProperty(ref _isWindowsNotificationDisabled, value);
+    }
+
+    public bool AreNotificationsEnabled
+    {
+        get => _areNotificationsEnabled;
+        set
+        {
+            if (SetProperty(ref _areNotificationsEnabled, value))
+            {
+                _uiSettings.AreNotificationsEnabled = value;
+                UiSettingsStore.Save(_uiSettings);
+                SyncToAppTray();
+            }
+        }
+    }
+
+    public bool ShowBrowserAlerts
+    {
+        get => _showBrowserAlerts;
+        set
+        {
+            if (SetProperty(ref _showBrowserAlerts, value))
+            {
+                _uiSettings.ShowBrowserAlerts = value;
+                UiSettingsStore.Save(_uiSettings);
+                SyncToAppTray();
+            }
+        }
+    }
+
+    public bool ShowAppAlerts
+    {
+        get => _showAppAlerts;
+        set
+        {
+            if (SetProperty(ref _showAppAlerts, value))
+            {
+                _uiSettings.ShowAppAlerts = value;
+                UiSettingsStore.Save(_uiSettings);
+                SyncToAppTray();
+            }
+        }
+    }
+
+    public bool ShowDnsAlerts
+    {
+        get => _showDnsAlerts;
+        set
+        {
+            if (SetProperty(ref _showDnsAlerts, value))
+            {
+                _uiSettings.ShowDnsAlerts = value;
+                UiSettingsStore.Save(_uiSettings);
+                SyncToAppTray();
+            }
+        }
+    }
+
+    public ICommand OpenWindowsNotificationSettingsCommand { get; private set; } = null!;
+
+    public void CheckWindowsNotificationStatus()
+    {
+        IsWindowsNotificationDisabled = WindowsNotificationHelper.IsNotificationDisabledInWindows();
+    }
+
+    public void SyncNotificationSettingsFromStore()
+    {
+        var s = UiSettingsStore.Load();
+        _areNotificationsEnabled = s.AreNotificationsEnabled;
+        _showBrowserAlerts = s.ShowBrowserAlerts;
+        _showAppAlerts = s.ShowAppAlerts;
+        _showDnsAlerts = s.ShowDnsAlerts;
+        OnPropertyChanged(nameof(AreNotificationsEnabled));
+        OnPropertyChanged(nameof(ShowBrowserAlerts));
+        OnPropertyChanged(nameof(ShowAppAlerts));
+        OnPropertyChanged(nameof(ShowDnsAlerts));
+        CheckWindowsNotificationStatus();
+    }
+
+    private void SyncToAppTray()
+    {
+        try
+        {
+            if (System.Windows.Application.Current is App app)
+            {
+                app.SyncNotificationTray(_areNotificationsEnabled, _showBrowserAlerts, _showAppAlerts, _showDnsAlerts);
+            }
+        }
+        catch { }
+    }
 
     public bool IsAccentEmerald
     {
@@ -782,6 +884,12 @@ public class MainViewModel : ViewModelBase
         _timeFormat = _uiSettings.TimeFormat;
         _isShortcutsExpanded = _uiSettings.IsKeyboardShortcutsExpanded;
         ToggleShortcutsExpandedCommand = new RelayCommand(() => IsShortcutsExpanded = !IsShortcutsExpanded);
+        _areNotificationsEnabled = _uiSettings.AreNotificationsEnabled;
+        _showBrowserAlerts = _uiSettings.ShowBrowserAlerts;
+        _showAppAlerts = _uiSettings.ShowAppAlerts;
+        _showDnsAlerts = _uiSettings.ShowDnsAlerts;
+        OpenWindowsNotificationSettingsCommand = new RelayCommand(() => WindowsNotificationHelper.OpenWindowsNotificationSettings());
+        CheckWindowsNotificationStatus();
 
         // Commands
         Meditation = new MeditationViewModel(_pipeClient);

@@ -18,6 +18,7 @@ public partial class ZenMiniHudWindow : Window
     public Action? OnReturnToZenRequested { get; set; }
     public Action? OnToggleAudioRequested { get; set; }
     public Action? OnToggleNotesRequested { get; set; }
+    public Action? OnSnipRequested { get; set; }
 
     private bool _isCollapsed;
     private bool _hasBeenPositionedInitially;
@@ -372,12 +373,24 @@ public partial class ZenMiniHudWindow : Window
         OnToggleNotesRequested?.Invoke();
     }
 
+    private void SnipButton_Click(object sender, RoutedEventArgs e)
+    {
+        OnSnipRequested?.Invoke();
+    }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
         if (e.Key == Key.N && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
         {
             OnToggleNotesRequested?.Invoke();
+            e.Handled = true;
+        }
+        else if (((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control &&
+                  (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift &&
+                  e.Key == Key.S) || e.Key == Key.Snapshot)
+        {
+            OnSnipRequested?.Invoke();
             e.Handled = true;
         }
     }

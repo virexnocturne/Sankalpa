@@ -62,10 +62,26 @@ public partial class DarkDialogWindow : Window
             try
             {
                 win.Owner = targetOwner;
+                if (targetOwner.Topmost)
+                {
+                    win.Topmost = true;
+                }
             }
             catch
             {
                 // Fallback if owner window handle is not yet available
+            }
+        }
+        else if (Application.Current != null)
+        {
+            // If any active window in the app is Topmost (e.g. ZenShieldWindow), ensure dialog is also Topmost
+            foreach (Window w in Application.Current.Windows)
+            {
+                if (w != win && w.IsVisible && w.Topmost)
+                {
+                    win.Topmost = true;
+                    break;
+                }
             }
         }
         bool result = win.ShowDialog() == true;
