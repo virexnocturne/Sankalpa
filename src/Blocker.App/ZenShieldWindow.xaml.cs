@@ -19,6 +19,9 @@ using System.Windows.Threading;
 
 using Blocker.Core;
 
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Input;
 using Brush = System.Windows.Media.Brush;
 
 
@@ -133,6 +136,10 @@ public partial class ZenShieldWindow : Window
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
     private static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
     private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
     private static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
@@ -205,6 +212,13 @@ public partial class ZenShieldWindow : Window
     public string? ExpectedPassword { get; set; }
 
     public MeditationSession? Session { get; set; }
+
+    private int? _sessionId;
+    public int SessionId
+    {
+        get => _sessionId ?? Session?.Id ?? 0;
+        set => _sessionId = value;
+    }
 
 
 
@@ -457,7 +471,21 @@ public partial class ZenShieldWindow : Window
 
         SetWhitelistedApps(whitelistedApps);
 
+        PreviewKeyDown += ZenShieldWindow_PreviewKeyDown;
         Loaded += ZenShieldWindow_Loaded;
+    }
+
+    public ZenShieldWindow(
+        int totalSeconds,
+        bool completeLock,
+        string? lockType,
+        IEnumerable<string>? whitelistedApps,
+        string? profileName,
+        MeditationViewModel? viewModel,
+        int? sessionId)
+        : this(totalSeconds, completeLock, lockType, whitelistedApps, profileName, viewModel)
+    {
+        _sessionId = sessionId;
     }
 
     public ZenShieldWindow(
@@ -470,7 +498,7 @@ public partial class ZenShieldWindow : Window
         MeditationSession? session,
         string? passwordHash = null,
         string? passwordSalt = null)
-        : this(totalSeconds, completeLock, lockType, whitelistedApps, profileName, viewModel)
+        : this(totalSeconds, completeLock, lockType, whitelistedApps, profileName, viewModel, session?.Id)
     {
         Session = session;
         PasswordHash = passwordHash;
@@ -479,12 +507,38 @@ public partial class ZenShieldWindow : Window
 
 
 
+    private void ZenShieldWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        bool ctrlDown = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        bool shiftDown = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        bool altDown = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
+
+        if (e.Key == Key.N && ctrlDown && shiftDown)
+        {
+            IsNotesDrawerOpen = !IsNotesDrawerOpen;
+            e.Handled = true;
+        }
+        else if ((e.Key == Key.N || e.SystemKey == Key.N) && altDown && !ctrlDown && !shiftDown)
+        {
+            ToggleQuickNotes();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && IsNotesDrawerOpen)
+        {
+            IsNotesDrawerOpen = false;
+            e.Handled = true;
+        }
+    }
+
+    public void CloseSessionAndUnlock()
+    {
+        _completeLock = false;
+        EndSession();
+    }
+
     private void ZenShieldWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        // 1. Total taskbar suppression across primary and secondary displays
-        SetTaskbarVisibility(false);
-
-        // 2. Automatically spawn backdrop windows covering all secondary monitors
+        // 1. Automatically spawn backdrop windows covering all secondary monitors
         try
         {
             var spawned = ZenBackdropWindow.SpawnForSecondaryScreens();
@@ -495,10 +549,10 @@ public partial class ZenShieldWindow : Window
             Debug.WriteLine($"[ZenShield] Error spawning backdrops: {ex.Message}");
         }
 
-        // 3. Start countdown timer
+        // 2. Start countdown timer
         _sessionTimer.Start();
 
-        // 4. Start low-level keyboard hook throughout meditation mode (including when running allowed apps with Mini-HUD)
+        // 3. Start low-level keyboard hook throughout meditation mode (including when running allowed apps with Mini-HUD)
         if (_keyboardHook == null)
         {
             try
@@ -508,6 +562,7 @@ public partial class ZenShieldWindow : Window
                 {
                     Dispatcher.InvokeAsync(YieldTopmostForSnipping);
                 };
+                _keyboardHook.EmergencyEscapeTriggered += () => Dispatcher.Invoke(CloseSessionAndUnlock);
                 _keyboardHook.Start();
             }
             catch (Exception ex)
@@ -516,8 +571,47 @@ public partial class ZenShieldWindow : Window
             }
         }
 
-        // 5. Start active window and Task View watchdog timer (500ms)
+        // 4. Start active window and Task View watchdog timer (500ms)
         _watchdogTimer.Start();
+
+        // 5. Two-Phase Handshake: Send ConfirmTimerReady IPC request to Service with visible window PIDs
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var visiblePids = Process.GetProcesses().Where(p =>
+                {
+                    try { return p.MainWindowHandle != IntPtr.Zero && IsWindowVisible(p.MainWindowHandle); }
+                    catch { return false; }
+                }).Select(p => p.Id).Distinct().ToList();
+
+                var payload = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    sessionId = _sessionId ?? Session?.Id ?? SessionId,
+                    visibleWindowPids = visiblePids
+                });
+
+                var req = new Request
+                {
+                    Command = CommandNames.ConfirmTimerReady,
+                    Args = new Dictionary<string, string> { ["data"] = payload }
+                };
+
+                if (_viewModel?.PipeClient != null)
+                {
+                    await _viewModel.PipeClient.SendRequestAsync(req);
+                }
+                else
+                {
+                    var client = new PipeClient();
+                    await client.SendRequestAsync(req);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ZenShield] ConfirmTimerReady IPC error: {ex.Message}");
+            }
+        });
     }
 
 
@@ -702,6 +796,7 @@ public partial class ZenShieldWindow : Window
             if (targetHwnd != IntPtr.Zero)
             {
                 _lastAllowedAppHwnd = targetHwnd;
+                SetWindowPos(targetHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 ShowWindow(targetHwnd, SW_RESTORE);
                 SetForegroundWindow(targetHwnd);
             }
@@ -754,24 +849,11 @@ public partial class ZenShieldWindow : Window
         _miniHudWindow.PositionAtTopCenter();
         _miniHudWindow.Activate();
 
-        // Keep a full-screen Zen backdrop at the bottom of the Z-order behind allowed apps.
-        // Minimizing or dragging an allowed app will only reveal the calm Zen focus screen,
-        // NEVER the Windows desktop or unblocked windows.
-        Topmost = false;
-        var mainHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-        if (mainHandle != IntPtr.Zero)
-        {
-            SetWindowPos(mainHandle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-        }
-
+        // Keep ZenShieldWindow and secondary backdrops topmost
+        Topmost = true;
         foreach (var backdrop in _secondaryBackdrops)
         {
-            backdrop.Topmost = false;
-            var secHandle = new System.Windows.Interop.WindowInteropHelper(backdrop).Handle;
-            if (secHandle != IntPtr.Zero)
-            {
-                SetWindowPos(secHandle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-            }
+            backdrop.Topmost = true;
         }
     }
 
@@ -1020,7 +1102,6 @@ public partial class ZenShieldWindow : Window
                     if (!VerifyPassword(pwdDlg.ResultPassword))
                     {
                         ev.Cancel = true;
-                        pwdDlg.DialogResult = null;
                         pwdDlg.SetError("Incorrect password. Access denied.");
                     }
                 }
@@ -1086,6 +1167,13 @@ public partial class ZenShieldWindow : Window
             return true;
         }
 
+        // 2c. SHA-256 hash comparison
+        string inputSha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(inputPassword))).ToLowerInvariant();
+        if (!string.IsNullOrEmpty(PasswordHash) && string.Equals(inputSha, PasswordHash, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         // 3. Check Session object via reflection or properties
         if (Session != null)
         {
@@ -1098,6 +1186,7 @@ public partial class ZenShieldWindow : Window
             if (!string.IsNullOrEmpty(sHash))
             {
                 if (!string.IsNullOrEmpty(sSalt) && PasswordSecurity.VerifyPassword(inputPassword, sSalt, sHash)) return true;
+                if (string.Equals(inputSha, sHash, StringComparison.OrdinalIgnoreCase)) return true;
                 if (string.Equals(inputPassword, sHash, StringComparison.Ordinal)) return true;
             }
         }
@@ -1114,6 +1203,7 @@ public partial class ZenShieldWindow : Window
             if (!string.IsNullOrEmpty(vmHash))
             {
                 if (!string.IsNullOrEmpty(vmSalt) && PasswordSecurity.VerifyPassword(inputPassword, vmSalt, vmHash)) return true;
+                if (string.Equals(inputSha, vmHash, StringComparison.OrdinalIgnoreCase)) return true;
                 if (string.Equals(inputPassword, vmHash, StringComparison.Ordinal)) return true;
             }
         }
@@ -1131,12 +1221,7 @@ public partial class ZenShieldWindow : Window
     {
         try
         {
-            // 1. Continuously re-assert taskbar suppression across primary and secondary displays.
-            // When an allowed app like notepad runs, Explorer automatically unhides Shell_TrayWnd;
-            // the watchdog must continuously ensure it remains hidden (SW_HIDE).
-            SetTaskbarVisibility(false);
-
-            // 2. Suppress MultitaskingViewFrame (Windows Task View handles) continuously
+            // 1. Suppress MultitaskingViewFrame (Windows Task View handles) continuously
             SuppressTaskView();
 
             // 3. Active window watchdog
@@ -1200,6 +1285,7 @@ public partial class ZenShieldWindow : Window
                     (_allowedAppProcessNames.Contains(procName) || _allowedAppProcessNames.Contains(procName + ".exe")))
                 {
                     _lastAllowedAppHwnd = fgHwnd;
+                    SetWindowPos(fgHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                     _unauthorizedBreachCount = 0;
                     return;
                 }
@@ -1216,6 +1302,7 @@ public partial class ZenShieldWindow : Window
             // re-assert ZenShieldWindow as Topmost = true (RestoreZenScreen()) to immediately cover the screen with the Zen Shield!
             if (IsAllowedAppValid() && _unauthorizedBreachCount < 3)
             {
+                SetWindowPos(_lastAllowedAppHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 ShowWindow(_lastAllowedAppHwnd, SW_RESTORE);
                 SetForegroundWindow(_lastAllowedAppHwnd);
             }
@@ -1344,6 +1431,7 @@ public partial class ZenShieldWindow : Window
     {
         if (IsAllowedAppValid() && _unauthorizedBreachCount < 3)
         {
+            SetWindowPos(_lastAllowedAppHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             ShowWindow(_lastAllowedAppHwnd, SW_RESTORE);
             SetForegroundWindow(_lastAllowedAppHwnd);
         }

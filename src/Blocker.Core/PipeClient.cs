@@ -46,7 +46,7 @@ public class PipeClient : IPipeClient
         {
             using var timeoutCts = new CancellationTokenSource(_timeoutMs);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-            await pipeStream.ConnectAsync(linkedCts.Token);
+            await pipeStream.ConnectAsync(linkedCts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -59,13 +59,17 @@ public class PipeClient : IPipeClient
 
         try
         {
+            int ioTimeoutMs = Math.Max(_timeoutMs, 10000);
+            using var ioTimeoutCts = new CancellationTokenSource(ioTimeoutMs);
+            using var linkedIoCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ioTimeoutCts.Token);
+
             string json = JsonSerializer.Serialize(request) + "\n";
             byte[] bytes = Encoding.UTF8.GetBytes(json);
-            await pipeStream.WriteAsync(bytes, 0, bytes.Length, cancellationToken);
-            await pipeStream.FlushAsync(cancellationToken);
+            await pipeStream.WriteAsync(bytes, 0, bytes.Length, linkedIoCts.Token).ConfigureAwait(false);
+            await pipeStream.FlushAsync(linkedIoCts.Token).ConfigureAwait(false);
 
             using var reader = new StreamReader(pipeStream, Encoding.UTF8, leaveOpen: true);
-            string? line = await reader.ReadLineAsync(cancellationToken);
+            string? line = await reader.ReadLineAsync(linkedIoCts.Token).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(line))
             {
                 return PipeResult.ReadError("Received empty response from service.");
@@ -82,6 +86,10 @@ public class PipeClient : IPipeClient
             }
 
             return PipeResult.Success(response);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return PipeResult.ReadError("Operation timed out waiting for service response.");
         }
         catch (Exception ex)
         {

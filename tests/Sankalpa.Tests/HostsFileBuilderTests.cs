@@ -6,6 +6,8 @@ namespace Blocker.Core.Tests;
 public class HostsFileBuilderTests
 {
     [Theory]
+    [InlineData("münchen.de", "xn--mnchen-3ya.de")]
+    [InlineData("café.fr", "xn--caf-dma.fr")]
     [InlineData("example.com", "example.com")]
     [InlineData("EXAMPLE.COM", "example.com")]
     [InlineData("  sub.domain.org  ", "sub.domain.org")]

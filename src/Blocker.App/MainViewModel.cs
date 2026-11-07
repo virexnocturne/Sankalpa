@@ -29,6 +29,7 @@ public class MainViewModel : ViewModelBase
     private readonly NotificationThrottler _throttler = new();
     private long _lastEventId = 0;
     private bool _isPolling;
+    private int _consecutiveDisconnectFailures = 0;
     private bool _isInitialConnecting = true;
     private bool _initialProfilesLoaded;
 
@@ -1248,12 +1249,22 @@ public class MainViewModel : ViewModelBase
 
                 if (!result.Connected || result.Response == null || !result.Response.Ok)
                 {
+                    _consecutiveDisconnectFailures++;
                     IsServiceConnected = false;
                     ServiceWarningMessage = "Background service is not running. Blocks will not be enforced.";
+                    if (_consecutiveDisconnectFailures >= 3)
+                    {
+                        IsSessionActive = false;
+                        ActiveSessionLocked = false;
+                        ActiveSessionProfile = null;
+                        ActiveChips.Clear();
+                        HostsState = HostsState.Idle;
+                    }
                     return;
                 }
             }
 
+            _consecutiveDisconnectFailures = 0;
             IsServiceConnected = true;
             ServiceWarningMessage = null;
             ErrorMessage = null;
@@ -1435,46 +1446,7 @@ public class MainViewModel : ViewModelBase
 
         try
         {
-            var medStatus = await Meditation.GetActiveMeditationAsync();
-            if (medStatus != null && medStatus.Active && medStatus.RemainingSeconds > 0)
-            {
-                if (Meditation.ActiveZenShield == null)
-                {
-                    LockMode lockMode = LockMode.Locked;
-                    if (Enum.TryParse<LockMode>(medStatus.LockMode, true, out var parsedMode))
-                    {
-                        lockMode = parsedMode;
-                    }
-
-                    string? pwdHash = Meditation.PasswordHash;
-                    if (string.IsNullOrEmpty(pwdHash))
-                    {
-                        pwdHash = _uiSettings.MeditationPasswordHash;
-                    }
-
-                    if (Application.Current?.Dispatcher != null)
-                    {
-                        await Application.Current.Dispatcher.InvokeAsync(() =>
-                        {
-                            Meditation.LaunchZenShieldFromSession(
-                                medStatus.RemainingSeconds,
-                                lockMode,
-                                medStatus.AllowedApps ?? new List<string>(),
-                                pwdHash,
-                                medStatus.Soundscape);
-                        });
-                    }
-                    else
-                    {
-                        Meditation.LaunchZenShieldFromSession(
-                            medStatus.RemainingSeconds,
-                            lockMode,
-                            medStatus.AllowedApps ?? new List<string>(),
-                            pwdHash,
-                            medStatus.Soundscape);
-                    }
-                }
-            }
+            await Meditation.CheckSessionStatusAsync();
         }
         catch { }
     }
@@ -1570,7 +1542,8 @@ public class MainViewModel : ViewModelBase
 
             foreach (var p in Profiles)
             {
-                var item = status.ProfileStatuses.FirstOrDefault(ps => ps.Name.Equals(p.Name, StringComparison.OrdinalIgnoreCase) || ps.Id == p.Id);
+                var statuses = status.ProfileStatuses ?? new List<ProfileStatusItem>();
+                var item = statuses.FirstOrDefault(ps => ps.Name.Equals(p.Name, StringComparison.OrdinalIgnoreCase) || ps.Id == p.Id);
                 if (item != null)
                 {
                     p.Enabled = item.Enabled;

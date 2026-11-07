@@ -42,6 +42,7 @@ public static class CommandNames
     public const string GetMeditationSchedules = "GetMeditationSchedules";
     public const string SnoozeMeditationSchedule = "SnoozeMeditationSchedule";
     public const string DeleteMeditationSchedule = "DeleteMeditationSchedule";
+    public const string ConfirmTimerReady = "ConfirmTimerReady";
 }
 
 public class ActiveWebRuleDto
@@ -198,12 +199,18 @@ public class StartMeditationRequest
 
     [JsonPropertyName("soundscape")]
     public string? Soundscape { get; set; }
+
+    [JsonPropertyName("status")]
+    public string? Status { get; set; }
 }
 
 public class MeditationStatusDto
 {
     [JsonPropertyName("active")]
     public bool Active { get; set; }
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "Active";
 
     [JsonPropertyName("sessionId")]
     public int? SessionId { get; set; }
@@ -272,7 +279,7 @@ public class SaveMeditationNoteRequest
 public class MeditationScheduleDto
 {
     [JsonPropertyName("id")]
-    public int Id { get; set; }
+    public int Id { get; set; } = 1;
 
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; } = true;
@@ -303,4 +310,13 @@ public class SnoozeMeditationScheduleRequest
 {
     [JsonPropertyName("scheduleId")]
     public int ScheduleId { get; set; }
+}
+
+public class ConfirmTimerReadyRequest
+{
+    [JsonPropertyName("sessionId")]
+    public int SessionId { get; set; }
+
+    [JsonPropertyName("visibleWindowPids")]
+    public List<int> VisibleWindowPids { get; set; } = new();
 }

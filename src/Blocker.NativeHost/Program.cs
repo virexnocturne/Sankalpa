@@ -89,6 +89,16 @@ public static class Program
                     Log("Stdin stream reached EOF. Browser closed or host disconnected.");
                     break;
                 }
+                catch (IOException ioEx)
+                {
+                    Log($"Stdin pipe disconnected: {ioEx.Message}. Browser closed.");
+                    break;
+                }
+                catch (InvalidDataException idEx)
+                {
+                    Log($"Stdin framing invalid or truncated: {idEx.Message}. Browser closed.");
+                    break;
+                }
 
                 if (requestJson == null)
                 {

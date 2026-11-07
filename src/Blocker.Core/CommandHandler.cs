@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -50,7 +51,7 @@ public static class CommandHandler
                 "EXTHEARTBEAT" => HandleExtHeartbeat(request, store),
                 "EMERGENCYUNLOCK" => HandleEmergencyUnlock(store, clientIdentity),
                 "GETDNSCONFIG" => HandleGetDnsConfig(store),
-                "SAVEDNSCONFIG" => HandleSaveDnsConfig(request, store),
+                "SAVEDNSCONFIG" => HandleSaveDnsConfig(request, store, clientIdentity),
                 "LOCKDNS" => HandleLockDns(request, store),
                 "UNLOCKDNS" => HandleUnlockDns(request, store),
                 "RENAMEPROFILE" => HandleRenameProfile(request, store),
@@ -67,6 +68,7 @@ public static class CommandHandler
                 "GETMEDITATIONSCHEDULES" => HandleGetMeditationSchedules(store),
                 "DELETEMEDITATIONSCHEDULE" => HandleDeleteMeditationSchedule(request, store),
                 "SNOOZEMEDITATIONSCHEDULE" => HandleSnoozeMeditationSchedule(request, store),
+                "CONFIRMTIMERREADY" => HandleConfirmTimerReady(request, store),
                 _ => Response.Fail($"Unknown command: '{request.Command}'.")
             };
         }
@@ -368,7 +370,8 @@ public static class CommandHandler
                     targetEnabled,
                     targetLockMode,
                     targetSchedule,
-                    schedStr);
+                    schedStr,
+                    targetAllowance);
 
                 if (additiveErr != null)
                 {
@@ -382,7 +385,7 @@ public static class CommandHandler
                     return Response.Fail($"Refused: Cannot edit profile '{trimmedName}' while an active LOCKED session is using it.");
                 }
 
-                var unlockErr = VerifyUnlock(existing, request, activeSession);
+                var unlockErr = VerifyUnlock(existing, request, activeSession, store);
                 if (unlockErr != null)
                 {
                     return unlockErr;
@@ -421,7 +424,8 @@ public static class CommandHandler
         bool targetEnabled,
         LockMode targetLockMode,
         List<ScheduleRule> targetSchedule,
-        string? schedStr)
+        string? schedStr,
+        AllowanceConfig? targetAllowance = null)
     {
         // 1. Existing blocked applications cannot be removed
         if (existing.BlockedProcesses != null)
@@ -526,6 +530,27 @@ public static class CommandHandler
             return "cannot change lock mode while block is locked";
         }
 
+        // 10. Allowance cannot be enabled or increased while locked
+        if (targetAllowance != null && existing.Allowance != null)
+        {
+            if (!existing.Allowance.Enabled && targetAllowance.Enabled)
+            {
+                return "cannot enable daily allowance while block is locked";
+            }
+            if (targetAllowance.DailyAllowanceMinutes > existing.Allowance.DailyAllowanceMinutes)
+            {
+                return "cannot increase daily allowance minutes while block is locked";
+            }
+            if (targetAllowance.OnlyWithinSchedule != existing.Allowance.OnlyWithinSchedule)
+            {
+                return "cannot modify allowance schedule constraint while block is locked";
+            }
+        }
+        else if (targetAllowance != null && targetAllowance.Enabled && (existing.Allowance == null || !existing.Allowance.Enabled))
+        {
+            return "cannot enable daily allowance while block is locked";
+        }
+
         return null;
     }
 
@@ -552,6 +577,14 @@ public static class CommandHandler
         if (activeSession != null && activeSession.ProfileId == profile.Id)
         {
             return Response.Fail($"Cannot delete profile '{name}' while an active session is running for it. Please stop the session first.");
+        }
+
+        if (profile.LockMode == LockMode.HardLocked)
+        {
+            if (store?.IsEmergencyUnlockPresent() != true)
+            {
+                return Response.Fail($"Refused: Profile '{profile.Name}' is hard-locked and cannot be modified or unlocked without emergency recovery.");
+            }
         }
 
         if (profile.Enabled)
@@ -605,7 +638,7 @@ public static class CommandHandler
         }
         else
         {
-            var unlockErr = VerifyUnlock(profile, request, activeSession);
+            var unlockErr = VerifyUnlock(profile, request, activeSession, store);
             if (unlockErr != null)
             {
                 return unlockErr;
@@ -834,7 +867,7 @@ public static class CommandHandler
             return Response.Fail($"Cannot disable profile '{name}' while an active LOCKED session is running for it.");
         }
 
-        var unlockErr = VerifyUnlock(profile, request, activeSession);
+        var unlockErr = VerifyUnlock(profile, request, activeSession, store);
         if (unlockErr != null)
         {
             return unlockErr;
@@ -1046,7 +1079,7 @@ public static class CommandHandler
 
         if (targetProfile != null && !isElevated)
         {
-            var unlockError = VerifyUnlock(targetProfile, request, targetSession);
+            var unlockError = VerifyUnlock(targetProfile, request, targetSession, store);
             if (unlockError != null)
             {
                 return unlockError;
@@ -1255,7 +1288,7 @@ public static class CommandHandler
         return Response.Success(JsonSerializer.Serialize(events));
     }
 
-    private static Response? VerifyUnlock(Profile profile, Request request, BlockSession? activeSession)
+    private static Response? VerifyUnlock(Profile profile, Request request, BlockSession? activeSession, IBlockStore? store = null)
     {
         if (activeSession != null && activeSession.Locked && activeSession.ProfileId == profile.Id)
         {
@@ -1279,7 +1312,17 @@ public static class CommandHandler
         {
             case LockMode.None:
             case LockMode.Locked:
+                return null;
+
             case LockMode.HardLocked:
+                if (store?.IsEmergencyUnlockPresent() == true)
+                {
+                    return null;
+                }
+                if (profile.Schedule == null || profile.Schedule.Count == 0 || ScheduleLogic.IsActive(profile.Schedule, DateTime.Now))
+                {
+                    return Response.Fail($"Refused: Profile '{profile.Name}' is hard-locked and cannot be modified or unlocked without emergency recovery.");
+                }
                 return null;
 
             case LockMode.TypingChallenge:
@@ -1608,7 +1651,7 @@ public static class CommandHandler
         return Response.Success(json);
     }
 
-    private static Response HandleSaveDnsConfig(Request request, IBlockStore store)
+    private static Response HandleSaveDnsConfig(Request request, IBlockStore store, IClientIdentity clientIdentity)
     {
         var current = store.GetDnsConfig();
         if (current.Locked)
@@ -1622,6 +1665,13 @@ public static class CommandHandler
         string? primaryIpv6 = GetArg(request, "primary_ipv6");
         string? secondaryIpv6 = GetArg(request, "secondary_ipv6");
         string? enabledStr = GetArg(request, "enabled");
+
+        bool isCustom = string.Equals(preset, "Custom", StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrWhiteSpace(primary) && !DnsPresets.All.Any(p => p.Primary == primary));
+        if (isCustom && !clientIdentity.IsAdministrator && !clientIdentity.IsLocalSystem)
+        {
+            return Response.Fail("Administrator privileges are required to configure custom DNS IP addresses.");
+        }
 
         if (!string.IsNullOrEmpty(primary))
         {
@@ -1779,6 +1829,7 @@ public static class CommandHandler
         var allowedApps = new List<string>();
         LockMode lockMode = LockMode.None;
         string? soundscape = null;
+        string? status = null;
 
         string? payload = GetArg(request, "data") ?? GetArg(request, "payload") ?? GetArg(request, "json");
         if (!string.IsNullOrWhiteSpace(payload))
@@ -1792,6 +1843,7 @@ public static class CommandHandler
                     if (reqDto.AllowedApps != null && reqDto.AllowedApps.Count > 0) allowedApps = reqDto.AllowedApps;
                     lockMode = ParseLockMode(reqDto.LockMode);
                     soundscape = reqDto.Soundscape;
+                    status = reqDto.Status;
                 }
             }
             catch { }
@@ -1826,6 +1878,12 @@ public static class CommandHandler
             soundscape = sound;
         }
 
+        string? statusArg = GetArg(request, "status");
+        if (!string.IsNullOrWhiteSpace(statusArg))
+        {
+            status = statusArg;
+        }
+
         var existing = store.GetActiveMeditationSession();
         if (existing != null)
         {
@@ -1833,10 +1891,11 @@ public static class CommandHandler
             return Response.Fail($"A meditation session is already active (Session {existing.Id}, remaining {rem}s).");
         }
 
-        var session = store.StartMeditationSession(targetSeconds, allowedApps, lockMode, soundscape);
+        var session = store.StartMeditationSession(targetSeconds, allowedApps, lockMode, soundscape, null, status ?? "Active");
         var statusDto = new MeditationStatusDto
         {
             Active = true,
+            Status = session.Status ?? "Active",
             SessionId = session.Id,
             StartUtc = session.StartUtc,
             TargetDurationSeconds = session.TargetDurationSeconds,
@@ -1888,6 +1947,7 @@ public static class CommandHandler
         var dto = new MeditationStatusDto
         {
             Active = true,
+            Status = active.Status ?? "Active",
             SessionId = active.Id,
             StartUtc = active.StartUtc,
             TargetDurationSeconds = active.TargetDurationSeconds,
@@ -2063,6 +2123,7 @@ public static class CommandHandler
             schedule.Soundscape = soundStr;
         }
 
+        schedule.Id = 1;
         var saved = store.SaveMeditationSchedule(schedule);
         var outDto = new MeditationScheduleDto
         {
@@ -2148,6 +2209,99 @@ public static class CommandHandler
 
         bool snoozed = store.SnoozeMeditationSchedule(scheduleId, minutes);
         return snoozed ? Response.Success($"Meditation schedule snoozed for {minutes} minutes.") : Response.Fail("Schedule not found.");
+    }
+
+    private static Response HandleConfirmTimerReady(Request request, IBlockStore store)
+    {
+        ConfirmTimerReadyRequest? req = null;
+        string? payload = GetArg(request, "data") ?? GetArg(request, "payload") ?? GetArg(request, "json");
+        if (!string.IsNullOrWhiteSpace(payload))
+        {
+            try
+            {
+                req = JsonSerializer.Deserialize<ConfirmTimerReadyRequest>(payload);
+            }
+            catch { }
+        }
+
+        int sessionId = req?.SessionId ?? 0;
+        string? sIdStr = GetArg(request, "sessionId") ?? GetArg(request, "session_id") ?? GetArg(request, "id");
+        if (sessionId <= 0 && !string.IsNullOrWhiteSpace(sIdStr) && int.TryParse(sIdStr, out int parsedId))
+        {
+            sessionId = parsedId;
+        }
+
+        if (sessionId <= 0)
+        {
+            return Response.Fail("Missing or invalid sessionId.");
+        }
+
+        bool promoted = store.PromoteMeditationSessionToActive(sessionId);
+        if (!promoted)
+        {
+            return Response.Fail($"Failed to promote meditation session {sessionId}.");
+        }
+
+        var activeSession = store.GetActiveMeditationSession();
+        var allowedApps = activeSession?.GetAllowedApps() ?? new List<string>();
+
+        int suspendedCount = 0;
+        if (req?.VisibleWindowPids != null && req.VisibleWindowPids.Count > 0)
+        {
+            foreach (var pid in req.VisibleWindowPids)
+            {
+                if (pid <= 4) continue;
+
+                string procName = string.Empty;
+                try
+                {
+                    using var p = Process.GetProcessById(pid);
+                    procName = p.ProcessName;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (ProtectedProcesses.IsProtected(procName))
+                {
+                    continue;
+                }
+
+                bool isAllowed = false;
+                string normProc = ProcessMatcher.NormalizeProcessName(procName);
+                foreach (var app in allowedApps)
+                {
+                    if (string.Equals(normProc, ProcessMatcher.NormalizeProcessName(app), StringComparison.OrdinalIgnoreCase))
+                    {
+                        isAllowed = true;
+                        break;
+                    }
+                }
+
+                if (isAllowed)
+                {
+                    continue;
+                }
+
+                if (ProcessSuspender.Default.SuspendProcess(pid, procName))
+                {
+                    suspendedCount++;
+                }
+            }
+        }
+
+        if (suspendedCount > 0)
+        {
+            ProcessSuspender.OnMeditationSuspensionSummary?.Invoke(suspendedCount);
+        }
+
+        return Response.Success(JsonSerializer.Serialize(new
+        {
+            promoted = true,
+            sessionId,
+            suspendedCount
+        }));
     }
 
     #endregion

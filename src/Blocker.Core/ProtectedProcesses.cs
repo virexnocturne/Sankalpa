@@ -19,6 +19,7 @@ public static class ProtectedProcesses
         "taskmgr",
         "screenclippinghost",
         "snippingtool",
+        "audiodg",
         "blocker",
         "blocker.service",
         "sankalpa",

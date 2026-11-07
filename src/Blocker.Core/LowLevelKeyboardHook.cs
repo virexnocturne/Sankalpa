@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -105,6 +106,7 @@ public sealed class LowLevelKeyboardHook : IDisposable
     private uint _hookThreadId;
     private bool _isActive;
     private bool _disposed;
+    private DateTime _emergencyChordStartTime = DateTime.MinValue;
 
     public bool IsActive
     {
@@ -116,6 +118,11 @@ public sealed class LowLevelKeyboardHook : IDisposable
             }
         }
     }
+
+    /// <summary>
+    /// Triggered when the user holds Ctrl + Shift + Alt + Escape for 3 seconds continuously.
+    /// </summary>
+    public event Action? EmergencyEscapeTriggered;
 
     /// <summary>
     /// Optional callback invoked when the user triggers Win + Shift + S to snip the screen,
@@ -257,6 +264,43 @@ public sealed class LowLevelKeyboardHook : IDisposable
             bool ctrlDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 ||
                             (GetAsyncKeyState(VK_LCONTROL) & 0x8000) != 0 ||
                             (GetAsyncKeyState(VK_RCONTROL) & 0x8000) != 0;
+
+            // Emergency Escape Chord: Ctrl + Shift + Alt + Escape held for 3 seconds
+            if (vk == VK_ESCAPE && ctrlDown && altDown && shiftDown)
+            {
+                if (_emergencyChordStartTime == DateTime.MinValue)
+                {
+                    _emergencyChordStartTime = DateTime.UtcNow;
+                }
+                else if ((DateTime.UtcNow - _emergencyChordStartTime).TotalSeconds >= 3.0)
+                {
+                    _emergencyChordStartTime = DateTime.MinValue;
+                    try
+                    {
+                        string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                        string f1 = Path.Combine(AppContext.BaseDirectory, "EMERGENCY_UNLOCK");
+                        string f2 = Path.Combine(appData, "Blocker", "EMERGENCY_UNLOCK");
+                        string f3 = Path.Combine(appData, "Sankalpa", "EMERGENCY_UNLOCK");
+                        Directory.CreateDirectory(Path.GetDirectoryName(f2)!);
+                        Directory.CreateDirectory(Path.GetDirectoryName(f3)!);
+                        File.WriteAllText(f1, "EMERGENCY_RELEASE");
+                        File.WriteAllText(f2, "EMERGENCY_RELEASE");
+                        File.WriteAllText(f3, "EMERGENCY_RELEASE");
+                    }
+                    catch { }
+
+                    try
+                    {
+                        EmergencyEscapeTriggered?.Invoke();
+                    }
+                    catch { }
+                }
+                return (IntPtr)1;
+            }
+            else if (vk == VK_ESCAPE)
+            {
+                _emergencyChordStartTime = DateTime.MinValue;
+            }
 
             // Whitelist Win + Shift + S for Snipping Tool / Screen Clipping
             if (vk == VK_S && winDown && shiftDown)

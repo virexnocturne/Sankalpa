@@ -60,6 +60,13 @@ export function matchesPath(urlPath, patternPath, isExact) {
     return true;
   }
 
+  if (patternPath.endsWith('/*')) {
+    const base = patternPath.slice(0, -2);
+    if (urlPath === base || (base && isGlobMatch(urlPath, base)) || (base === '' && urlPath === '')) {
+      return true;
+    }
+  }
+
   for (let i = urlPath.length - 1; i >= 1; i--) {
     if (urlPath[i] === '/') {
       if (isGlobMatch(urlPath.slice(0, i), patternPath)) {
@@ -82,9 +89,17 @@ export function compilePattern(pattern) {
   }
 
   let p = (pattern || '').trim();
+  p = p.replace(/^[a-zA-Z]+:\/\//, '');
   const slashIdx = p.indexOf('/');
   let hostPart = slashIdx >= 0 ? p.slice(0, slashIdx) : p;
   let rawPatternPath = slashIdx >= 0 ? p.slice(slashIdx) : '';
+
+  if (!hostPart.includes('*') && hostPart) {
+    try {
+      const dummy = new URL(`http://${hostPart}`);
+      hostPart = dummy.hostname;
+    } catch { }
+  }
 
   if (hostPart.endsWith('$')) {
     hostPart = hostPart.slice(0, -1);
@@ -210,6 +225,7 @@ export function tryParseUrl(urlString) {
  */
 export function evaluate(profile, urlString) {
   const profileName = profile?.name ?? profile?.Name ?? '';
+  const activeUntil = profile?.activeUntil ?? profile?.ActiveUntil ?? null;
   const parsed = tryParseUrl(urlString);
   if (!parsed.ok) {
     return { blocked: false, profileName };
@@ -241,6 +257,7 @@ export function evaluate(profile, urlString) {
     return {
       blocked: true,
       profileName,
+      activeUntil,
       matchedBlockPattern: 'all websites'
     };
   }
@@ -255,6 +272,7 @@ export function evaluate(profile, urlString) {
         return {
           blocked: true,
           profileName,
+          activeUntil,
           matchedBlockPattern: pat
         };
       }

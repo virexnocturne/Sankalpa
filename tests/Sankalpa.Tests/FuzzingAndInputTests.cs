@@ -46,6 +46,7 @@ public class FuzzingAndInputTests
                 existing.LockMode = profile.LockMode;
                 existing.PasswordSalt = profile.PasswordSalt;
                 existing.PasswordHash = profile.PasswordHash;
+                existing.Allowance = profile.Allowance;
                 return existing;
             }
 
@@ -61,7 +62,8 @@ public class FuzzingAndInputTests
                 Schedule = profile.Schedule,
                 LockMode = profile.LockMode,
                 PasswordSalt = profile.PasswordSalt,
-                PasswordHash = profile.PasswordHash
+                PasswordHash = profile.PasswordHash,
+                Allowance = profile.Allowance
             };
             Profiles.Add(newProfile);
             return newProfile;

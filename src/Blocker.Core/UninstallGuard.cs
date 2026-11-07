@@ -198,13 +198,15 @@ public static class UninstallGuard
                 foreach (var line in lines)
                 {
                     string trimmed = line.Trim();
-                    if (trimmed.IndexOf("# === SANKALPA BLOCKER START ===", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    if (trimmed.IndexOf(HostsFileBuilder.BeginMarker, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        trimmed.IndexOf("# === SANKALPA BLOCKER START ===", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         trimmed.IndexOf("# === BLOCKER START ===", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         inBlock = true;
                         continue;
                     }
-                    if (trimmed.IndexOf("# === SANKALPA BLOCKER END ===", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    if (trimmed.IndexOf(HostsFileBuilder.EndMarker, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        trimmed.IndexOf("# === SANKALPA BLOCKER END ===", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         trimmed.IndexOf("# === BLOCKER END ===", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         inBlock = false;

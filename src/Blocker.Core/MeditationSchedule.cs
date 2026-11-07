@@ -10,8 +10,23 @@ namespace Blocker.Core;
 
 public class MeditationSchedule
 {
-    public int Id { get; set; }
+    public const int DefaultId = 1;
+    public int Id { get; set; } = DefaultId;
+    public bool IsSingleton => Id == DefaultId;
     public bool Enabled { get; set; } = true;
+
+    public static MeditationSchedule CreateDefault() => new()
+    {
+        Id = DefaultId,
+        Enabled = false,
+        DaysOfWeekJson = "[]",
+        TimeOfDay = "15:00",
+        EndTimeOfDay = "16:00",
+        DurationSeconds = 900,
+        AllowedAppsJson = "[]",
+        LockMode = LockMode.None,
+        Soundscape = null
+    };
     public string DaysOfWeekJson { get; set; } = "[]";
     public string TimeOfDay { get; set; } = "15:00";
     public string EndTimeOfDay { get; set; } = "16:00";

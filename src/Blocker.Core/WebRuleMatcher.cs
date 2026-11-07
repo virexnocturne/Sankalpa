@@ -566,7 +566,7 @@ public static class WebRuleMatcher
             return false;
         }
 
-        urlHost = uri.IdnHost.ToLowerInvariant();
+        urlHost = uri.IdnHost.ToLowerInvariant().TrimEnd('.');
 
         string rawPath = uri.AbsolutePath;
         string decodedPath;
@@ -577,6 +577,11 @@ public static class WebRuleMatcher
         catch
         {
             decodedPath = rawPath;
+        }
+
+        while (decodedPath.Contains("//", StringComparison.Ordinal))
+        {
+            decodedPath = decodedPath.Replace("//", "/");
         }
 
         if (decodedPath.EndsWith("/"))

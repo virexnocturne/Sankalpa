@@ -60,12 +60,15 @@ public interface IBlockStore
     void SaveDnsConfig(DnsConfig config);
 
     MeditationSession? GetActiveMeditationSession() => null;
-    MeditationSession StartMeditationSession(long targetDurationSeconds, List<string> allowedApps, LockMode lockMode, string? soundscape) => new();
+    MeditationSession StartMeditationSession(long targetDurationSeconds, List<string> allowedApps, LockMode lockMode, string? soundscape) => StartMeditationSession(targetDurationSeconds, allowedApps, lockMode, soundscape, null, "Active");
+    MeditationSession StartMeditationSession(long targetDurationSeconds, List<string> allowedApps, LockMode lockMode, string? soundscape, string? passwordHash, string status = "Active") => new();
     void EndMeditationSession(int id, bool completed, string? finalNotes = null) { }
     void UpdateMeditationNotes(int id, string notes) { }
     List<MeditationSession> GetMeditationHistory(int limit = 50) => new();
     List<MeditationSchedule> GetMeditationSchedules() => new();
+    MeditationSchedule? GetMeditationSchedule() => null;
     MeditationSchedule SaveMeditationSchedule(MeditationSchedule schedule) => schedule;
     bool DeleteMeditationSchedule(int id) => true;
     bool SnoozeMeditationSchedule(int id, int snoozeMinutes = 5) => true;
+    bool PromoteMeditationSessionToActive(int sessionId) => true;
 }

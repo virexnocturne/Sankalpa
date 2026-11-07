@@ -17,6 +17,7 @@ public class MeditationSession
     public string? Soundscape { get; set; }
     public DateTime? EndedUtc { get; set; }
     public string? PasswordHash { get; set; }
+    public string Status { get; set; } = "Active";
 
     public List<string> GetAllowedApps()
     {

@@ -143,10 +143,10 @@ public partial class AppPickerDialog : Window
             try
             {
                 var pipeClient = new PipeClient(timeoutMs: 300);
-                var task = pipeClient.SendRequestAsync(new Request { Command = CommandNames.ListProfiles });
-                if (task.Wait(300) && task.Result.Connected && task.Result.Response?.Ok == true && !string.IsNullOrWhiteSpace(task.Result.Response.Data))
+                var taskResult = Task.Run(() => pipeClient.SendRequestAsync(new Request { Command = CommandNames.ListProfiles })).GetAwaiter().GetResult();
+                if (taskResult.Connected && taskResult.Response?.Ok == true && !string.IsNullOrWhiteSpace(taskResult.Response.Data))
                 {
-                    var profiles = System.Text.Json.JsonSerializer.Deserialize<List<Profile>>(task.Result.Response.Data, new System.Text.Json.JsonSerializerOptions
+                    var profiles = System.Text.Json.JsonSerializer.Deserialize<List<Profile>>(taskResult.Response.Data, new System.Text.Json.JsonSerializerOptions
                     {
                         PropertyNameCaseInsensitive = true
                     });

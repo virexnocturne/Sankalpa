@@ -49,10 +49,15 @@ document.addEventListener('DOMContentLoaded', () => {
             clearInterval(timerInterval);
             setTimeout(() => {
               if (targetUrl) {
-                window.location.href = targetUrl;
-              } else {
-                window.close();
+                try {
+                  const parsed = new URL(targetUrl);
+                  if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                    window.location.href = targetUrl;
+                    return;
+                  }
+                } catch { }
               }
+              window.close();
             }, 1000);
           }
         });

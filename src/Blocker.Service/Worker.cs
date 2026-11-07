@@ -45,6 +45,7 @@ public class Worker : BackgroundService
     private readonly Dictionary<int, DateTime> _scheduleTriggeredUtc = new();
     private readonly HashSet<int> _loggedMeditationPids = new();
     private readonly HashSet<IntPtr> _loggedCabinetHwnds = new();
+    private DateTime _pendingMeditationDeadline = DateTime.MinValue;
 
 
     private readonly ConcurrentDictionary<string, string?> _originalFileNameCache = new(StringComparer.OrdinalIgnoreCase);
@@ -82,6 +83,44 @@ public class Worker : BackgroundService
         RestoreActiveSessionOnStartup();
 
         return base.StartAsync(cancellationToken);
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        _logger.LogInformation("[{Timestamp}] Blocker Service stopping. Checking active lock state...", timestamp);
+
+        try
+        {
+            DateTime localNow = DateTime.Now;
+            var allProfiles = _db.ListProfiles();
+            bool anySessionLocked = _trackedSessions.Values.Any(t => t.Session.Locked && t.Session.IsActive(DateTime.UtcNow));
+            bool anyScheduleLocked = allProfiles.Any(p => p.Schedule != null && p.Schedule.Count > 0 && ScheduleLogic.IsActive(p.Schedule, localNow));
+            bool emergencyPresent = _db.IsEmergencyUnlockPresent();
+
+            // Meditation mode is a focus mode, not a kernel lockdown. It never blocks service teardown or DACL restoration.
+            bool isLockedActive = (anySessionLocked || anyScheduleLocked) && !emergencyPresent;
+
+            // Unconditionally resume any suspended processes during service shutdown
+            ProcessSuspender.Default.ResumeAll();
+
+            if (isLockedActive)
+            {
+                _logger.LogWarning("[SECURITY] Blocker Service stopping while locked session/schedule is active. Preserving hosts file and security descriptors.");
+            }
+            else
+            {
+                _hostsManager.RemoveBlock();
+                SecurityHardener.UnlockService(out _);
+                SecurityHardener.UnlockCurrentProcess(out _);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing StopAsync teardown in Worker.");
+        }
+
+        await base.StopAsync(cancellationToken);
     }
 
     private void RefreshProtectedPids()
@@ -189,21 +228,18 @@ public class Worker : BackgroundService
                     _db.EndMeditationSession(activeMeditation.Id, completed: true);
                     _activeMeditationSession = null;
                     _loggedMeditationPids.Clear();
+                    ProcessSuspender.Default.ResumeAll();
                     // Scheduled Blocks Integrity: Ensure meditation session cleanup does NOT touch, disable, or alter standard profile schedules.
                 }
             }
 
-            // Enforce active union (scheduled profiles + restored manual session + meditation) on startup
+            // Enforce active union (scheduled profiles + restored manual session) on startup
             DateTime localNow = DateTime.Now;
             var allProfiles = _db.ListProfiles();
             bool anySessionLocked = _trackedSessions.Values.Any(t => t.Session.Locked);
             bool anyScheduleLocked = allProfiles.Any(p => p.Schedule != null && p.Schedule.Count > 0 && ScheduleLogic.IsActive(p.Schedule, localNow));
             bool anyHardLocked = anySessionLocked || anyScheduleLocked;
-            if (_activeMeditationSession != null &&
-                (_activeMeditationSession.LockMode == LockMode.HardLocked || _activeMeditationSession.LockMode == LockMode.Locked))
-            {
-                anyHardLocked = true;
-            }
+            // Meditation Mode does not trigger kernel process/service DACL lockdown.
 
             if (anyHardLocked)
             {
@@ -494,6 +530,7 @@ public class Worker : BackgroundService
                     _db.EndMeditationSession(activeMed.Id, completed: false);
                     _activeMeditationSession = null;
                 }
+                ProcessSuspender.Default.ResumeAll();
                 _db.DisableAllProfiles();
                 _db.CleanHosts();
                 _db.ConsumeEmergencyUnlock();
@@ -649,6 +686,7 @@ public class Worker : BackgroundService
                 ServiceNotificationDispatcher.DispatchNotification("MeditationComplete", "Meditation", "Meditation session complete! Well done.");
                 _activeMeditationSession = null;
                 _loggedMeditationPids.Clear();
+                ProcessSuspender.Default.ResumeAll();
 
                 // Scheduled Blocks Integrity: Ensure meditation session cleanup does NOT touch, disable, or alter standard profile schedules.
                 // Standard profiles and their scheduled active windows operate strictly independently at all times.
@@ -663,8 +701,21 @@ public class Worker : BackgroundService
             if (_activeMeditationSession != null)
             {
                 _loggedMeditationPids.Clear();
+                ProcessSuspender.Default.ResumeAll();
             }
             _activeMeditationSession = null;
+        }
+
+        // Safety timeout for pending meditation sessions (if UI was closed or failed to confirm timer readiness)
+        if (_activeMeditationSession != null && string.Equals(_activeMeditationSession.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+        {
+            if (DateTime.UtcNow > _pendingMeditationDeadline)
+            {
+                _logger.LogWarning("Pending meditation session {SessionId} timed out waiting for UI timer confirmation. Cancelling cleanly.", _activeMeditationSession.Id);
+                _db.EndMeditationSession(_activeMeditationSession.Id, completed: false);
+                _activeMeditationSession = null;
+                ProcessSuspender.Default.ResumeAll();
+            }
         }
 
         // 3. Process & service DACL lockdown maintenance
@@ -673,11 +724,7 @@ public class Worker : BackgroundService
         bool anySessionLocked = _trackedSessions.Values.Any(t => t.Session.Locked);
         bool anyScheduleLocked = allProfiles.Any(p => p.Schedule != null && p.Schedule.Count > 0 && ScheduleLogic.IsActive(p.Schedule, localNow));
         bool anyHardLocked = anySessionLocked || anyScheduleLocked;
-        if (_activeMeditationSession != null &&
-            (_activeMeditationSession.LockMode == LockMode.HardLocked || _activeMeditationSession.LockMode == LockMode.Locked))
-        {
-            anyHardLocked = true;
-        }
+        // Meditation Mode is cooperative focus; it never locks process or service DACLs.
 
         if (anyHardLocked)
         {
@@ -773,9 +820,8 @@ public class Worker : BackgroundService
         List<Profile> allProfiles,
         DateTime localNow)
     {
-        bool isLockedMeditation = _activeMeditationSession != null &&
-            (_activeMeditationSession.LockMode == LockMode.HardLocked || _activeMeditationSession.LockMode == LockMode.Locked);
-        bool isLockedActive = _trackedSessions.Values.Any(t => t.Session.Locked) || isLockedMeditation;
+        // Anti-kill tools are only terminated for hard locked standard sessions, never during meditation mode.
+        bool isLockedActive = _trackedSessions.Values.Any(t => t.Session.Locked);
         var activeSessions = _trackedSessions.Values.Select(t => t.Session).ToList();
         var activeProfiles = allProfiles.Where(p => ProfileStateLogic.IsProfileActiveWithSessions(p, activeSessions, localNow, out _)).ToList();
         var currentPids = new HashSet<int>();
@@ -785,8 +831,8 @@ public class Worker : BackgroundService
         bool hasUnauthorizedBrowsers = unauthorizedBrowsers != null && unauthorizedBrowsers.Count > 0;
         var killedBrowsersThisPass = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Check standalone File Explorer windows during active meditation
-        if (_activeMeditationSession != null)
+        // Check standalone File Explorer windows during active meditation (only if promoted from Pending)
+        if (_activeMeditationSession != null && !string.Equals(_activeMeditationSession.Status, "Pending", StringComparison.OrdinalIgnoreCase))
         {
             var allowedApps = _activeMeditationSession.GetAllowedApps() ?? new List<string>();
             bool isExplorerAllowed = IsAppAllowed("explorer", "explorer.exe", allowedApps);
@@ -823,6 +869,10 @@ public class Worker : BackgroundService
                     try
                     {
                         using var pObj = Process.GetProcessById(processId);
+                        if (!string.Equals(pObj.ProcessName, processName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
                         try
                         {
                             pObj.Kill(entireProcessTree: true);
@@ -892,6 +942,10 @@ public class Worker : BackgroundService
                         try
                         {
                             using var targetProc = Process.GetProcessById(processId);
+                            if (!string.Equals(targetProc.ProcessName, processName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
                             try
                             {
                                 targetProc.Kill(entireProcessTree: true);
@@ -957,8 +1011,8 @@ public class Worker : BackgroundService
                     }
                 }
 
-                // 3. Meditation Mode Whitelist enforcement
-                if (_activeMeditationSession != null)
+                // 3. Meditation Mode Whitelist enforcement via thread suspension (non-destructive)
+                if (_activeMeditationSession != null && !string.Equals(_activeMeditationSession.Status, "Pending", StringComparison.OrdinalIgnoreCase))
                 {
                     var allowedApps = _activeMeditationSession.GetAllowedApps() ?? new List<string>();
                     bool isAppPermitted = IsAppAllowed(processName, exeName, allowedApps);
@@ -969,6 +1023,10 @@ public class Worker : BackgroundService
                         try
                         {
                             using var targetProc = Process.GetProcessById(processId);
+                            if (!string.Equals(targetProc.ProcessName, processName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
 
                             uint activeSessionId = WTSGetActiveConsoleSessionId();
                             if (activeSessionId == 0xFFFFFFFF || activeSessionId == 0)
@@ -989,57 +1047,23 @@ public class Worker : BackgroundService
 
                             if (isTargetInActiveSession)
                             {
-                                IntPtr hwnd = IntPtr.Zero;
-                                try { hwnd = targetProc.MainWindowHandle; } catch { }
-
-                                if (hwnd != IntPtr.Zero)
+                                if (ProcessSuspender.Default.SuspendProcess(processId, exeName))
                                 {
-                                    try
+                                    if (_loggedMeditationPids.Add(processId))
                                     {
-                                        ShowWindow(hwnd, SW_FORCEMINIMIZE);
-                                        ShowWindow(hwnd, SW_MINIMIZE);
+                                        string msg = $"[{timestamp}] [MEDITATION SUSPEND] Process '{exeName}' (PID: {processId}) suspended (not in allowed meditation apps).";
+                                        Console.WriteLine(msg);
+                                        _logger.LogInformation("{Message}", msg);
+
+                                        _db.RecordBlockEvent(new BlockEvent
+                                        {
+                                            TimeUtc = DateTime.UtcNow,
+                                            Kind = "MeditationSuspend",
+                                            Name = exeName,
+                                            ProfileName = "Meditation Whitelist",
+                                            ServiceDispatched = false
+                                        });
                                     }
-                                    catch { }
-                                }
-
-                                try
-                                {
-                                    if (hwnd == IntPtr.Zero || !targetProc.CloseMainWindow())
-                                    {
-                                        targetProc.Kill(entireProcessTree: true);
-                                    }
-                                }
-                                catch
-                                {
-                                    try { targetProc.Kill(); } catch { }
-                                }
-
-                                bool isBrowserOrMultiProcess =
-                                    BrowserCatalog.IsSupportedBrowser(exeName) ||
-                                    BrowserCatalog.IsUnsupportedBrowser(exeName) ||
-                                    BrowserCatalog.IsSupportedBrowser(processName) ||
-                                    BrowserCatalog.IsUnsupportedBrowser(processName);
-
-                                if (isBrowserOrMultiProcess && killedBrowsersThisPass.Add(exeName))
-                                {
-                                    ExecuteTaskkillByImageName(exeName);
-                                }
-
-                                if (_loggedMeditationPids.Add(processId))
-                                {
-                                    string msg = $"[{timestamp}] [MEDITATION WHITELIST] Process '{exeName}' terminated (not in allowed meditation apps).";
-                                    Console.WriteLine(msg);
-                                    _logger.LogInformation("{Message}", msg);
-
-                                    bool dispatched = ServiceNotificationDispatcher.DispatchNotification("MeditationWhitelist", exeName, "Allowed Apps Whitelist");
-                                    _db.RecordBlockEvent(new BlockEvent
-                                    {
-                                        TimeUtc = DateTime.UtcNow,
-                                        Kind = "MeditationWhitelist",
-                                        Name = exeName,
-                                        ProfileName = "Meditation Whitelist",
-                                        ServiceDispatched = dispatched
-                                    });
                                 }
                             }
                         }
@@ -1282,16 +1306,19 @@ public class Worker : BackgroundService
                                 schedule.DurationSeconds,
                                 schedule.GetAllowedApps(),
                                 schedule.LockMode,
-                                schedule.Soundscape);
+                                schedule.Soundscape,
+                                schedule.PasswordHash,
+                                "Pending");
 
                             _activeMeditationSession = started;
+                            _pendingMeditationDeadline = DateTime.UtcNow.AddSeconds(10);
 
                             string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                            string msg = $"[{ts}] [MEDITATION START] Scheduled meditation session {started.Id} started ({schedule.DurationSeconds / 60}m).";
+                            string msg = $"[{ts}] [MEDITATION SCHEDULED] Scheduled meditation session {started.Id} pending UI confirmation ({schedule.DurationSeconds / 60}m).";
                             Console.WriteLine(msg);
                             _logger.LogInformation("{Message}", msg);
 
-                            ServiceNotificationDispatcher.DispatchNotification("MeditationStart", "Meditation Started", $"Meditation session started ({schedule.DurationSeconds / 60}m).");
+                            ServiceNotificationDispatcher.DispatchNotification("MeditationStart", "Meditation Scheduled", $"Meditation session ready ({schedule.DurationSeconds / 60}m).");
                         }
                     }
                 }

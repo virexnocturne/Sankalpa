@@ -35,6 +35,7 @@ public class MeditationViewModel : ViewModelBase, IDisposable
     private ZenShieldWindow? _activeZenShield;
 
     public ZenShieldWindow? ActiveZenShield => _activeZenShield;
+    public IPipeClient? PipeClient => _pipeClient;
     public Func<IEnumerable<string>>? GetBlockedAppsProvider { get; set; }
 
     public string? PasswordHash
@@ -246,6 +247,11 @@ public class MeditationViewModel : ViewModelBase, IDisposable
         catch { }
 
         UpdateTimerDisplay();
+
+        if (_pipeClient != null)
+        {
+            _ = Task.Run(ConnectToServiceAsync);
+        }
     }
 
     #region Properties
@@ -341,14 +347,26 @@ public class MeditationViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public string SelectedSoundscapeName => _selectedSoundscape switch
+    public string SelectedSoundscapeName
     {
-        SoundscapeType.Rain => "Rain",
-        SoundscapeType.Library => "Library",
-        SoundscapeType.Forest => "Forest",
-        SoundscapeType.SingingBowls => "Singing Bowls",
-        _ => "Mute"
-    };
+        get => _selectedSoundscape switch
+        {
+            SoundscapeType.Rain => "Rain",
+            SoundscapeType.Library => "Library",
+            SoundscapeType.Forest => "Forest",
+            SoundscapeType.SingingBowls => "Singing Bowls",
+            _ => "Mute"
+        };
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            string cleaned = value.Replace(" ", "");
+            if (Enum.TryParse<SoundscapeType>(cleaned, true, out var parsed))
+            {
+                SelectedSoundscape = parsed;
+            }
+        }
+    }
 
     public bool IsRainSelected => _selectedSoundscape == SoundscapeType.Rain;
     public bool IsLibrarySelected => _selectedSoundscape == SoundscapeType.Library;
@@ -554,10 +572,12 @@ public class MeditationViewModel : ViewModelBase, IDisposable
                 LockMode.ToString(),
                 AllowedApps.ToList(),
                 "Meditation & Lockdown",
-                this)
+                this,
+                _activeSessionId)
             {
                 NotesText = CurrentNote,
-                Tag = PasswordHash
+                Tag = PasswordHash,
+                SessionId = _activeSessionId ?? 0
             };
 
             _activeZenShield.OnToggleNotesRequested = ToggleQuickNotes;
@@ -612,6 +632,8 @@ public class MeditationViewModel : ViewModelBase, IDisposable
         _sessionTimer.Start();
 
         // 4. Send IPC request if service connected
+        var allowedAppsSnapshot = AllowedApps.ToList();
+        string soundscapeName = SelectedSoundscapeName;
         _ = Task.Run(async () =>
         {
             if (_pipeClient != null)
@@ -621,9 +643,9 @@ public class MeditationViewModel : ViewModelBase, IDisposable
                     var payload = JsonSerializer.Serialize(new StartMeditationRequest
                     {
                         TargetDurationSeconds = _targetDurationSeconds,
-                        AllowedApps = AllowedApps.ToList(),
+                        AllowedApps = allowedAppsSnapshot,
                         LockMode = LockMode.ToString(),
-                        Soundscape = SelectedSoundscapeName
+                        Soundscape = soundscapeName
                     });
                     var req = new Request
                     {
@@ -634,6 +656,10 @@ public class MeditationViewModel : ViewModelBase, IDisposable
                     if (res.Connected && res.Response != null && res.Response.Ok && int.TryParse(res.Response.Data, out int id))
                     {
                         _activeSessionId = id;
+                        if (_activeZenShield != null)
+                        {
+                            _activeZenShield.SessionId = id;
+                        }
                     }
                 }
                 catch
@@ -988,22 +1014,27 @@ public class MeditationViewModel : ViewModelBase, IDisposable
             }
             catch { }
 
-            // Sync schedule to Service
-            if (IsScheduleEnabled && _pipeClient != null)
+            // Sync schedule to Service unconditionally
+            if (_pipeClient != null)
             {
+                var schedAppsSnapshot = AllowedApps.ToList();
+                var schedDaysSnapshot = ScheduleDays.Select(d => d.ToString()).ToList();
+                string schedSoundscape = SelectedSoundscapeName;
+                bool isEnabled = dlg.ScheduleEnabled;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
                         var payload = JsonSerializer.Serialize(new MeditationScheduleDto
                         {
-                            Enabled = IsScheduleEnabled,
+                            Id = 1,
+                            Enabled = isEnabled,
                             TimeOfDay = ScheduleTime,
-                            DaysOfWeek = ScheduleDays.Select(d => d.ToString()).ToList(),
+                            DaysOfWeek = schedDaysSnapshot,
                             DurationSeconds = TargetDurationSeconds,
-                            AllowedApps = AllowedApps.ToList(),
+                            AllowedApps = schedAppsSnapshot,
                             LockMode = LockMode.ToString(),
-                            Soundscape = SelectedSoundscapeName
+                            Soundscape = schedSoundscape
                         });
                         var req = new Request
                         {
@@ -1056,6 +1087,99 @@ public class MeditationViewModel : ViewModelBase, IDisposable
         _quickNotesOverlay.Activate();
     }
 
+    public async Task ConnectToServiceAsync()
+    {
+        if (_pipeClient == null) return;
+
+        try
+        {
+            var res = await _pipeClient.SendRequestAsync(new Request { Command = CommandNames.GetMeditationSchedules });
+            if (res.Connected && res.Response?.Ok == true && !string.IsNullOrWhiteSpace(res.Response.Data))
+            {
+                var schedules = JsonSerializer.Deserialize<List<MeditationScheduleDto>>(res.Response.Data, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var schedule = schedules?.FirstOrDefault();
+                if (schedule != null)
+                {
+                    IsScheduleEnabled = schedule.Enabled;
+                    if (!string.IsNullOrWhiteSpace(schedule.TimeOfDay))
+                    {
+                        ScheduleTime = schedule.TimeOfDay;
+                    }
+                    if (schedule.DaysOfWeek != null && schedule.DaysOfWeek.Count > 0)
+                    {
+                        var days = new List<DayOfWeek>();
+                        foreach (var d in schedule.DaysOfWeek)
+                        {
+                            if (Enum.TryParse<DayOfWeek>(d, true, out var day))
+                            {
+                                days.Add(day);
+                            }
+                        }
+                        if (days.Count > 0)
+                        {
+                            ScheduleDays = days;
+                        }
+                    }
+                    if (!string.IsNullOrWhiteSpace(schedule.Soundscape))
+                    {
+                        SelectedSoundscapeName = schedule.Soundscape;
+                    }
+                    if (schedule.DurationSeconds > 0)
+                    {
+                        TargetDurationSeconds = schedule.DurationSeconds;
+                    }
+                }
+            }
+
+            await CheckSessionStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MeditationViewModel] ConnectToServiceAsync error: {ex.Message}");
+        }
+    }
+
+    public async Task CheckSessionStatusAsync()
+    {
+        if (_pipeClient == null) return;
+
+        try
+        {
+            var medStatus = await GetActiveMeditationAsync();
+            if (medStatus != null && (_activeZenShield == null || !_activeZenShield.IsLoaded))
+            {
+                bool isPendingOrActive = string.Equals(medStatus.Status, "Pending", StringComparison.OrdinalIgnoreCase) || medStatus.Active;
+                if (isPendingOrActive && medStatus.RemainingSeconds > 0)
+                {
+                    LockMode lockMode = LockMode.Locked;
+                    if (Enum.TryParse<LockMode>(medStatus.LockMode, true, out var parsedMode))
+                    {
+                        lockMode = parsedMode;
+                    }
+
+                    string? pwdHash = PasswordHash;
+                    if (string.IsNullOrEmpty(pwdHash))
+                    {
+                        try { pwdHash = UiSettingsStore.Load().MeditationPasswordHash; } catch { }
+                    }
+
+                    _activeSessionId = medStatus.SessionId;
+                    LaunchZenShieldFromSession(
+                        medStatus.RemainingSeconds,
+                        lockMode,
+                        medStatus.AllowedApps ?? new List<string>(),
+                        pwdHash,
+                        medStatus.Soundscape,
+                        medStatus.SessionId);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MeditationViewModel] CheckSessionStatusAsync error: {ex.Message}");
+        }
+    }
+
     public async Task<MeditationStatusDto?> GetActiveMeditationAsync()
     {
         if (_pipeClient == null) return null;
@@ -1075,15 +1199,20 @@ public class MeditationViewModel : ViewModelBase, IDisposable
         return null;
     }
 
-    public void LaunchZenShieldFromSession(long remainingSeconds, LockMode lockMode, List<string> allowedApps, string? passwordHash = null, string? soundscape = null)
+    public void LaunchZenShieldFromSession(long remainingSeconds, LockMode lockMode, List<string> allowedApps, string? passwordHash = null, string? soundscape = null, int? sessionId = null)
     {
         if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
         {
-            Application.Current.Dispatcher.Invoke(() => LaunchZenShieldFromSession(remainingSeconds, lockMode, allowedApps, passwordHash, soundscape));
+            Application.Current.Dispatcher.Invoke(() => LaunchZenShieldFromSession(remainingSeconds, lockMode, allowedApps, passwordHash, soundscape, sessionId));
             return;
         }
 
         if (_activeZenShield != null) return;
+
+        if (sessionId.HasValue)
+        {
+            _activeSessionId = sessionId.Value;
+        }
 
         IsActive = true;
         RemainingSeconds = remainingSeconds;
@@ -1097,9 +1226,9 @@ public class MeditationViewModel : ViewModelBase, IDisposable
             AllowedApps.Add(app);
         }
 
-        if (!string.IsNullOrEmpty(soundscape) && Enum.TryParse<SoundscapeType>(soundscape, true, out var parsedSound))
+        if (!string.IsNullOrEmpty(soundscape))
         {
-            SelectedSoundscape = parsedSound;
+            SelectedSoundscapeName = soundscape;
         }
 
         if (SelectedSoundscape != SoundscapeType.None)
@@ -1115,10 +1244,12 @@ public class MeditationViewModel : ViewModelBase, IDisposable
                 lockMode.ToString(),
                 allowedApps,
                 "Meditation & Lockdown",
-                this)
+                this,
+                _activeSessionId)
             {
                 NotesText = CurrentNote,
-                Tag = passwordHash
+                Tag = passwordHash,
+                SessionId = _activeSessionId ?? 0
             };
 
             _activeZenShield.OnToggleNotesRequested = ToggleQuickNotes;

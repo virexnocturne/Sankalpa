@@ -100,6 +100,20 @@ public static class HostsFileBuilder
             return false;
         }
 
+        // Convert host to Punycode if it contains non-ASCII characters
+        try
+        {
+            if (s.Any(c => c > 127))
+            {
+                var idn = new System.Globalization.IdnMapping();
+                s = idn.GetAscii(s);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
         // Ensure non-empty labels and valid hostname characters
         string[] labels = s.Split('.');
         foreach (string label in labels)

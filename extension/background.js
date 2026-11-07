@@ -25,6 +25,17 @@ export const FAIL_OPEN_MS = 10 * 60 * 1000; // 10 minutes
 
 export const domainCache = new DomainDecisionCache(1000);
 
+let memoizedActiveProfiles = null;
+let memoizedRulesVersion = -1;
+let memoizedExpiryTime = Infinity;
+
+export function invalidateDecisionCache() {
+  memoizedActiveProfiles = null;
+  memoizedRulesVersion = -1;
+  memoizedExpiryTime = Infinity;
+  domainCache.invalidate();
+}
+
 export function setTimeSource(fn) {
   getTime = fn;
 }
@@ -54,7 +65,7 @@ export function setState(profiles, version, responseTime, theme, all) {
   if (theme !== undefined) {
     currentTheme = theme;
   }
-  domainCache.invalidate();
+  invalidateDecisionCache();
 }
 
 // Ready promise: loads initial state from storage on worker start or restart
@@ -66,7 +77,7 @@ export const ready = (typeof chrome !== 'undefined' && chrome.storage?.local)
         if (data.rulesVersion !== undefined) rulesVersion = data.rulesVersion;
         if (data.lastResponseTime !== undefined) lastResponseTime = data.lastResponseTime;
         if (data.extensionTheme) currentTheme = data.extensionTheme;
-        domainCache.invalidate();
+        invalidateDecisionCache();
         resolve();
       });
     })
@@ -97,20 +108,35 @@ export function isStale() {
   return (getTime() - lastResponseTime) > FAIL_OPEN_MS;
 }
 
+export function getEffectiveActiveProfiles() {
+  const now = getTime();
+  if (memoizedActiveProfiles && memoizedRulesVersion === rulesVersion && now < memoizedExpiryTime) {
+    return memoizedActiveProfiles;
+  }
+  let nextExp = Infinity;
+  const filtered = activeProfiles.filter(p => {
+    if (!p.activeUntil) return true;
+    const untilMs = new Date(p.activeUntil).getTime();
+    if (isNaN(untilMs)) return true;
+    if (untilMs > now) {
+      if (untilMs < nextExp) nextExp = untilMs;
+      return true;
+    }
+    return false;
+  });
+  memoizedActiveProfiles = filtered;
+  memoizedRulesVersion = rulesVersion;
+  memoizedExpiryTime = nextExp;
+  return memoizedActiveProfiles;
+}
+
 export function evaluateCurrentRules(targetUrl) {
   // Requirement 2: 10-minute fail-open (stop enforcing, do not redirect anything new)
   if (isStale()) {
     return { blocked: false, reason: 'fail_open_stale' };
   }
 
-  const now = getTime();
-  // Requirement 2: a profile whose activeUntil is in the past is ignored
-  const currentActiveProfiles = activeProfiles.filter(p => {
-    if (!p.activeUntil) return true;
-    const untilMs = new Date(p.activeUntil).getTime();
-    return isNaN(untilMs) || untilMs > now;
-  });
-
+  const currentActiveProfiles = getEffectiveActiveProfiles();
   return domainCache.getDecision(currentActiveProfiles, targetUrl);
 }
 
@@ -271,7 +297,7 @@ export function sendPoll() {
 export function onHostMessage(msg) {
   backoffDelay = 1000;
 
-  if (msg?.type === 'add_website_response' || (pendingAddWebsiteCallback && (msg?.rulesVersion === undefined))) {
+  if (msg?.type === 'add_website_response') {
     if (pendingAddWebsiteCallback) {
       const cb = pendingAddWebsiteCallback;
       pendingAddWebsiteCallback = null;
@@ -281,7 +307,7 @@ export function onHostMessage(msg) {
     }
   }
 
-  if (msg?.type === 'create_profile_response' || (pendingCreateProfileCallback && (msg?.rulesVersion === undefined))) {
+  if (msg?.type === 'create_profile_response') {
     if (pendingCreateProfileCallback) {
       const cb = pendingCreateProfileCallback;
       pendingCreateProfileCallback = null;
@@ -308,7 +334,7 @@ export function onHostMessage(msg) {
     if (newVersion !== rulesVersion) {
       rulesVersion = newVersion;
       activeProfiles = newProfiles;
-      domainCache.invalidate();
+      invalidateDecisionCache();
 
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
         chrome.storage.local.set({
@@ -329,7 +355,7 @@ export function onHostMessage(msg) {
 
     // If rulesVersion didn't change, but we recovered from staleness, recheck tabs to resume blocking
     if (newVersion === rulesVersion && wasStale && !isStale()) {
-      domainCache.invalidate();
+      invalidateDecisionCache();
       recheckAllTabs();
     }
 
@@ -398,7 +424,12 @@ export async function checkAndRedirectTab(tabId, targetUrl) {
     return;
   }
 
-  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+  let checkUrl = targetUrl;
+  if (checkUrl.startsWith('view-source:')) {
+    checkUrl = checkUrl.slice(12);
+  }
+
+  if (!checkUrl.startsWith('http://') && !checkUrl.startsWith('https://')) {
     return;
   }
 
@@ -411,9 +442,9 @@ export async function checkAndRedirectTab(tabId, targetUrl) {
     return;
   }
 
-  const match = evaluateCurrentRules(targetUrl);
+  const match = evaluateCurrentRules(checkUrl);
   if (match.blocked) {
-    const until = match.profile?.activeUntil || '';
+    const until = match.activeUntil || match.profile?.activeUntil || '';
     const redirectUrl = `${blockedPageUrl}?url=${encodeURIComponent(targetUrl)}&rule=${encodeURIComponent(match.matchedBlockPattern || '')}&profile=${encodeURIComponent(match.profileName || '')}&until=${encodeURIComponent(until)}`;
     if (typeof chrome !== 'undefined' && chrome.tabs?.update) {
       chrome.tabs.update(tabId, { url: redirectUrl });
@@ -468,17 +499,19 @@ if (typeof chrome !== 'undefined' && chrome.webNavigation?.onBeforeNavigate) {
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request?.type === 'get_status') {
-      sendResponse({
-        ok: true,
-        rulesVersion,
-        activeProfiles,
-        allProfiles,
-        lastResponseTime,
-        isStale: isStale(),
-        connected: !!port && !isStale(),
-        extensionTheme: currentTheme
+      ready.then(() => {
+        sendResponse({
+          ok: true,
+          rulesVersion,
+          activeProfiles,
+          allProfiles,
+          lastResponseTime,
+          isStale: isStale(),
+          connected: !!port && !isStale(),
+          extensionTheme: currentTheme
+        });
       });
-      return false;
+      return true;
     }
 
     if (request?.type === 'open_app') {

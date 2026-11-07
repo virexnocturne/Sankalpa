@@ -45,10 +45,11 @@ public partial class ZenBackdropWindow : Window
                 // Ensure bounds stay mapped after window source initialization
                 backdrop.Loaded += (s, e) =>
                 {
-                    backdrop.Left = bounds.X;
-                    backdrop.Top = bounds.Y;
-                    backdrop.Width = bounds.Width;
-                    backdrop.Height = bounds.Height;
+                    var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(backdrop);
+                    backdrop.Left = bounds.X / dpi.DpiScaleX;
+                    backdrop.Top = bounds.Y / dpi.DpiScaleY;
+                    backdrop.Width = bounds.Width / dpi.DpiScaleX;
+                    backdrop.Height = bounds.Height / dpi.DpiScaleY;
                 };
 
                 backdrop.Show();

@@ -48,6 +48,7 @@ public class CommandHandlerTests
                 existing.LockMode = profile.LockMode;
                 existing.PasswordSalt = profile.PasswordSalt;
                 existing.PasswordHash = profile.PasswordHash;
+                existing.Allowance = profile.Allowance;
                 return existing;
             }
 
@@ -63,7 +64,8 @@ public class CommandHandlerTests
                 Schedule = profile.Schedule,
                 LockMode = profile.LockMode,
                 PasswordSalt = profile.PasswordSalt,
-                PasswordHash = profile.PasswordHash
+                PasswordHash = profile.PasswordHash,
+                Allowance = profile.Allowance
             };
             Profiles.Add(newProfile);
             return newProfile;
@@ -2161,6 +2163,161 @@ public class CommandHandlerTests
         var delResp3 = Handle(delReq3, store);
         Assert.False(delResp3.Ok);
         Assert.Contains("delayed unlock timer", delResp3.Error);
+    }
+
+    [Fact]
+    public void SaveProfile_AdditiveOnly_RejectsEnablingOrIncreasingAllowance()
+    {
+        var store = new FakeBlockStore();
+        store.SaveProfile(new Profile
+        {
+            Name = "LockedAllowance",
+            Enabled = true,
+            LockMode = LockMode.Locked,
+            Schedule = new List<ScheduleRule>
+            {
+                new ScheduleRule { Days = DaysOfWeek.Mon, StartMinute = 540, EndMinute = 1020 }
+            },
+            Allowance = new AllowanceConfig { Enabled = false, DailyAllowanceMinutes = 30 }
+        });
+
+        // 1. Attempting to enable allowance via additive_only must be rejected
+        var enableReq = new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "LockedAllowance",
+                ["additive_only"] = "true",
+                ["allowance"] = JsonSerializer.Serialize(new AllowanceConfig { Enabled = true, DailyAllowanceMinutes = 30 })
+            }
+        };
+        var enableResp = Handle(enableReq, store);
+        Assert.False(enableResp.Ok);
+        Assert.Contains("cannot enable daily allowance", enableResp.Error);
+
+        // 2. Enabling allowance on profile with existing allowance cannot increase minutes
+        store.Profiles.Clear();
+        store.SaveProfile(new Profile
+        {
+            Name = "ExistingAllowance",
+            Enabled = true,
+            LockMode = LockMode.Locked,
+            Schedule = new List<ScheduleRule>
+            {
+                new ScheduleRule { Days = DaysOfWeek.Mon, StartMinute = 540, EndMinute = 1020 }
+            },
+            Allowance = new AllowanceConfig { Enabled = true, DailyAllowanceMinutes = 20 }
+        });
+
+        var increaseReq = new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "ExistingAllowance",
+                ["additive_only"] = "true",
+                ["allowance"] = JsonSerializer.Serialize(new AllowanceConfig { Enabled = true, DailyAllowanceMinutes = 60 })
+            }
+        };
+        var increaseResp = Handle(increaseReq, store);
+        Assert.False(increaseResp.Ok);
+        Assert.Contains("cannot increase daily allowance", increaseResp.Error);
+
+        // 3. Submitting identical allowance in additive_only is allowed
+        var sameReq = new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "ExistingAllowance",
+                ["additive_only"] = "true",
+                ["allowance"] = JsonSerializer.Serialize(new AllowanceConfig { Enabled = true, DailyAllowanceMinutes = 20 })
+            }
+        };
+        var sameResp = Handle(sameReq, store);
+        Assert.True(sameResp.Ok);
+    }
+
+    [Fact]
+    public void VerifyUnlock_RejectsHardLockedAlwaysOnProfile()
+    {
+        var store = new FakeBlockStore();
+        store.SaveProfile(new Profile
+        {
+            Name = "HardProfile",
+            Enabled = true,
+            LockMode = LockMode.HardLocked,
+            Schedule = new() // Always-on, no schedule
+        });
+
+        // 1. Disable should be rejected
+        var disReq = new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new() { ["name"] = "HardProfile" }
+        };
+        var disResp = Handle(disReq, store);
+        Assert.False(disResp.Ok);
+        Assert.Contains("hard-locked", disResp.Error);
+
+        // 2. Delete on disabled hard-locked profile should also be rejected
+        store.Profiles.Clear();
+        store.SaveProfile(new Profile
+        {
+            Name = "HardProfileDisabled",
+            Enabled = false,
+            LockMode = LockMode.HardLocked,
+            Schedule = new()
+        });
+
+        var delReq = new Request
+        {
+            Command = CommandNames.DeleteProfile,
+            Args = new() { ["name"] = "HardProfileDisabled" }
+        };
+        var delResp = Handle(delReq, store);
+        Assert.False(delResp.Ok);
+        Assert.Contains("hard-locked", delResp.Error);
+    }
+
+    [Fact]
+    public void SaveDnsConfig_EnforcesAdminOnCustomDns_PermitsStandardOnPresets()
+    {
+        var store = new FakeBlockStore();
+
+        // 1. Standard user setting a recognized preset should succeed
+        var presetReq = new Request
+        {
+            Command = "SAVEDNSCONFIG",
+            Args = new()
+            {
+                ["preset"] = "Cloudflare Family",
+                ["primary"] = "1.1.1.3",
+                ["secondary"] = "1.0.0.3"
+            }
+        };
+        var presetResp = Handle(presetReq, store, ClientIdentity.StandardUser());
+        Assert.True(presetResp.Ok);
+
+        // 2. Standard user setting a custom IP should be rejected
+        var customReq = new Request
+        {
+            Command = "SAVEDNSCONFIG",
+            Args = new()
+            {
+                ["preset"] = "Custom",
+                ["primary"] = "10.0.0.1",
+                ["secondary"] = "10.0.0.2"
+            }
+        };
+        var customResp = Handle(customReq, store, ClientIdentity.StandardUser());
+        Assert.False(customResp.Ok);
+        Assert.Contains("Administrator privileges are required", customResp.Error);
+
+        // 3. Administrator setting custom IP should succeed
+        var adminResp = Handle(customReq, store, ClientIdentity.Administrator());
+        Assert.True(adminResp.Ok);
     }
 
     #endregion

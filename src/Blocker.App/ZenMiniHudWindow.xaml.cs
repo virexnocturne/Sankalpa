@@ -89,7 +89,7 @@ public partial class ZenMiniHudWindow : Window
                 return;
             }
 
-            Rect workArea = SystemParameters.WorkArea;
+            Rect workArea = GetCurrentWorkArea();
             if (e.PreviousSize.Height > 0)
             {
                 double oldMaxTop = workArea.Bottom - e.PreviousSize.Height;
@@ -107,10 +107,28 @@ public partial class ZenMiniHudWindow : Window
     /// <summary>
     /// Positions the HUD window automatically at Top Center of the primary visible work area.
     /// </summary>
+    private Rect GetCurrentWorkArea()
+    {
+        try
+        {
+            double w = ActualWidth > 0 ? ActualWidth : (Width > 0 && !double.IsNaN(Width) ? Width : 200);
+            double h = ActualHeight > 0 ? ActualHeight : (Height > 0 && !double.IsNaN(Height) ? Height : 60);
+            var centerPoint = new System.Drawing.Point((int)(Left + w / 2), (int)(Top + h / 2));
+            var scr = System.Windows.Forms.Screen.FromPoint(centerPoint);
+            var bounds = scr.WorkingArea;
+            var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this);
+            return new Rect(bounds.X / dpi.DpiScaleX, bounds.Y / dpi.DpiScaleY, bounds.Width / dpi.DpiScaleX, bounds.Height / dpi.DpiScaleY);
+        }
+        catch
+        {
+            return SystemParameters.WorkArea;
+        }
+    }
+
     public void PositionAtTopCenter()
     {
         Topmost = true;
-        Rect workArea = SystemParameters.WorkArea;
+        Rect workArea = GetCurrentWorkArea();
         double currentWidth = ActualWidth > 0 ? ActualWidth : (Width > 0 && !double.IsNaN(Width) ? Width : 580);
         Left = workArea.Left + Math.Max(0, (workArea.Width - currentWidth) / 2.0);
         Top = workArea.Top + 20;
@@ -131,7 +149,7 @@ public partial class ZenMiniHudWindow : Window
         {
             _isAdjustingPosition = true;
 
-            Rect workArea = SystemParameters.WorkArea;
+            Rect workArea = GetCurrentWorkArea();
             double width = ActualWidth > 0 ? ActualWidth : (Width > 0 && !double.IsNaN(Width) ? Width : 200);
             double height = ActualHeight > 0 ? ActualHeight : (Height > 0 && !double.IsNaN(Height) ? Height : 60);
 
@@ -166,7 +184,7 @@ public partial class ZenMiniHudWindow : Window
         {
             _isAdjustingPosition = true;
 
-            Rect workArea = SystemParameters.WorkArea;
+            Rect workArea = GetCurrentWorkArea();
             double width = ActualWidth > 0 ? ActualWidth : (Width > 0 && !double.IsNaN(Width) ? Width : 200);
             double height = ActualHeight > 0 ? ActualHeight : (Height > 0 && !double.IsNaN(Height) ? Height : 60);
 

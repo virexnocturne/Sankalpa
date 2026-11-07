@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
@@ -20,6 +21,7 @@ public class PipeServer : BackgroundService
     private readonly IBlockStore _store;
     private readonly ILogger<PipeServer>? _logger;
     private readonly string _pipeName;
+    private readonly ConcurrentDictionary<Task, byte> _activeClientTasks = new();
 
     public PipeServer(IBlockStore store, ILogger<PipeServer>? logger = null, string pipeName = DefaultPipeName)
     {
@@ -63,16 +65,21 @@ public class PipeServer : BackgroundService
         return pipeSecurity;
     }
 
-    public static NamedPipeServerStream CreateServerStream(string pipeName)
+    public static NamedPipeServerStream CreateServerStream(string pipeName, bool isFirstInstance = false)
     {
         var pipeSecurity = CreatePipeSecurity();
+        var options = PipeOptions.Asynchronous;
+        if (isFirstInstance)
+        {
+            options |= PipeOptions.FirstPipeInstance;
+        }
 
         return NamedPipeServerStreamAcl.Create(
             pipeName,
             PipeDirection.InOut,
             NamedPipeServerStream.MaxAllowedServerInstances,
             PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous,
+            options,
             inBufferSize: 0,
             outBufferSize: 0,
             pipeSecurity);
@@ -192,21 +199,27 @@ public class PipeServer : BackgroundService
 
         for (int i = 0; i < ConcurrentListeners; i++)
         {
+            int listenerIndex = i;
             listenerTasks.Add(Task.Run(async () =>
             {
+                bool isFirst = (listenerIndex == 0);
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     NamedPipeServerStream? serverStream = null;
                     try
                     {
-                        serverStream = CreateServerStream(_pipeName);
+                        serverStream = CreateServerStream(_pipeName, isFirst);
+                        isFirst = false;
                         await serverStream.WaitForConnectionAsync(stoppingToken);
 
                         var clientStream = serverStream;
-                        _ = Task.Run(async () =>
+                        var clientTask = Task.Run(async () =>
                         {
                             await HandleClientAsync(clientStream, stoppingToken);
                         }, stoppingToken);
+
+                        _activeClientTasks.TryAdd(clientTask, 0);
+                        _ = clientTask.ContinueWith(t => _activeClientTasks.TryRemove(t, out _), TaskScheduler.Default);
                     }
                     catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                     {
@@ -231,6 +244,11 @@ public class PipeServer : BackgroundService
         }
 
         await Task.WhenAll(listenerTasks);
+        try
+        {
+            await Task.WhenAll(_activeClientTasks.Keys).WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        catch { }
     }
 
     private async Task HandleClientAsync(NamedPipeServerStream clientStream, CancellationToken stoppingToken)

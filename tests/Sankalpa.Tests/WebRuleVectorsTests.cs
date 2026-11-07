@@ -311,4 +311,28 @@ public class WebRuleVectorsTests
         var resWatch = WebRuleMatcher.Evaluate(prof, "https://www.youtube.com/watch?v=123");
         Assert.False(resWatch.Blocked, "youtube.com/watch must still be allowed");
     }
+
+    [Fact]
+    public void TrailingDotAndConsecutiveSlashes_NormalizedProperly()
+    {
+        // 1. Trailing dot FQDN
+        bool parsedDot = WebRuleMatcher.TryParseUrl("https://youtube.com./watch?v=1", out string hostDot, out string pathDot);
+        Assert.True(parsedDot);
+        Assert.Equal("youtube.com", hostDot);
+
+        var prof = new Profile
+        {
+            Name = "TrailingDotTest",
+            BlockAllWebsites = false,
+            WebRules = new List<WebRule> { new WebRule { Pattern = "youtube.com", Allow = false } }
+        };
+        var evalDot = WebRuleMatcher.Evaluate(prof, "https://youtube.com./watch");
+        Assert.True(evalDot.Blocked);
+
+        // 2. Consecutive slashes compression
+        bool parsedSlash = WebRuleMatcher.TryParseUrl("https://example.com//news///article", out string hostSlash, out string pathSlash);
+        Assert.True(parsedSlash);
+        Assert.Equal("example.com", hostSlash);
+        Assert.Equal("/news/article", pathSlash);
+    }
 }

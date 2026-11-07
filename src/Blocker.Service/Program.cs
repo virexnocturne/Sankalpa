@@ -39,6 +39,14 @@ try
         })
         .ConfigureServices(services =>
         {
+            ProcessSuspender.OnMeditationSuspensionSummary = count =>
+            {
+                ServiceNotificationDispatcher.DispatchNotification(
+                    "MeditationWhitelist",
+                    "Focus",
+                    $"Focus mode active: {count} applications suspended");
+            };
+
             services.AddSingleton<ISingletonMutex>(mutexManager);
             services.AddSingleton<BlockerDatabase>();
             services.AddSingleton<IBlockStore>(sp => sp.GetRequiredService<BlockerDatabase>());

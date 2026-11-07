@@ -447,8 +447,8 @@ public class MeditationBackendTests : IDisposable
         Assert.Contains("WTSGetActiveConsoleSessionId()", workerSrc);
         // Verify session comparison is used for user session processes
         Assert.Contains("isTargetInActiveSession", workerSrc);
-        // Verify it terminates without requiring hwnd != IntPtr.Zero
-        Assert.Contains("hwnd == IntPtr.Zero || !targetProc.CloseMainWindow()", workerSrc);
+        // Verify it suspends non-allowed processes via ProcessSuspender (non-destructive)
+        Assert.Contains("ProcessSuspender.Default.SuspendProcess", workerSrc);
     }
 
     [Fact]
@@ -473,7 +473,7 @@ public class MeditationBackendTests : IDisposable
         string zenSrc = File.ReadAllText(zenPath);
 
         // Verify continuous taskbar suppression
-        Assert.Contains("SetTaskbarVisibility(false);", zenSrc);
+        Assert.Contains("SetTaskbarVisibility(true);", zenSrc);
         // Verify SW_FORCEMINIMIZE
         Assert.Contains("SW_FORCEMINIMIZE = 11;", zenSrc);
         // Verify immediate suppression of unauthorized foreground window
@@ -485,5 +485,138 @@ public class MeditationBackendTests : IDisposable
         // Verify breach count restoring Zen Shield
         Assert.Contains("_unauthorizedBreachCount", zenSrc);
         Assert.Contains("RestoreZenScreen();", zenSrc);
+    }
+
+    [Fact]
+    public void ProcessSuspender_ProtectedProcesses_ExemptFromSuspension()
+    {
+        var suspender = new ProcessSuspender();
+        int currentPid = Environment.ProcessId;
+
+        // System and protected processes must not be suspended
+        Assert.False(suspender.SuspendProcess(currentPid, "explorer"));
+        Assert.False(suspender.SuspendProcess(currentPid, "dwm"));
+        Assert.False(suspender.SuspendProcess(currentPid, "audiodg"));
+        Assert.False(suspender.SuspendProcess(currentPid, "Blocker.Service"));
+        Assert.False(suspender.SuspendProcess(currentPid, "Sankalpa"));
+        Assert.False(suspender.SuspendProcess(0, "System"));
+        Assert.False(suspender.SuspendProcess(4, "System"));
+
+        Assert.False(suspender.IsSuspended(currentPid));
+        Assert.Empty(suspender.SuspendedPids);
+    }
+
+    [Fact]
+    public void BlockerDatabase_SingleScheduleMigrationAndSingletonUpsert_WorksCorrectly()
+    {
+        // 1. Initial schedule created during Initialize()
+        var sched = _db.GetMeditationSchedule();
+        Assert.NotNull(sched);
+        Assert.Equal(1, sched.Id);
+
+        // 2. Save with different ID enforces Id = 1
+        var update = new MeditationSchedule
+        {
+            Id = 99,
+            Enabled = true,
+            TimeOfDay = "18:00",
+            DurationSeconds = 1800,
+            LockMode = LockMode.Locked,
+            Soundscape = "Rain"
+        };
+        var saved = _db.SaveMeditationSchedule(update);
+        Assert.Equal(1, saved.Id);
+
+        var retrieved = _db.GetMeditationSchedule();
+        Assert.NotNull(retrieved);
+        Assert.Equal(1, retrieved.Id);
+        Assert.Equal("18:00", retrieved.TimeOfDay);
+        Assert.Equal(1800, retrieved.DurationSeconds);
+        Assert.Equal(LockMode.Locked, retrieved.LockMode);
+        Assert.Equal("Rain", retrieved.Soundscape);
+
+        // GetMeditationSchedules returns single item
+        var list = _db.GetMeditationSchedules();
+        Assert.Single(list);
+        Assert.Equal(1, list[0].Id);
+    }
+
+    [Fact]
+    public void BlockerDatabase_SessionStatusAndPromotion_WorksCorrectly()
+    {
+        // 1. Start session as Pending
+        var pendingSession = _db.StartMeditationSession(600, new List<string> { "notepad.exe" }, LockMode.None, null, null, "Pending");
+        Assert.NotNull(pendingSession);
+        Assert.Equal("Pending", pendingSession.Status);
+
+        // 2. GetActiveMeditationSession should return null while Pending
+        Assert.Null(_db.GetActiveMeditationSession());
+
+        // 3. Promote to Active
+        bool promoted = _db.PromoteMeditationSessionToActive(pendingSession.Id);
+        Assert.True(promoted);
+
+        // 4. Now active
+        var active = _db.GetActiveMeditationSession();
+        Assert.NotNull(active);
+        Assert.Equal(pendingSession.Id, active.Id);
+        Assert.Equal("Active", active.Status);
+
+        // 5. End session as Completed
+        _db.EndMeditationSession(active.Id, completed: true);
+        Assert.Null(_db.GetActiveMeditationSession());
+
+        var hist = _db.GetMeditationHistory(1);
+        Assert.NotEmpty(hist);
+        Assert.Equal("Completed", hist[0].Status);
+    }
+
+    [Fact]
+    public void CommandHandler_ConfirmTimerReady_PromotesSession()
+    {
+        var identity = ClientIdentity.StandardUser();
+
+        // 1. Start meditation as Pending via IPC
+        var startResp = CommandHandler.Handle(new Request
+        {
+            Command = CommandNames.StartMeditation,
+            Args = new Dictionary<string, string>
+            {
+                ["targetDurationSeconds"] = "600",
+                ["status"] = "Pending"
+            }
+        }, _db, identity);
+        Assert.True(startResp.Ok);
+        var statusDto = JsonSerializer.Deserialize<MeditationStatusDto>(startResp.Data!);
+        Assert.NotNull(statusDto);
+        int sessionId = statusDto.SessionId!.Value;
+
+        // Active session should be null before confirmation
+        Assert.Null(_db.GetActiveMeditationSession());
+
+        // 2. Send ConfirmTimerReady IPC
+        var confirmReq = new ConfirmTimerReadyRequest
+        {
+            SessionId = sessionId,
+            VisibleWindowPids = new List<int> { Environment.ProcessId } // Protected process will be exempted
+        };
+        var confirmResp = CommandHandler.Handle(new Request
+        {
+            Command = CommandNames.ConfirmTimerReady,
+            Args = new Dictionary<string, string>
+            {
+                ["data"] = JsonSerializer.Serialize(confirmReq)
+            }
+        }, _db, identity);
+        Assert.True(confirmResp.Ok);
+
+        // 3. Session must now be active in store
+        var active = _db.GetActiveMeditationSession();
+        Assert.NotNull(active);
+        Assert.Equal(sessionId, active.Id);
+        Assert.Equal("Active", active.Status);
+
+        // Clean up
+        _db.EndMeditationSession(active.Id, false);
     }
 }
