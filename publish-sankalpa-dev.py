@@ -10,12 +10,15 @@ DEV_LOCAL_DIR = os.path.join(REPO_ROOT, "dist", "Sankalpa dev")
 RELEASE_DIR = os.path.join(REPO_ROOT, "dist", "Sankalpa-Release")
 STAGING_DIR = os.path.join(REPO_ROOT, "dist", "staging")
 
-TARGET_DIRS = [DEV_DIR, DEV_LOCAL_DIR, RELEASE_DIR]
+CANDIDATE_DIRS = [DEV_DIR, DEV_LOCAL_DIR, RELEASE_DIR]
+TARGET_DIRS = []
+for d in CANDIDATE_DIRS:
+    os.makedirs(d, exist_ok=True)
+    if not any(os.path.exists(t) and os.path.samefile(d, t) for t in TARGET_DIRS):
+        TARGET_DIRS.append(d)
 
 print(f"=== Publishing Sankalpa to Dev & Release Targets ===")
-print(f"Dev Target:           {DEV_DIR}")
-print(f"Dev Local Target:     {DEV_LOCAL_DIR}")
-print(f"Release Target:       {RELEASE_DIR}")
+print(f"Targets: {[os.path.abspath(d) for d in TARGET_DIRS]}")
 
 for d in TARGET_DIRS:
     os.makedirs(d, exist_ok=True)
