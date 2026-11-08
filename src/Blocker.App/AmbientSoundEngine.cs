@@ -114,21 +114,39 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
             string filePath = ResolveAudioFilePath(fileName);
             if (!File.Exists(filePath))
             {
-                throw new FileNotFoundException($"Ambient audio file not found: {filePath}", filePath);
+                System.Diagnostics.Trace.WriteLine($"[AmbientSoundEngine] Ambient audio file not found: {filePath}");
+                CancelFade();
+                CurrentSoundscape = SoundscapeType.None;
+                IsPlaying = false;
+                OnPropertyChanged(nameof(CurrentSoundscape));
+                OnPropertyChanged(nameof(IsPlaying));
+                return;
             }
 
-            CancelFade();
-            CurrentSoundscape = type;
-            OnPropertyChanged(nameof(CurrentSoundscape));
+            try
+            {
+                CancelFade();
+                CurrentSoundscape = type;
+                OnPropertyChanged(nameof(CurrentSoundscape));
 
-            _mediaPlayer.Volume = 0.0;
-            _mediaPlayer.Open(new Uri(filePath, UriKind.Absolute));
-            _mediaPlayer.Position = TimeSpan.Zero;
-            _mediaPlayer.Play();
-            IsPlaying = true;
-            OnPropertyChanged(nameof(IsPlaying));
+                _mediaPlayer.Volume = 0.0;
+                _mediaPlayer.Open(new Uri(filePath, UriKind.Absolute));
+                _mediaPlayer.Position = TimeSpan.Zero;
+                _mediaPlayer.Play();
+                IsPlaying = true;
+                OnPropertyChanged(nameof(IsPlaying));
 
-            StartFade(Volume, TimeSpan.FromSeconds(1.0));
+                StartFade(Volume, TimeSpan.FromSeconds(1.0));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.WriteLine($"[AmbientSoundEngine] Error playing soundscape '{filePath}': {ex.Message}");
+                CancelFade();
+                CurrentSoundscape = SoundscapeType.None;
+                IsPlaying = false;
+                OnPropertyChanged(nameof(CurrentSoundscape));
+                OnPropertyChanged(nameof(IsPlaying));
+            }
         });
     }
 
@@ -149,13 +167,22 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
                 return;
             }
 
-            CancelFade();
-            _mediaPlayer.Volume = 0.0;
-            _mediaPlayer.Play();
-            IsPlaying = true;
-            OnPropertyChanged(nameof(IsPlaying));
+            try
+            {
+                CancelFade();
+                _mediaPlayer.Volume = 0.0;
+                _mediaPlayer.Play();
+                IsPlaying = true;
+                OnPropertyChanged(nameof(IsPlaying));
 
-            StartFade(Volume, TimeSpan.FromSeconds(1.0));
+                StartFade(Volume, TimeSpan.FromSeconds(1.0));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.WriteLine($"[AmbientSoundEngine] Error in Play(): {ex.Message}");
+                IsPlaying = false;
+                OnPropertyChanged(nameof(IsPlaying));
+            }
         });
     }
 
@@ -171,10 +198,20 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
                 return;
             }
 
-            CancelFade();
-            _mediaPlayer.Pause();
-            IsPlaying = false;
-            OnPropertyChanged(nameof(IsPlaying));
+            try
+            {
+                CancelFade();
+                _mediaPlayer.Pause();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.WriteLine($"[AmbientSoundEngine] Error in Pause(): {ex.Message}");
+            }
+            finally
+            {
+                IsPlaying = false;
+                OnPropertyChanged(nameof(IsPlaying));
+            }
         });
     }
 
@@ -185,35 +222,48 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
     {
         RunOnDispatcher(() =>
         {
-            if (!IsPlaying)
+            try
             {
-                CancelFade();
-                _mediaPlayer.Stop();
-                _mediaPlayer.Position = TimeSpan.Zero;
-                return;
-            }
-
-            if (fadeOut)
-            {
-                IsPlaying = false;
-                OnPropertyChanged(nameof(IsPlaying));
-
-                StartFade(0.0, TimeSpan.FromSeconds(1.0), onCompleted: () =>
+                if (!IsPlaying)
                 {
-                    RunOnDispatcher(() =>
+                    CancelFade();
+                    _mediaPlayer.Stop();
+                    _mediaPlayer.Position = TimeSpan.Zero;
+                    return;
+                }
+
+                if (fadeOut)
+                {
+                    IsPlaying = false;
+                    OnPropertyChanged(nameof(IsPlaying));
+
+                    StartFade(0.0, TimeSpan.FromSeconds(1.0), onCompleted: () =>
                     {
-                        _mediaPlayer.Stop();
-                        _mediaPlayer.Position = TimeSpan.Zero;
-                        _mediaPlayer.Volume = Volume;
+                        RunOnDispatcher(() =>
+                        {
+                            try
+                            {
+                                _mediaPlayer.Stop();
+                                _mediaPlayer.Position = TimeSpan.Zero;
+                                _mediaPlayer.Volume = Volume;
+                            }
+                            catch { }
+                        });
                     });
-                });
+                }
+                else
+                {
+                    CancelFade();
+                    _mediaPlayer.Stop();
+                    _mediaPlayer.Position = TimeSpan.Zero;
+                    _mediaPlayer.Volume = Volume;
+                    IsPlaying = false;
+                    OnPropertyChanged(nameof(IsPlaying));
+                }
             }
-            else
+            catch (Exception ex)
             {
-                CancelFade();
-                _mediaPlayer.Stop();
-                _mediaPlayer.Position = TimeSpan.Zero;
-                _mediaPlayer.Volume = Volume;
+                System.Diagnostics.Trace.WriteLine($"[AmbientSoundEngine] Error in Stop(): {ex.Message}");
                 IsPlaying = false;
                 OnPropertyChanged(nameof(IsPlaying));
             }

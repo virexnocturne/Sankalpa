@@ -32,6 +32,7 @@ public partial class App : Wpf.Application
         DispatcherUnhandledException += (s, ev) =>
         {
             try { System.IO.File.WriteAllText("crash.log", ev.Exception.ToString()); } catch { }
+            ev.Handled = true;
         };
 
         // Hidden command-line switch for dev screenshot test

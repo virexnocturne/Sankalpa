@@ -849,17 +849,24 @@ public class MeditationViewModel : ViewModelBase, IDisposable
 
     public void ToggleSoundscape()
     {
-        if (_soundEngine.IsPlaying)
+        try
         {
-            _soundEngine.Pause();
-        }
-        else
-        {
-            if (_selectedSoundscape == SoundscapeType.None)
+            if (_soundEngine.IsPlaying)
             {
-                SelectedSoundscape = SoundscapeType.Rain;
+                _soundEngine.Pause();
             }
-            _soundEngine.SetSoundscape(_selectedSoundscape);
+            else
+            {
+                if (_selectedSoundscape == SoundscapeType.None)
+                {
+                    SelectedSoundscape = SoundscapeType.Rain;
+                }
+                _soundEngine.SetSoundscape(_selectedSoundscape);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[MeditationViewModel] ToggleSoundscape failed: {ex.Message}");
         }
         OnPropertyChanged(nameof(IsSoundscapePlaying));
     }
