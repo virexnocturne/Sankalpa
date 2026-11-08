@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.3.3" /></a>
+  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.3.4" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64)-blue?logo=windows" alt="Platform: Windows" />
   <img src="https://img.shields.io/badge/Framework-.NET%208.0%20WPF-purple?logo=dotnet" alt=".NET 8" />
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20%26%20Local-success?logo=shield" alt="Privacy First" />
@@ -24,6 +24,15 @@
 </p>
 
 ---
+
+## 🌟 What's New in v1.3.4 (Performance, App Picker Guard & System Hardening)
+
+- ⚡ **High-Performance Process Suspension & Launching**: Cached session IDs, cached own-process names, skipped syscalls for already-suspended PIDs, and asynchronous background window discovery so launch of allowed apps (like Microsoft Edge and Notepad++) happens in milliseconds without UI stalls.
+- 🛡️ **Child Process Directory Exemption**: Allowed apps can spawn child worker processes (e.g., Edge sandboxed renderer/gpu processes) only when they reside inside the allowed parent application's installation folder.
+- 🔒 **Self-Binary Exclusion in App Picker (Bug 4)**: Sankalpa binaries (`Sankalpa.exe`, `Blocker.Service.exe`, `Blocker.NativeHost.exe`, `sankalpa-cli.exe`) are filtered from the "Pick apps..." dialog and strictly validated to prevent accidental self-blocking.
+- 🪟 **Windows Search Grid Icon & AUMID Fix (Bug 1)**: Registered top-level Start Menu program shortcut `{autoprograms}\Sankalpa.lnk` with embedded PE icon index 0 and ensured AUMID registrations target `Sankalpa.exe` rather than the native host.
+- 🎵 **Resilient Audio Asset Handling (Bug 5)**: Prevented application crashes if ambient sound files (`rain.wav`, etc.) are deleted from AppData, handling missing media gracefully and marking dispatcher exceptions as handled.
+- ⌨️ **Unhindered Emergency Escape Chord**: Upgraded keyboard hook thread priority with a 300 ms jitter grace period and redundant background polling to ensure emergency unlock (`Ctrl+Shift+Alt+Esc`) never drops keypresses.
 
 ## 🌟 What's New in v1.3.3 (In-House Zen Snipper & System Ergonomics)
 

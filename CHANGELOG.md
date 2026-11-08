@@ -4,6 +4,24 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FIX-2026-11-08-01] Process Lifecycle Performance, App Picker Guard, Start Menu Icon & Audio Asset Hardening (v1.3.4)
+- **Timestamp**: 2026-11-08 11:50 IST
+- **Component**: Service Suspension Worker (Worker.cs), App Launch & Window Discovery (ZenShieldWindow.xaml.cs, LowLevelKeyboardHook.cs), App Picker (AppPickerLogic.cs, InstalledAppScanner.cs, BlockEditorDialog.xaml.cs), Installer & Shortcut AUMID (Sankalpa.iss, ExtensionHelper.cs, Blocker.App.csproj), Audio Engine & Exception Handling (AmbientSoundEngine.cs, MeditationViewModel.cs, App.xaml.cs)
+- **Status**: **RELEASED & VERIFIED IN TEST SUITES**
+- **Problems Identified & Solved**:
+  1. **Hot Loop Optimization & Syscall Throttling (Bug 3A)**: Cached session IDs, cached own-process names, skipped NtSuspendProcess syscalls for already-suspended PIDs, eliminated per-process allocations in the service watchdog, drastically cutting CPU usage from high sustained loads to near-zero.
+  2. **Strict Child Process Directory Exemption (Bug 3A)**: Allowed child processes to run only when their parent is allowed AND their executable resides within the allowed app's installation directory (preventing sandboxed browser worker suspension while maintaining default-deny security).
+  3. **Async Window Discovery & UI Responsiveness (Bug 3A)**: Offloaded application launch and window discovery to background tasks with dynamic candidate PID resolution and cheap pid-to-name lookups, eliminating UI stalls when opening complex applications like Edge and Notepad++.
+  4. **Emergency Escape Chord Hardening (Bug 3B)**: Elevated hook thread priority to Highest, integrated a 300 ms keypress jitter grace period, and introduced a dedicated polling thread checking GetAsyncKeyState every 50 ms so `Ctrl+Shift+Alt+Esc` reliably triggers under CPU stress.
+  5. **Desktop & Dashboard Restore on Session End**: Added top-level desktop and dashboard restoration guards in EndSession() ensuring clean restoration before window closure.
+  6. **App Picker Self-Binary Exclusion (Bug 4)**: Filtered `Sankalpa.exe`, `Blocker.Service.exe`, `Blocker.NativeHost.exe`, and CLI binaries from the "Pick apps..." list and validated manual process additions.
+  7. **Windows Search Grid Icon & AUMID Fix (Bug 1)**: Added a top-level Start Menu shortcut `{autoprograms}\Sankalpa.lnk` with IconIndex 0, deployed `app.ico` and `logo*.png` assets to the application output directory, and ensured AUMID registration consistently targets `Sankalpa.exe`.
+  8. **Missing Audio Asset Crash Prevention (Bug 5)**: Replaced unhandled `FileNotFoundException` in `AmbientSoundEngine.SetSoundscape` with graceful fallback, wrapped media playback in try/catch, and marked `DispatcherUnhandledException` as handled in `App.xaml.cs`.
+- **Verification**:
+  - All 876 automated test suite assertions passing (89 in Sankalpa.Security.Tests, 787 in Sankalpa.Tests).
+
+---
+
 ### [FEAT-2026-11-07-02] In-House Zen Screen Snipper, AppPathResolver & Notification Sync (v1.3.3)
 - **Timestamp**: 2026-11-07 22:20 IST
 - **Component**: Screen Snipper (ZenScreenSnipper.cs, ZenSnipOverlayWindow.xaml, ZenSnipOverlayWindow.xaml.cs), Process Resolution (AppPathResolver.cs, ZenShieldWindow.xaml.cs), Notification Sync (WindowsNotificationHelper.cs), UI Dialogs (DarkDialogWindow.xaml.cs, PasswordUnlockDialog.xaml.cs, MainWindow.xaml)
