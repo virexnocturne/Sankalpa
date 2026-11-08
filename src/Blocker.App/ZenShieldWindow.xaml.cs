@@ -1,24 +1,16 @@
 using System;
-
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-
 using System.Diagnostics;
-
 using System.IO;
-
 using System.Runtime.InteropServices;
-
 using System.Windows;
-
 using System.Windows.Controls;
-
+using System.Windows.Interop;
 using System.Windows.Media;
-
 using System.Windows.Threading;
-
 using Blocker.Core;
-
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -174,6 +166,7 @@ public partial class ZenShieldWindow : Window
 
     private const int SW_HIDE = 0;
     private const int SW_SHOW = 5;
+    private const int SW_MINIMIZE = 6;
     private const int SW_RESTORE = 9;
     private const int SW_FORCEMINIMIZE = 11;
 
@@ -210,6 +203,43 @@ public partial class ZenShieldWindow : Window
     private readonly DispatcherTimer _autoSaveTimer;
 
     private readonly DispatcherTimer _watchdogTimer;
+
+    private readonly Stopwatch _tickSw = Stopwatch.StartNew();
+    private static readonly ConcurrentDictionary<uint, (string Name, DateTime CachedAt)> _pidNameCache = new();
+
+    public static string? GetProcessNameCached(uint pid)
+    {
+        var now = DateTime.UtcNow;
+        if (_pidNameCache.TryGetValue(pid, out var entry) && (now - entry.CachedAt).TotalSeconds < 5.0)
+        {
+            return entry.Name;
+        }
+
+        try
+        {
+            using var proc = Process.GetProcessById((int)pid);
+            string name = proc.ProcessName;
+            _pidNameCache[pid] = (name, now);
+
+            if (_pidNameCache.Count > 128)
+            {
+                foreach (var kvp in _pidNameCache)
+                {
+                    if ((now - kvp.Value.CachedAt).TotalSeconds > 10.0)
+                    {
+                        _pidNameCache.TryRemove(kvp.Key, out _);
+                    }
+                }
+            }
+
+            return name;
+        }
+        catch
+        {
+            _pidNameCache.TryRemove(pid, out _);
+            return null;
+        }
+    }
 
     private readonly List<ZenBackdropWindow> _secondaryBackdrops = new();
 
@@ -599,6 +629,7 @@ public partial class ZenShieldWindow : Window
         }
 
         // 2. Start countdown timer
+        _tickSw.Restart();
         _sessionTimer.Start();
 
         // 3. Start low-level keyboard hook throughout meditation mode (including when running allowed apps with Mini-HUD)
@@ -668,31 +699,25 @@ public partial class ZenShieldWindow : Window
     #region Countdown Timer
 
     private void SessionTimer_Tick(object? sender, EventArgs e)
-
     {
-
-        if (_remainingSeconds > 0)
-
+        long gap = _tickSw.ElapsedMilliseconds;
+        _tickSw.Restart();
+        if (gap > 1300)
         {
-
-            _remainingSeconds--;
-
-            UpdateTimerDisplay();
-
-
-
-            if (_remainingSeconds <= 0)
-
-            {
-
-                _sessionTimer.Stop();
-
-                OnSessionTimeElapsed();
-
-            }
-
+            Debug.WriteLine($"[UI-STALL] tick gap {gap} ms");
         }
 
+        if (_remainingSeconds > 0)
+        {
+            _remainingSeconds--;
+            UpdateTimerDisplay();
+
+            if (_remainingSeconds <= 0)
+            {
+                _sessionTimer.Stop();
+                OnSessionTimeElapsed();
+            }
+        }
     }
 
 
@@ -812,6 +837,25 @@ public partial class ZenShieldWindow : Window
         IntPtr bestHwnd = IntPtr.Zero;
         long bestArea = 0;
 
+        var candidatePids = new HashSet<uint>();
+        try
+        {
+            if (!string.IsNullOrEmpty(normTarget))
+            {
+                foreach (var p in Process.GetProcessesByName(normTarget))
+                {
+                    candidatePids.Add((uint)p.Id);
+                    p.Dispose();
+                }
+            }
+        }
+        catch { }
+
+        if (targetPid.HasValue)
+        {
+            candidatePids.Add((uint)targetPid.Value);
+        }
+
         try
         {
             EnumWindows((hWnd, lParam) =>
@@ -822,25 +866,31 @@ public partial class ZenShieldWindow : Window
                 GetWindowThreadProcessId(hWnd, out uint pid);
                 if (pid == 0) return true;
 
-                bool pidMatch = (targetPid.HasValue && pid == (uint)targetPid.Value);
-                bool nameMatch = false;
-
-                if (!pidMatch)
+                if (candidatePids.Count > 0)
                 {
+                    if (!candidatePids.Contains(pid))
+                        return true;
+                }
+                else
+                {
+                    bool nameMatch = false;
                     try
                     {
-                        using var p = Process.GetProcessById((int)pid);
-                        string normProc = ProcessMatcher.NormalizeProcessName(p.ProcessName);
-                        if (string.Equals(normProc, normTarget, StringComparison.OrdinalIgnoreCase))
+                        string? procName = GetProcessNameCached(pid);
+                        if (!string.IsNullOrEmpty(procName))
                         {
-                            nameMatch = true;
+                            string normProc = ProcessMatcher.NormalizeProcessName(procName);
+                            if (string.Equals(normProc, normTarget, StringComparison.OrdinalIgnoreCase))
+                            {
+                                nameMatch = true;
+                            }
                         }
                     }
                     catch { }
-                }
 
-                if (!pidMatch && !nameMatch)
-                    return true;
+                    if (!nameMatch)
+                        return true;
+                }
 
                 // Exclude known dummy / indicator / tool / IME classes
                 var sbClass = new System.Text.StringBuilder(128);
@@ -895,12 +945,14 @@ public partial class ZenShieldWindow : Window
         return bestHwnd;
     }
 
-    public async void SwitchToAllowedApp(WhitelistedAppItem app)
+    public void SwitchToAllowedApp(WhitelistedAppItem app)
     {
         if (_isSwitchingAllowedApp) return;
         _isSwitchingAllowedApp = true;
         _isAllowedAppMode = true;
         _unauthorizedBreachCount = 0;
+
+        var totalSw = Stopwatch.StartNew();
 
         try
         {
@@ -911,65 +963,99 @@ public partial class ZenShieldWindow : Window
                 ? app.ExecutableName[..^4]
                 : app.ExecutableName;
 
-            // 1. Check if application window is already running and accessible
-            IntPtr targetHwnd = FindMainWindowForProcess(processName);
-            if (targetHwnd != IntPtr.Zero)
+            _ = Task.Run(async () =>
             {
-                _lastAllowedAppHwnd = targetHwnd;
-                ShowWindow(targetHwnd, SW_RESTORE);
-                SetWindowPos(targetHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-                SetForegroundWindow(targetHwnd);
-                return;
-            }
-
-            // 2. Not running or has no main window yet. Resolve full executable path and launch!
-            string? resolvedPath = AppPathResolver.ResolveExecutablePath(app.ExecutableName);
-            string launchTarget = !string.IsNullOrWhiteSpace(resolvedPath) ? resolvedPath : app.ExecutableName;
-
-            Process? launchedProc = null;
-            try
-            {
-                launchedProc = Process.Start(new ProcessStartInfo(launchTarget)
+                try
                 {
-                    UseShellExecute = true
-                });
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ZenShield] App launch error for '{launchTarget}': {ex.Message}");
-                return;
-            }
+                    var discoverySw = Stopwatch.StartNew();
 
-            int? launchedPid = null;
-            try { if (launchedProc != null && !launchedProc.HasExited) launchedPid = launchedProc.Id; } catch { }
+                    // 1. Check if application window is already running and accessible
+                    IntPtr targetHwnd = FindMainWindowForProcess(processName);
+                    if (targetHwnd != IntPtr.Zero)
+                    {
+                        discoverySw.Stop();
+                        totalSw.Stop();
+                        Debug.WriteLine($"[ZenShield] Allowed app '{processName}' already running (HWND: {targetHwnd}). Window discovery: {discoverySw.ElapsedMilliseconds} ms, total switch: {totalSw.ElapsedMilliseconds} ms");
 
-            // 3. Asynchronous top-level window discovery (up to 5.0 seconds)
-            IntPtr discoveredHwnd = IntPtr.Zero;
-            for (int i = 0; i < 50; i++)
-            {
-                await Task.Delay(100);
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            _lastAllowedAppHwnd = targetHwnd;
+                            ShowWindow(targetHwnd, SW_RESTORE);
+                            SetWindowPos(targetHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                            SetForegroundWindow(targetHwnd);
+                        });
+                        return;
+                    }
 
-                discoveredHwnd = FindMainWindowForProcess(processName, launchedPid);
-                if (discoveredHwnd != IntPtr.Zero)
-                {
-                    break;
+                    // 2. Not running or has no main window yet. Resolve full executable path and launch!
+                    string? resolvedPath = AppPathResolver.ResolveExecutablePath(app.ExecutableName);
+                    string launchTarget = !string.IsNullOrWhiteSpace(resolvedPath) ? resolvedPath : app.ExecutableName;
+
+                    Process? launchedProc = null;
+                    try
+                    {
+                        launchedProc = Process.Start(new ProcessStartInfo(launchTarget)
+                        {
+                            UseShellExecute = true
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[ZenShield] App launch error for '{launchTarget}': {ex.Message}");
+                        return;
+                    }
+
+                    int? launchedPid = null;
+                    try { if (launchedProc != null && !launchedProc.HasExited) launchedPid = launchedProc.Id; } catch { }
+
+                    // 3. Asynchronous top-level window discovery (up to 5.0 seconds)
+                    IntPtr discoveredHwnd = IntPtr.Zero;
+                    for (int i = 0; i < 50; i++)
+                    {
+                        await Task.Delay(100).ConfigureAwait(false);
+
+                        discoveredHwnd = FindMainWindowForProcess(processName, launchedPid);
+                        if (discoveredHwnd != IntPtr.Zero)
+                        {
+                            break;
+                        }
+                    }
+
+                    discoverySw.Stop();
+                    totalSw.Stop();
+
+                    if (discoveredHwnd != IntPtr.Zero)
+                    {
+                        Debug.WriteLine($"[ZenShield] Discovered HWND {discoveredHwnd} for '{processName}' in {discoverySw.ElapsedMilliseconds} ms (total: {totalSw.ElapsedMilliseconds} ms)");
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            _lastAllowedAppHwnd = discoveredHwnd;
+                            ShowWindow(discoveredHwnd, SW_RESTORE);
+                            SetWindowPos(discoveredHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                            SetForegroundWindow(discoveredHwnd);
+                        });
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[ZenShield] Window discovery timed out for '{processName}' after {discoverySw.ElapsedMilliseconds} ms (total: {totalSw.ElapsedMilliseconds} ms)");
+                    }
                 }
-            }
-
-            if (discoveredHwnd != IntPtr.Zero)
-            {
-                _lastAllowedAppHwnd = discoveredHwnd;
-                ShowWindow(discoveredHwnd, SW_RESTORE);
-                SetWindowPos(discoveredHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-                SetForegroundWindow(discoveredHwnd);
-            }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[ZenShield] App switch error in background task: {ex.Message}");
+                }
+                finally
+                {
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        _isSwitchingAllowedApp = false;
+                    });
+                }
+            });
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[ZenShield] App switch error: {ex.Message}");
-        }
-        finally
-        {
             _isSwitchingAllowedApp = false;
         }
     }
@@ -1406,13 +1492,7 @@ public partial class ZenShieldWindow : Window
                 return;
             }
 
-            string? procName = null;
-            try
-            {
-                using var fgProc = Process.GetProcessById((int)fgPid);
-                procName = fgProc.ProcessName;
-            }
-            catch { }
+            string? procName = GetProcessNameCached(fgPid);
 
             if (!string.IsNullOrEmpty(procName))
             {
@@ -1621,7 +1701,9 @@ public partial class ZenShieldWindow : Window
         _watchdogTimer.Stop();
         _quickNotesOverlay?.Close();
         _miniHudWindow?.Close();
+
         SetTaskbarVisibility(true);
+
         OnSessionEnded?.Invoke();
         Close();
     }
