@@ -21,6 +21,38 @@ public class Worker : BackgroundService
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint WTSGetActiveConsoleSessionId();
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ProcessIdToSessionId(uint dwProcessId, out uint pSessionId);
+
+    private static readonly int CurrentProcessId = Environment.ProcessId;
+    private static readonly int CurrentProcessSessionId = GetCurrentProcessSessionId();
+    private static readonly string CurrentProcessName = GetCurrentProcessName();
+
+    private static int GetCurrentProcessSessionId()
+    {
+        try
+        {
+            return Process.GetCurrentProcess().SessionId;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static string GetCurrentProcessName()
+    {
+        try
+        {
+            return Process.GetCurrentProcess().ProcessName;
+        }
+        catch
+        {
+            return "blocker.service";
+        }
+    }
+
     private const int SW_MINIMIZE = 6;
     private const int SW_FORCEMINIMIZE = 11;
     private const uint WM_CLOSE = 0x0010;
@@ -135,7 +167,7 @@ public class Worker : BackgroundService
         }
         catch
         {
-            _protectedPids.Add(Environment.ProcessId);
+            _protectedPids.Add(CurrentProcessId);
         }
     }
 
@@ -834,6 +866,21 @@ public class Worker : BackgroundService
         bool hasUnauthorizedBrowsers = unauthorizedBrowsers != null && unauthorizedBrowsers.Count > 0;
         var killedBrowsersThisPass = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Compute active console session ID ONCE per tick (never inside the per-process loop)
+        uint activeSessionId = WTSGetActiveConsoleSessionId();
+        if (activeSessionId == 0xFFFFFFFF || activeSessionId == 0)
+        {
+            try
+            {
+                var explorer = Process.GetProcessesByName("explorer").FirstOrDefault(e => e.SessionId > 0);
+                if (explorer != null)
+                {
+                    activeSessionId = (uint)explorer.SessionId;
+                }
+            }
+            catch { }
+        }
+
         // Check standalone File Explorer windows during active meditation (only if promoted from Pending)
         if (_activeMeditationSession != null && !string.Equals(_activeMeditationSession.Status, "Pending", StringComparison.OrdinalIgnoreCase))
         {
@@ -1025,27 +1072,20 @@ public class Worker : BackgroundService
                     {
                         try
                         {
-                            using var targetProc = Process.GetProcessById(processId);
-                            if (!string.Equals(targetProc.ProcessName, processName, StringComparison.OrdinalIgnoreCase))
+                            // Skip syscalls for already-suspended PIDs immediately!
+                            if (ProcessSuspender.Default.IsSuspended(processId))
                             {
                                 continue;
                             }
 
-                            uint activeSessionId = WTSGetActiveConsoleSessionId();
-                            if (activeSessionId == 0xFFFFFFFF || activeSessionId == 0)
+                            int targetSession = -1;
+                            if (OperatingSystem.IsWindows() && ProcessIdToSessionId((uint)processId, out uint sessId))
                             {
-                                var explorer = Process.GetProcessesByName("explorer").FirstOrDefault(e => e.SessionId > 0);
-                                if (explorer != null)
-                                {
-                                    activeSessionId = (uint)explorer.SessionId;
-                                }
+                                targetSession = (int)sessId;
                             }
 
-                            int targetSession = -1;
-                            try { targetSession = targetProc.SessionId; } catch { }
-
                             bool isTargetInActiveSession = (activeSessionId != 0xFFFFFFFF && targetSession == (int)activeSessionId) ||
-                                                          (targetSession > 0 && targetSession == Process.GetCurrentProcess().SessionId) ||
+                                                          (targetSession > 0 && targetSession == CurrentProcessSessionId) ||
                                                           (activeSessionId == 0xFFFFFFFF && targetSession > 0);
 
                             if (isTargetInActiveSession)

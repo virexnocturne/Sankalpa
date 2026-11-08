@@ -26,19 +26,27 @@ public static class ProtectedProcesses
         "sankalpa.service"
     ];
 
-    public static IReadOnlyList<string> Names
+    private static readonly HashSet<string> WellKnownSet = new(WellKnown, StringComparer.OrdinalIgnoreCase);
+    private static readonly string? OwnProcessName;
+    private static readonly string? OwnNormalizedProcessName;
+    private static readonly IReadOnlyList<string> CachedNames;
+
+    static ProtectedProcesses()
     {
-        get
+        OwnProcessName = GetCurrentProcessName();
+        OwnNormalizedProcessName = !string.IsNullOrEmpty(OwnProcessName)
+            ? ProcessMatcher.NormalizeProcessName(OwnProcessName)
+            : null;
+
+        var list = new List<string>(WellKnown);
+        if (!string.IsNullOrWhiteSpace(OwnProcessName) && !list.Contains(OwnProcessName, StringComparer.OrdinalIgnoreCase))
         {
-            var list = new List<string>(WellKnown);
-            string? current = GetCurrentProcessName();
-            if (!string.IsNullOrWhiteSpace(current) && !list.Contains(current, StringComparer.OrdinalIgnoreCase))
-            {
-                list.Add(current);
-            }
-            return list.AsReadOnly();
+            list.Add(OwnProcessName);
         }
+        CachedNames = list.AsReadOnly();
     }
+
+    public static IReadOnlyList<string> Names => CachedNames;
 
     public static bool Contains(string? processName) => IsProtected(processName);
 
@@ -50,17 +58,13 @@ public static class ProtectedProcesses
             return false;
         }
 
-        foreach (var name in WellKnown)
+        if (WellKnownSet.Contains(normalized))
         {
-            if (string.Equals(normalized, name, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
+            return true;
         }
 
-        string? current = GetCurrentProcessName();
-        if (!string.IsNullOrWhiteSpace(current) &&
-            string.Equals(normalized, ProcessMatcher.NormalizeProcessName(current), StringComparison.OrdinalIgnoreCase))
+        if (OwnNormalizedProcessName != null &&
+            string.Equals(normalized, OwnNormalizedProcessName, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
