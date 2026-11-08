@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Blocker.Core;
 
@@ -107,6 +108,15 @@ public sealed class LowLevelKeyboardHook : IDisposable
     private uint _hookThreadId;
     private bool _isActive;
     private bool _disposed;
+
+    // Dedicated Polling Thread for Emergency Chord
+    private Thread? _pollingThread;
+    private volatile bool _stopPolling;
+    private readonly ManualResetEventSlim _pollStopEvent = new(false);
+
+    // Single-fire guard for emergency escape chord across hook and polling subsystems
+    private int _emergencyTriggered = 0;
+
     private DateTime _emergencyChordStartTime = DateTime.MinValue;
     private CancellationTokenSource? _emergencyHoldCts;
     private readonly object _emergencyLock = new();
@@ -121,6 +131,8 @@ public sealed class LowLevelKeyboardHook : IDisposable
             }
         }
     }
+
+    public bool IsEmergencyTriggered => Volatile.Read(ref _emergencyTriggered) != 0;
 
     /// <summary>
     /// Triggered when the user holds Ctrl + Shift + Alt + Escape for 3 seconds continuously.
@@ -144,6 +156,8 @@ public sealed class LowLevelKeyboardHook : IDisposable
         {
             if (_disposed) throw new ObjectDisposedException(nameof(LowLevelKeyboardHook));
             if (_isActive) return;
+
+            Interlocked.Exchange(ref _emergencyTriggered, 0);
 
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -195,6 +209,7 @@ public sealed class LowLevelKeyboardHook : IDisposable
             };
 
             _hookThread.SetApartmentState(ApartmentState.STA);
+            _hookThread.Priority = ThreadPriority.Highest;
             _hookThread.Start();
 
             if (!readyEvent.Wait(TimeSpan.FromSeconds(5)))
@@ -210,6 +225,19 @@ public sealed class LowLevelKeyboardHook : IDisposable
             }
 
             _isActive = _hookHandle != IntPtr.Zero;
+
+            if (_isActive)
+            {
+                _stopPolling = false;
+                _pollStopEvent.Reset();
+                _pollingThread = new Thread(EmergencyPollingLoop)
+                {
+                    IsBackground = true,
+                    Name = "EmergencyChordPollingThread",
+                    Priority = ThreadPriority.AboveNormal
+                };
+                _pollingThread.Start();
+            }
         }
     }
 
@@ -217,7 +245,7 @@ public sealed class LowLevelKeyboardHook : IDisposable
     {
         lock (_syncLock)
         {
-            if (!_isActive && _hookThread == null) return;
+            if (!_isActive && _hookThread == null && _pollingThread == null) return;
 
             lock (_emergencyLock)
             {
@@ -227,6 +255,15 @@ public sealed class LowLevelKeyboardHook : IDisposable
                     _emergencyHoldCts.Dispose();
                     _emergencyHoldCts = null;
                 }
+            }
+
+            _stopPolling = true;
+            _pollStopEvent.Set();
+
+            if (_pollingThread != null && _pollingThread.IsAlive)
+            {
+                _pollingThread.Join(TimeSpan.FromSeconds(1));
+                _pollingThread = null;
             }
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -251,6 +288,122 @@ public sealed class LowLevelKeyboardHook : IDisposable
             }
 
             _isActive = false;
+        }
+    }
+
+    /// <summary>
+    /// Safely reinstalls the low-level keyboard hook without gaps where keys could leak through.
+    /// Always installs the new hook before removing the old hook.
+    /// </summary>
+    public bool Rehook()
+    {
+        lock (_syncLock)
+        {
+            if (_disposed || !_isActive) return false;
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return true;
+
+            try
+            {
+                using var curProcess = Process.GetCurrentProcess();
+                using var curModule = curProcess.MainModule;
+                IntPtr hMod = curModule?.ModuleName != null ? GetModuleHandle(curModule.ModuleName) : IntPtr.Zero;
+
+                IntPtr newHookHandle = SetWindowsHookEx(WH_KEYBOARD_LL, _hookProc, hMod, 0);
+                if (newHookHandle != IntPtr.Zero)
+                {
+                    IntPtr oldHookHandle = _hookHandle;
+                    _hookHandle = newHookHandle;
+                    if (oldHookHandle != IntPtr.Zero)
+                    {
+                        UnhookWindowsHookEx(oldHookHandle);
+                    }
+                    return true;
+                }
+            }
+            catch { }
+
+            return false;
+        }
+    }
+
+    private static bool IsKeyDown(int vKey) => (GetAsyncKeyState(vKey) & 0x8000) != 0;
+
+    private static bool IsCtrlDown() =>
+        IsKeyDown(VK_CONTROL) || IsKeyDown(VK_LCONTROL) || IsKeyDown(VK_RCONTROL);
+
+    private static bool IsAltDown() =>
+        IsKeyDown(VK_MENU) || IsKeyDown(VK_LMENU) || IsKeyDown(VK_RMENU);
+
+    private static bool IsShiftDown() =>
+        IsKeyDown(VK_SHIFT) || IsKeyDown(VK_LSHIFT) || IsKeyDown(VK_RSHIFT);
+
+    private static bool IsEscapeDown() =>
+        IsKeyDown(VK_ESCAPE);
+
+    public static bool IsEmergencyChordDown()
+    {
+        return IsCtrlDown() && IsAltDown() && IsShiftDown() && IsEscapeDown();
+    }
+
+    private void EmergencyPollingLoop()
+    {
+        var tracker = new EmergencyChordTracker();
+        var sw = Stopwatch.StartNew();
+
+        while (!_stopPolling && !_disposed)
+        {
+            if (Volatile.Read(ref _emergencyTriggered) != 0)
+            {
+                break;
+            }
+
+            try
+            {
+                bool chordDown = IsEmergencyChordDown();
+                long now = sw.ElapsedMilliseconds;
+
+                if (tracker.Update(chordDown, now))
+                {
+                    TriggerEmergency("poll");
+                    break;
+                }
+            }
+            catch { }
+
+            if (_pollStopEvent.Wait(50))
+            {
+                break;
+            }
+        }
+    }
+
+    private void TriggerEmergency(string subsystem)
+    {
+        if (Interlocked.CompareExchange(ref _emergencyTriggered, 1, 0) == 0)
+        {
+            string logMessage = subsystem == "hook" ? "[CHORD] via hook" : "[CHORD] via poll";
+            try
+            {
+                Trace.WriteLine(logMessage);
+                Debug.WriteLine(logMessage);
+                Console.WriteLine(logMessage);
+            }
+            catch { }
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    EmergencyEscapeTriggered?.Invoke();
+                }
+                catch { }
+
+                try
+                {
+                    WriteEmergencyUnlockFiles();
+                }
+                catch { }
+            });
         }
     }
 
@@ -284,34 +437,40 @@ public sealed class LowLevelKeyboardHook : IDisposable
 
             lock (_emergencyLock)
             {
-                if (isChordDown)
+                if (isChordDown && Volatile.Read(ref _emergencyTriggered) == 0)
                 {
                     if (_emergencyHoldCts == null)
                     {
+                        _emergencyChordStartTime = DateTime.UtcNow;
                         _emergencyHoldCts = new CancellationTokenSource();
                         var token = _emergencyHoldCts.Token;
                         Task.Run(async () =>
                         {
                             try
                             {
+                                var tracker = new EmergencyChordTracker();
                                 var sw = Stopwatch.StartNew();
-                                while (sw.ElapsedMilliseconds < 3000)
+                                tracker.Update(true, 0);
+
+                                while (!token.IsCancellationRequested && Volatile.Read(ref _emergencyTriggered) == 0)
                                 {
-                                    await Task.Delay(100, token).ConfigureAwait(false);
+                                    await Task.Delay(50, token).ConfigureAwait(false);
                                     if (token.IsCancellationRequested) return;
 
-                                    bool stillDown = ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 || (GetAsyncKeyState(VK_LCONTROL) & 0x8000) != 0 || (GetAsyncKeyState(VK_RCONTROL) & 0x8000) != 0) &&
-                                                     ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0 || (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0 || (GetAsyncKeyState(VK_RMENU) & 0x8000) != 0) &&
-                                                     ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 || (GetAsyncKeyState(VK_LSHIFT) & 0x8000) != 0 || (GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0) &&
-                                                     ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0);
-                                    if (!stillDown)
+                                    bool chordDown = IsEmergencyChordDown();
+                                    long now = sw.ElapsedMilliseconds;
+
+                                    if (tracker.Update(chordDown, now))
+                                    {
+                                        TriggerEmergency("hook");
+                                        return;
+                                    }
+
+                                    if (!tracker.IsHolding)
                                     {
                                         return;
                                     }
                                 }
-
-                                WriteEmergencyUnlockFiles();
-                                EmergencyEscapeTriggered?.Invoke();
                             }
                             catch (OperationCanceledException) { }
                             catch { }
@@ -329,15 +488,6 @@ public sealed class LowLevelKeyboardHook : IDisposable
                     if (vk == VK_ESCAPE)
                     {
                         return (IntPtr)1;
-                    }
-                }
-                else
-                {
-                    if (_emergencyHoldCts != null)
-                    {
-                        _emergencyHoldCts.Cancel();
-                        _emergencyHoldCts.Dispose();
-                        _emergencyHoldCts = null;
                     }
                 }
             }
@@ -436,6 +586,96 @@ public sealed class LowLevelKeyboardHook : IDisposable
             if (_disposed) return;
             _disposed = true;
             Stop();
+            _pollStopEvent.Dispose();
         }
+    }
+}
+
+/// <summary>
+/// Tracks the emergency chord hold duration with 300 ms debounce / gap tolerance
+/// so keyboard matrix drops / lack of NKRO on laptop keyboards do not falsely cancel the hold.
+/// Only real held time is counted toward the 3,000 ms threshold.
+/// </summary>
+public sealed class EmergencyChordTracker
+{
+    private long _accumulatedHeldMs;
+    private long _lastHeldTime;
+    private long _releasedTime = -1;
+    private bool _isHolding;
+    private DateTime _firstPressedTime = DateTime.MinValue;
+
+    public bool IsHolding => _isHolding;
+    public long AccumulatedHeldMs => _accumulatedHeldMs;
+    public DateTime FirstPressedTime => _firstPressedTime;
+
+    public bool Update(bool isChordDown, long nowMs)
+    {
+        if (isChordDown)
+        {
+            if (!_isHolding)
+            {
+                _isHolding = true;
+                _firstPressedTime = DateTime.UtcNow;
+                _accumulatedHeldMs = 0;
+                _lastHeldTime = nowMs;
+                _releasedTime = -1;
+            }
+            else
+            {
+                if (_releasedTime >= 0)
+                {
+                    long gap = nowMs - _releasedTime;
+                    if (gap <= 300)
+                    {
+                        // Recovered within 300 ms grace tolerance; continue counting real held time
+                        _releasedTime = -1;
+                        _lastHeldTime = nowMs;
+                    }
+                    else
+                    {
+                        // Released for > 300 ms continuously; cancel and start new hold
+                        _firstPressedTime = DateTime.UtcNow;
+                        _accumulatedHeldMs = 0;
+                        _lastHeldTime = nowMs;
+                        _releasedTime = -1;
+                    }
+                }
+                else
+                {
+                    long delta = nowMs - _lastHeldTime;
+                    if (delta > 0)
+                    {
+                        _accumulatedHeldMs += delta;
+                        _lastHeldTime = nowMs;
+                    }
+                }
+            }
+        }
+        else
+        {
+            if (_isHolding)
+            {
+                if (_releasedTime < 0)
+                {
+                    _releasedTime = nowMs;
+                }
+                else if (nowMs - _releasedTime > 300)
+                {
+                    // Released for more than 300 ms continuously
+                    Reset();
+                }
+            }
+        }
+
+        return _isHolding && _accumulatedHeldMs >= 3000;
+    }
+
+    public void Reset()
+    {
+        _isHolding = false;
+        _accumulatedHeldMs = 0;
+        _lastHeldTime = 0;
+        _releasedTime = -1;
+        _firstPressedTime = DateTime.MinValue;
     }
 }
