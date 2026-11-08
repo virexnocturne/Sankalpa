@@ -512,14 +512,101 @@ public static class ExtensionHelper
         {
             if (OperatingSystem.IsWindows())
             {
+                string? targetExe = null;
+                string baseDir = AppContext.BaseDirectory;
+
+                // Priority 1: Check if exePath points to Sankalpa.exe or its sibling in the same directory
+                if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath))
+                {
+                    if (Path.GetFileName(exePath).Equals("Sankalpa.exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetExe = Path.GetFullPath(exePath);
+                    }
+                    else
+                    {
+                        string? dir = Path.GetDirectoryName(exePath);
+                        if (!string.IsNullOrEmpty(dir))
+                        {
+                            string siblingUi = Path.Combine(dir, "Sankalpa.exe");
+                            if (File.Exists(siblingUi))
+                            {
+                                targetExe = Path.GetFullPath(siblingUi);
+                            }
+                        }
+                    }
+                }
+
+                // Priority 2: Check AppContext.BaseDirectory for Sankalpa.exe
+                if (string.IsNullOrEmpty(targetExe))
+                {
+                    string candidateUi = Path.Combine(baseDir, "Sankalpa.exe");
+                    if (File.Exists(candidateUi))
+                    {
+                        targetExe = Path.GetFullPath(candidateUi);
+                    }
+                }
+
+                // Priority 3: Check standard installation directories
+                if (string.IsNullOrEmpty(targetExe))
+                {
+                    string pfCandidate = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Sankalpa", "Sankalpa.exe");
+                    if (File.Exists(pfCandidate))
+                    {
+                        targetExe = Path.GetFullPath(pfCandidate);
+                    }
+                    else
+                    {
+                        string laCandidate = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Sankalpa", "Sankalpa.exe");
+                        if (File.Exists(laCandidate))
+                        {
+                            targetExe = Path.GetFullPath(laCandidate);
+                        }
+                    }
+                }
+
+                // Fallback: If Sankalpa.exe is still not found and exePath is an existing executable
+                if (string.IsNullOrEmpty(targetExe) && !string.IsNullOrEmpty(exePath) && File.Exists(exePath))
+                {
+                    targetExe = Path.GetFullPath(exePath);
+                }
+
+                // Priority for Icon: Assets\app.ico in target directory or BaseDirectory, falling back to targetExe
+                string? iconPath = null;
+                if (!string.IsNullOrEmpty(targetExe))
+                {
+                    string? targetDir = Path.GetDirectoryName(targetExe);
+                    if (!string.IsNullOrEmpty(targetDir))
+                    {
+                        string targetAssetIcon = Path.Combine(targetDir, "Assets", "app.ico");
+                        if (File.Exists(targetAssetIcon))
+                        {
+                            iconPath = targetAssetIcon;
+                        }
+                    }
+                }
+                if (string.IsNullOrEmpty(iconPath))
+                {
+                    string baseAssetIcon = Path.Combine(baseDir, "Assets", "app.ico");
+                    if (File.Exists(baseAssetIcon))
+                    {
+                        iconPath = baseAssetIcon;
+                    }
+                    else if (!string.IsNullOrEmpty(targetExe))
+                    {
+                        iconPath = targetExe;
+                    }
+                }
+
+                string aumidIcon = iconPath ?? targetExe ?? string.Empty;
+
                 using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Classes\AppUserModelId\Sankalpa");
                 if (key != null)
                 {
                     key.SetValue("DisplayName", "Sankalpa", Microsoft.Win32.RegistryValueKind.String);
                     key.SetValue("ShowInSettings", 1, Microsoft.Win32.RegistryValueKind.DWord);
-                    if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath))
+                    if (!string.IsNullOrEmpty(aumidIcon) && File.Exists(aumidIcon))
                     {
-                        key.SetValue("IconUri", exePath, Microsoft.Win32.RegistryValueKind.String);
+                        key.SetValue("IconUri", aumidIcon, Microsoft.Win32.RegistryValueKind.String);
                     }
                 }
 
@@ -530,86 +617,30 @@ public static class ExtensionHelper
                     {
                         hklmKey.SetValue("DisplayName", "Sankalpa", Microsoft.Win32.RegistryValueKind.String);
                         hklmKey.SetValue("ShowInSettings", 1, Microsoft.Win32.RegistryValueKind.DWord);
-                        if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath))
+                        if (!string.IsNullOrEmpty(aumidIcon) && File.Exists(aumidIcon))
                         {
-                            hklmKey.SetValue("IconUri", exePath, Microsoft.Win32.RegistryValueKind.String);
+                            hklmKey.SetValue("IconUri", aumidIcon, Microsoft.Win32.RegistryValueKind.String);
                         }
                     }
                 }
                 catch { }
 
                 // Start Menu shortcut with PKEY_AppUserModel_ID
-                try
+                if (!string.IsNullOrEmpty(targetExe))
                 {
-                    string? targetExe = null;
-                    if (!string.IsNullOrEmpty(exePath) && exePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(exePath))
-                    {
-                        targetExe = exePath;
-                    }
-                    else
-                    {
-                        string candidateUi = Path.Combine(AppContext.BaseDirectory, "Sankalpa.exe");
-                        if (File.Exists(candidateUi))
-                        {
-                            targetExe = candidateUi;
-                        }
-                        else
-                        {
-                            string candidateHost = Path.Combine(AppContext.BaseDirectory, "Blocker.NativeHost.exe");
-                            if (File.Exists(candidateHost))
-                            {
-                                targetExe = candidateHost;
-                            }
-                            else
-                            {
-                                try
-                                {
-                                    string? procPath = Environment.ProcessPath;
-                                    if (!string.IsNullOrEmpty(procPath) && procPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(procPath))
-                                    {
-                                        targetExe = procPath;
-                                    }
-                                }
-                                catch { }
-                            }
-                        }
-                    }
+                    var targetFolders = new List<string>();
+                    string userPrograms = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
+                    if (!string.IsNullOrEmpty(userPrograms)) targetFolders.Add(userPrograms);
+                    string commonPrograms = Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms);
+                    if (!string.IsNullOrEmpty(commonPrograms)) targetFolders.Add(commonPrograms);
 
-                    if (!string.IsNullOrEmpty(targetExe))
+                    foreach (var dir in targetFolders)
                     {
-                        string? iconPath = null;
-                        if (!string.IsNullOrEmpty(exePath) && (exePath.EndsWith(".ico", StringComparison.OrdinalIgnoreCase) || exePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) && File.Exists(exePath))
-                        {
-                            iconPath = exePath;
-                        }
-                        else
-                        {
-                            string defaultIcon = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
-                            if (File.Exists(defaultIcon))
-                            {
-                                iconPath = defaultIcon;
-                            }
-                            else
-                            {
-                                iconPath = targetExe;
-                            }
-                        }
-
-                        var targetFolders = new List<string>();
-                        string userPrograms = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
-                        if (!string.IsNullOrEmpty(userPrograms)) targetFolders.Add(userPrograms);
-                        string commonPrograms = Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms);
-                        if (!string.IsNullOrEmpty(commonPrograms)) targetFolders.Add(commonPrograms);
-
-                        foreach (var dir in targetFolders)
-                        {
-                            if (!Directory.Exists(dir)) continue;
-                            string shortcutFile = Path.Combine(dir, "Sankalpa.lnk");
-                            CreateOrUpdateShortcut(shortcutFile, targetExe, iconPath, "Sankalpa");
-                        }
+                        if (!Directory.Exists(dir)) continue;
+                        string shortcutFile = Path.Combine(dir, "Sankalpa.lnk");
+                        CreateOrUpdateShortcut(shortcutFile, targetExe, iconPath ?? targetExe, "Sankalpa");
                     }
                 }
-                catch { }
             }
         }
         catch { }
