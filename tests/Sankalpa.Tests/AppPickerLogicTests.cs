@@ -221,4 +221,25 @@ public class AppPickerLogicTests
         Assert.Contains("steam.exe", names, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("notepad.exe", names, StringComparer.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void AppPickerLogic_ExcludesSankalpaAndBlockerSelfApps()
+    {
+        var rawItems = new List<AppPickerItem>
+        {
+            new() { DisplayName = "Sankalpa version 1.3.3", ExeName = "Sankalpa.exe", Path = @"C:\Users\User\AppData\Local\Programs\Sankalpa\Sankalpa.exe", Category = AppPickerLogic.CatInstalled },
+            new() { DisplayName = "Sankalpa Service", ExeName = "Blocker.Service.exe", Category = AppPickerLogic.CatSystem },
+            new() { DisplayName = "Native Messaging Host", ExeName = "Blocker.NativeHost.exe", Category = AppPickerLogic.CatSystem },
+            new() { DisplayName = "Discord", ExeName = "Discord.exe", Category = AppPickerLogic.CatInstalled },
+            new() { DisplayName = "Visual Studio Code", ExeName = "Code.exe", Category = AppPickerLogic.CatInstalled }
+        };
+
+        var filtered = AppPickerLogic.FilterAndDeduplicate(rawItems, null, showAllProcesses: true);
+
+        Assert.Equal(2, filtered.Count);
+        Assert.DoesNotContain(filtered, i => i.ExeName.Contains("Sankalpa", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(filtered, i => i.ExeName.Contains("Blocker", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(filtered, i => i.ExeName.Equals("Discord.exe", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(filtered, i => i.ExeName.Equals("Code.exe", StringComparison.OrdinalIgnoreCase));
+    }
 }

@@ -123,12 +123,41 @@ public static class AppPickerLogic
         return false;
     }
 
+    public static bool IsSelfApp(string? exeName, string? displayName = null)
+    {
+        if (string.IsNullOrWhiteSpace(exeName)) return false;
+        string norm = NormalizeExeName(exeName);
+        string nameWithoutExt = Path.GetFileNameWithoutExtension(norm);
+        if (nameWithoutExt.Equals("sankalpa", StringComparison.OrdinalIgnoreCase) ||
+            nameWithoutExt.Equals("blocker", StringComparison.OrdinalIgnoreCase) ||
+            nameWithoutExt.Equals("nativehost", StringComparison.OrdinalIgnoreCase) ||
+            nameWithoutExt.Equals("sankalpa-cli", StringComparison.OrdinalIgnoreCase) ||
+            nameWithoutExt.StartsWith("sankalpa", StringComparison.OrdinalIgnoreCase) ||
+            nameWithoutExt.StartsWith("blocker", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(displayName))
+        {
+            if (displayName.StartsWith("sankalpa", StringComparison.OrdinalIgnoreCase) ||
+                displayName.StartsWith("blocker", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static List<AppPickerItem> FilterAndDeduplicate(
         IEnumerable<AppPickerItem> rawItems,
         string? searchText,
         bool showAllProcesses)
     {
-        var filtered = rawItems.Where(item => showAllProcesses || !item.IsSystemProcess);
+        var filtered = rawItems
+            .Where(item => !IsSelfApp(item.ExeName, item.DisplayName))
+            .Where(item => showAllProcesses || !item.IsSystemProcess);
 
         if (!string.IsNullOrWhiteSpace(searchText))
         {

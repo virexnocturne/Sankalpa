@@ -754,9 +754,12 @@ public partial class BlockEditorDialog : Window
         {
             foreach (var app in pickerDlg.SelectedApps)
             {
-                if (!Apps.Contains(app, StringComparer.OrdinalIgnoreCase))
+                if (UiLogic.ValidateProcessInput(app, out string? norm, out _) && !string.IsNullOrEmpty(norm))
                 {
-                    Apps.Add(app);
+                    if (!Apps.Contains(norm, StringComparer.OrdinalIgnoreCase))
+                    {
+                        Apps.Add(norm);
+                    }
                 }
             }
             AppErrorTextBlock.Visibility = Visibility.Collapsed;

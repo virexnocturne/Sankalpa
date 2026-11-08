@@ -460,6 +460,18 @@ public static class InstalledAppScanner
             string key = AppPickerLogic.NormalizeExeName(item.ExeName);
             if (string.IsNullOrEmpty(key)) continue;
 
+            if (ProtectedProcesses.IsProtected(key) ||
+                ProtectedProcesses.IsProtected(item.ExeName) ||
+                string.Equals(key, "sankalpa", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(key, "blocker", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(key, "nativehost", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(key, "sankalpa-cli", StringComparison.OrdinalIgnoreCase) ||
+                item.DisplayName.StartsWith("sankalpa", StringComparison.OrdinalIgnoreCase) ||
+                item.DisplayName.StartsWith("blocker", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             if (deduplicated.TryGetValue(key, out var existing))
             {
                 // Merge info: prefer installed/running category over system, existing path, and friendly display name
@@ -503,6 +515,14 @@ public static class InstalledAppScanner
     private static bool IsExcludedExe(string exeName)
     {
         string name = Path.GetFileNameWithoutExtension(exeName);
+        if (ProtectedProcesses.IsProtected(name) ||
+            ProtectedProcesses.IsProtected(exeName) ||
+            name.StartsWith("sankalpa", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("blocker", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         foreach (var prefix in ExcludedExePrefixes)
         {
             if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
