@@ -1,13 +1,17 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using Blocker.Core;
 
 namespace Blocker.Service;
 
 public class Worker : BackgroundService
 {
+    private const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
@@ -22,7 +26,16 @@ public class Worker : BackgroundService
     private static extern uint WTSGetActiveConsoleSessionId();
 
     [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(int processAccess, bool bInheritHandle, int processId);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool QueryFullProcessImageName(IntPtr hProcess, int dwFlags, [Out] StringBuilder lpExeName, ref int lpdwSize);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool ProcessIdToSessionId(uint dwProcessId, out uint pSessionId);
 
     private static readonly int CurrentProcessId = Environment.ProcessId;
@@ -89,6 +102,8 @@ public class Worker : BackgroundService
     private readonly List<FastProcessEntry> _processBuffer = new(512);
     private readonly HashSet<string> _runningProcessNames = new(512, StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, (string ProcessName, string ExeName)> _processNameCache = new(512, StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<int, string?> _processPathCache = new();
+    private readonly Dictionary<int, FastProcessEntry> _processByPid = new(512);
     private DateTime _lastDnsWatchdogApplyUtc = DateTime.MinValue;
 
     public Worker(ILogger<Worker> logger, IBlockStore? db = null)
@@ -157,6 +172,7 @@ public class Worker : BackgroundService
 
     private void RefreshProtectedPids()
     {
+        _protectedPids.Add(CurrentProcessId);
         try
         {
             var pids = ProcessTreeHelper.GetCurrentAndAncestorProcessIds();
@@ -881,14 +897,43 @@ public class Worker : BackgroundService
             catch { }
         }
 
-        // Check standalone File Explorer windows during active meditation (only if promoted from Pending)
-        if (_activeMeditationSession != null && !string.Equals(_activeMeditationSession.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+        // Index running processes by PID for O(1) parent lookup
+        _processByPid.Clear();
+        for (int i = 0; i < runningProcesses.Count; i++)
         {
-            var allowedApps = _activeMeditationSession.GetAllowedApps() ?? new List<string>();
+            _processByPid[runningProcesses[i].Id] = runningProcesses[i];
+        }
+
+        // Check standalone File Explorer windows during active meditation (only if promoted from Pending)
+        bool isMeditationActive = _activeMeditationSession != null &&
+            !string.Equals(_activeMeditationSession.Status, "Pending", StringComparison.OrdinalIgnoreCase);
+        var allowedApps = isMeditationActive ? (_activeMeditationSession!.GetAllowedApps() ?? new List<string>()) : null;
+        var allowedAppDirs = new Dictionary<int, string>();
+
+        if (isMeditationActive && allowedApps != null && allowedApps.Count > 0)
+        {
             bool isExplorerAllowed = IsAppAllowed("explorer", "explorer.exe", allowedApps);
             if (!isExplorerAllowed)
             {
                 SuppressStandaloneExplorerWindows(timestamp);
+            }
+
+            // Pre-populate allowed app installation directories for child exemption
+            for (int i = 0; i < runningProcesses.Count; i++)
+            {
+                var p = runningProcesses[i];
+                if (IsAppAllowed(p.ProcessName, p.ExeName, allowedApps))
+                {
+                    string? imagePath = GetProcessImagePath(p.Id);
+                    if (!string.IsNullOrEmpty(imagePath))
+                    {
+                        string? dir = Path.GetDirectoryName(imagePath);
+                        if (!string.IsNullOrEmpty(dir) && !IsSystemOrRootDirectory(dir))
+                        {
+                            allowedAppDirs[p.Id] = dir;
+                        }
+                    }
+                }
             }
         }
         else if (_loggedCabinetHwnds.Count > 0)
@@ -905,7 +950,7 @@ public class Worker : BackgroundService
                 currentPids.Add(processId);
 
                 // Self-safety: never kill current process or its parent/ancestor processes
-                if (_protectedPids.Contains(processId))
+                if (processId == CurrentProcessId || _protectedPids.Contains(processId))
                 {
                     continue;
                 }
@@ -1062,22 +1107,57 @@ public class Worker : BackgroundService
                 }
 
                 // 3. Meditation Mode Whitelist enforcement via thread suspension (non-destructive)
-                if (_activeMeditationSession != null && !string.Equals(_activeMeditationSession.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+                if (isMeditationActive && allowedApps != null)
                 {
-                    var allowedApps = _activeMeditationSession.GetAllowedApps() ?? new List<string>();
+                    // Skip syscalls for already-suspended PIDs immediately!
+                    if (ProcessSuspender.Default.IsSuspended(processId))
+                    {
+                        continue;
+                    }
+
                     bool isAppPermitted = IsAppAllowed(processName, exeName, allowedApps);
+
+                    // Child exemption:
+                    // If a process is NOT directly in allowedApps, check its ParentId:
+                    // If process.ParentId > 0 and the parent process is an allowed app (or parent PID is tracked as an allowed app):
+                    // Check if the child process executable/image path is inside that allowed app's installation directory!
+                    if (!isAppPermitted && process.ParentId > 0)
+                    {
+                        if (!allowedAppDirs.TryGetValue(process.ParentId, out string? parentInstallDir))
+                        {
+                            if (_processByPid.TryGetValue(process.ParentId, out var parentEntry) &&
+                                IsAppAllowed(parentEntry.ProcessName, parentEntry.ExeName, allowedApps))
+                            {
+                                string? parentImagePath = GetProcessImagePath(parentEntry.Id);
+                                if (!string.IsNullOrEmpty(parentImagePath))
+                                {
+                                    string? dir = Path.GetDirectoryName(parentImagePath);
+                                    if (!string.IsNullOrEmpty(dir) && !IsSystemOrRootDirectory(dir))
+                                    {
+                                        parentInstallDir = dir;
+                                        allowedAppDirs[parentEntry.Id] = dir;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!string.IsNullOrEmpty(parentInstallDir))
+                        {
+                            string? childPath = GetProcessImagePath(processId);
+                            if (!string.IsNullOrEmpty(childPath) && IsPathInsideDirectory(childPath, parentInstallDir))
+                            {
+                                allowedAppDirs[processId] = parentInstallDir;
+                                continue; // Exempt from suspension!
+                            }
+                        }
+                    }
+
                     if (!isAppPermitted &&
                         !ProtectedProcesses.IsProtected(processName) &&
                         !ProtectedProcesses.IsProtected(exeName))
                     {
                         try
                         {
-                            // Skip syscalls for already-suspended PIDs immediately!
-                            if (ProcessSuspender.Default.IsSuspended(processId))
-                            {
-                                continue;
-                            }
-
                             int targetSession = -1;
                             if (OperatingSystem.IsWindows() && ProcessIdToSessionId((uint)processId, out uint sessId))
                             {
@@ -1132,6 +1212,113 @@ public class Worker : BackgroundService
                 _pidOriginalFileNameCache.TryRemove(pid, out _);
             }
         }
+        foreach (var pid in _processPathCache.Keys)
+        {
+            if (!currentPids.Contains(pid))
+            {
+                _processPathCache.TryRemove(pid, out _);
+            }
+        }
+    }
+
+    private string? GetProcessImagePath(int processId)
+    {
+        if (processId <= 4)
+        {
+            return null;
+        }
+
+        if (_processPathCache.TryGetValue(processId, out string? cached))
+        {
+            return cached;
+        }
+
+        string? path = null;
+        if (OperatingSystem.IsWindows())
+        {
+            IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+            if (hProcess != IntPtr.Zero)
+            {
+                try
+                {
+                    var sb = new StringBuilder(1024);
+                    int size = sb.Capacity;
+                    if (QueryFullProcessImageName(hProcess, 0, sb, ref size))
+                    {
+                        path = sb.ToString();
+                    }
+                }
+                finally
+                {
+                    CloseHandle(hProcess);
+                }
+            }
+        }
+
+        if (string.IsNullOrEmpty(path))
+        {
+            try
+            {
+                using var p = Process.GetProcessById(processId);
+                path = p.MainModule?.FileName;
+            }
+            catch { }
+        }
+
+        _processPathCache[processId] = path;
+        return path;
+    }
+
+    private static bool IsPathInsideDirectory(string filePath, string directoryPath)
+    {
+        try
+        {
+            string fullFilePath = Path.GetFullPath(filePath);
+            string fullDirPath = Path.GetFullPath(directoryPath);
+
+            if (!fullDirPath.EndsWith(Path.DirectorySeparatorChar.ToString()) &&
+                !fullDirPath.EndsWith(Path.AltDirectorySeparatorChar.ToString()))
+            {
+                fullDirPath += Path.DirectorySeparatorChar;
+            }
+
+            return fullFilePath.StartsWith(fullDirPath, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsSystemOrRootDirectory(string directoryPath)
+    {
+        try
+        {
+            string fullDirPath = Path.GetFullPath(directoryPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string root = Path.GetPathRoot(fullDirPath)?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) ?? "";
+            if (string.Equals(fullDirPath, root, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            string winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(fullDirPath, winDir, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            string sysDir = Environment.SystemDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(fullDirPath, sysDir, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return false;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private string? GetCachedOriginalFileName(int processId)
@@ -1144,8 +1331,7 @@ public class Worker : BackgroundService
         string? originalFileName = null;
         try
         {
-            using var process = Process.GetProcessById(processId);
-            string? filePath = process.MainModule?.FileName;
+            string? filePath = GetProcessImagePath(processId);
             if (!string.IsNullOrEmpty(filePath))
             {
                 if (!_originalFileNameCache.TryGetValue(filePath, out originalFileName))

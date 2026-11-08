@@ -131,7 +131,18 @@ public class AppPathResolverAndKioskTests
         lock (s_testLock)
         {
             string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string markerPath = Path.Combine(programData, "Sankalpa", "EMERGENCY_UNLOCK");
+
+            var allMarkers = new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "EMERGENCY_UNLOCK"),
+                Path.Combine(Directory.GetCurrentDirectory(), "EMERGENCY_UNLOCK"),
+                Path.Combine(appData, "Blocker", "EMERGENCY_UNLOCK"),
+                Path.Combine(appData, "Sankalpa", "EMERGENCY_UNLOCK"),
+                Path.Combine(programData, "Sankalpa", "EMERGENCY_UNLOCK"),
+                Path.Combine(programData, "Blocker", "EMERGENCY_UNLOCK")
+            };
 
             try
             {
@@ -140,9 +151,12 @@ public class AppPathResolverAndKioskTests
             }
             finally
             {
-                if (File.Exists(markerPath))
+                foreach (var file in allMarkers)
                 {
-                    try { File.Delete(markerPath); } catch { }
+                    if (File.Exists(file))
+                    {
+                        try { File.Delete(file); } catch { }
+                    }
                 }
             }
         }

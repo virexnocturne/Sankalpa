@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace Blocker.Core;
 
-public readonly record struct FastProcessEntry(int Id, string ProcessName, string ExeName);
+public readonly record struct FastProcessEntry(int Id, string ProcessName, string ExeName, int ParentId = 0);
 
 /// <summary>
 /// High-performance zero-allocation process enumerator using Windows Toolhelp32 snapshot API
@@ -105,7 +105,7 @@ public static class FastProcessEnumerator
                                         : rawExe + ".exe";
                                 }
 
-                                destination.Add(new FastProcessEntry((int)entry.th32ProcessID, procName, exeName));
+                                destination.Add(new FastProcessEntry((int)entry.th32ProcessID, procName, exeName, (int)entry.th32ParentProcessID));
                                 runningNames?.Add(procName);
                             } while (Process32Next(snapshot, ref entry));
                         }
@@ -134,7 +134,7 @@ public static class FastProcessEnumerator
                     int id = p.Id;
                     string name = p.ProcessName;
                     string exe = name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name : name + ".exe";
-                    destination.Add(new FastProcessEntry(id, name, exe));
+                    destination.Add(new FastProcessEntry(id, name, exe, 0));
                     runningNames?.Add(name);
                 }
                 catch { }

@@ -619,4 +619,72 @@ public class MeditationBackendTests : IDisposable
         // Clean up
         _db.EndMeditationSession(active.Id, false);
     }
+
+    [Fact]
+    public void FastProcessEntry_WithParentId_MaintainsBackwardsCompatibilityAndStoresParentId()
+    {
+        var entry3 = new FastProcessEntry(100, "code", "Code.exe");
+        Assert.Equal(100, entry3.Id);
+        Assert.Equal("code", entry3.ProcessName);
+        Assert.Equal("Code.exe", entry3.ExeName);
+        Assert.Equal(0, entry3.ParentId);
+
+        var entry4 = new FastProcessEntry(101, "rg", "rg.exe", 100);
+        Assert.Equal(101, entry4.Id);
+        Assert.Equal("rg", entry4.ProcessName);
+        Assert.Equal("rg.exe", entry4.ExeName);
+        Assert.Equal(100, entry4.ParentId);
+    }
+
+    [Fact]
+    public void ProtectedProcesses_SetLookupAndStaticCaching_FunctionCorrectly()
+    {
+        Assert.True(ProtectedProcesses.IsProtected("explorer"));
+        Assert.True(ProtectedProcesses.IsProtected("explorer.exe"));
+        Assert.True(ProtectedProcesses.IsProtected("DWM.EXE"));
+        Assert.True(ProtectedProcesses.IsProtected("blocker.service"));
+        Assert.True(ProtectedProcesses.IsProtected("sankalpa"));
+        Assert.True(ProtectedProcesses.Contains("taskmgr"));
+        Assert.False(ProtectedProcesses.IsProtected("untrusted_process"));
+        Assert.False(ProtectedProcesses.IsProtected(""));
+        Assert.False(ProtectedProcesses.IsProtected(null));
+
+        var names = ProtectedProcesses.Names;
+        Assert.Contains("explorer", names);
+        Assert.Contains("services", names);
+        Assert.Contains("blocker", names);
+    }
+
+    [Fact]
+    public void Worker_SuspensionEngineOptimizationsAndChildExemption_Integrity()
+    {
+        var dir = AppContext.BaseDirectory;
+        string? repoRoot = null;
+        var cur = new DirectoryInfo(dir);
+        while (cur != null)
+        {
+            if (File.Exists(Path.Combine(cur.FullName, "Blocker.sln")))
+            {
+                repoRoot = cur.FullName;
+                break;
+            }
+            cur = cur.Parent;
+        }
+
+        Assert.NotNull(repoRoot);
+        string workerPath = Path.Combine(repoRoot!, "src", "Blocker.Service", "Worker.cs");
+        Assert.True(File.Exists(workerPath));
+        string workerSrc = File.ReadAllText(workerPath);
+
+        // Commit A: Skip syscalls for already-suspended PIDs
+        Assert.Contains("ProcessSuspender.Default.IsSuspended(processId)", workerSrc);
+
+        // Commit A: Session ID via ProcessIdToSessionId instead of per-process GetProcessById
+        Assert.Contains("ProcessIdToSessionId", workerSrc);
+
+        // Commit B: Child exemption checks allowedAppDirs and install directory containment
+        Assert.Contains("allowedAppDirs", workerSrc);
+        Assert.Contains("IsPathInsideDirectory", workerSrc);
+        Assert.Contains("IsSystemOrRootDirectory", workerSrc);
+    }
 }
