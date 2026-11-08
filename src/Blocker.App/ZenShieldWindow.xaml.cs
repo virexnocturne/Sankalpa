@@ -1702,7 +1702,25 @@ public partial class ZenShieldWindow : Window
         _quickNotesOverlay?.Close();
         _miniHudWindow?.Close();
 
+        if (_lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
+        {
+            SetWindowPos(_lastAllowedAppHwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            ShowWindow(_lastAllowedAppHwnd, SW_MINIMIZE);
+        }
+
         SetTaskbarVisibility(true);
+
+        if (System.Windows.Application.Current?.MainWindow is MainWindow mw)
+        {
+            mw.WindowState = WindowState.Normal;
+            mw.Show();
+            mw.Activate();
+            var mwHandle = new WindowInteropHelper(mw).Handle;
+            if (mwHandle != IntPtr.Zero)
+            {
+                SetForegroundWindow(mwHandle);
+            }
+        }
 
         OnSessionEnded?.Invoke();
         Close();
@@ -1721,6 +1739,12 @@ public partial class ZenShieldWindow : Window
         _sessionTimer.Stop();
         _autoSaveTimer.Stop();
         _watchdogTimer.Stop();
+
+        if (_lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
+        {
+            SetWindowPos(_lastAllowedAppHwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            ShowWindow(_lastAllowedAppHwnd, SW_MINIMIZE);
+        }
 
         SetTaskbarVisibility(true);
 
