@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using Blocker.Core;
@@ -686,5 +687,248 @@ public class MeditationBackendTests : IDisposable
         Assert.Contains("allowedAppDirs", workerSrc);
         Assert.Contains("IsPathInsideDirectory", workerSrc);
         Assert.Contains("IsSystemOrRootDirectory", workerSrc);
+    }
+
+    [Fact]
+    public void ProcessSuspender_ShouldTerminate_LogicCorrectness()
+    {
+        var sessionStart = new DateTime(2026, 11, 8, 12, 0, 0, DateTimeKind.Utc);
+        using var dummyHandle = new Microsoft.Win32.SafeHandles.SafeProcessHandle(IntPtr.Zero, true);
+
+        // Not from allowed app: never terminates even if started after session start
+        var notAllowed = new ProcessSuspender.Entry(dummyHandle, "test", sessionStart.AddMinutes(5), FromAllowedApp: false);
+        Assert.False(ProcessSuspender.ShouldTerminate(notAllowed, sessionStart));
+
+        // From allowed app, but started BEFORE session: must resume (do not terminate)
+        var preSession = new ProcessSuspender.Entry(dummyHandle, "test", sessionStart.AddSeconds(-1), FromAllowedApp: true);
+        Assert.False(ProcessSuspender.ShouldTerminate(preSession, sessionStart));
+
+        // From allowed app, started AT session start: terminate
+        var atSession = new ProcessSuspender.Entry(dummyHandle, "test", sessionStart, FromAllowedApp: true);
+        Assert.True(ProcessSuspender.ShouldTerminate(atSession, sessionStart));
+
+        // From allowed app, started AFTER session start: terminate
+        var postSession = new ProcessSuspender.Entry(dummyHandle, "test", sessionStart.AddMinutes(2), FromAllowedApp: true);
+        Assert.True(ProcessSuspender.ShouldTerminate(postSession, sessionStart));
+    }
+
+    [Fact]
+    public void ProcessSuspender_FinishSession_TerminatesSpawnedChildAndResumesPreExisting()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var psi1 = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = "-NoProfile -Command \"Start-Sleep -Seconds 30\"",
+            CreateNoWindow = true,
+            UseShellExecute = false
+        };
+        var psi2 = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = "-NoProfile -Command \"Start-Sleep -Seconds 30\"",
+            CreateNoWindow = true,
+            UseShellExecute = false
+        };
+
+        using var childResume = System.Diagnostics.Process.Start(psi1);
+        using var childTerminate = System.Diagnostics.Process.Start(psi2);
+
+        Assert.NotNull(childResume);
+        Assert.NotNull(childTerminate);
+
+        try
+        {
+            var suspender = new ProcessSuspender();
+
+            // childResume is treated as not from allowed app (or pre-session)
+            bool s1 = suspender.SuspendProcess(childResume.Id, "powershell.exe", fromAllowedApp: false);
+            // childTerminate is treated as spawned by allowed app during session
+            bool s2 = suspender.SuspendProcess(childTerminate.Id, "powershell.exe", fromAllowedApp: true);
+
+            Assert.True(s1);
+            Assert.True(s2);
+
+            // Session start in the past so childTerminate.StartUtc >= sessionStart
+            DateTime sessionStart = DateTime.UtcNow.AddMinutes(-5);
+
+            var (resumed, terminated) = suspender.FinishSession(sessionStart);
+
+            Assert.Equal(1, resumed);
+            Assert.Equal(1, terminated);
+
+            // childTerminate should have exited / terminated
+            childTerminate.WaitForExit(3000);
+            Assert.True(childTerminate.HasExited);
+
+            // childResume should still be running and resumed
+            Assert.False(childResume.HasExited);
+        }
+        finally
+        {
+            try { if (!childResume.HasExited) childResume.Kill(); } catch { }
+            try { if (!childTerminate.HasExited) childTerminate.Kill(); } catch { }
+        }
+    }
+
+    [Fact]
+    public void ProcessSuspender_PruneExited_RemovesDeadProcesses()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = "-NoProfile -Command \"Start-Sleep -Seconds 30\"",
+            CreateNoWindow = true,
+            UseShellExecute = false
+        };
+
+        using var child = System.Diagnostics.Process.Start(psi);
+        Assert.NotNull(child);
+
+        try
+        {
+            var suspender = new ProcessSuspender();
+            bool suspended = suspender.SuspendProcess(child.Id, "powershell.exe");
+            Assert.True(suspended);
+            Assert.True(suspender.IsSuspended(child.Id));
+
+            // While still alive, PruneExited should not remove it
+            int prunedAlive = suspender.PruneExited();
+            Assert.Equal(0, prunedAlive);
+            Assert.True(suspender.IsSuspended(child.Id));
+
+            // Kill the process externally
+            child.Kill();
+            child.WaitForExit(3000);
+
+            // PruneExited should detect death, close handle, and remove
+            int prunedDead = suspender.PruneExited();
+            Assert.Equal(1, prunedDead);
+            Assert.False(suspender.IsSuspended(child.Id));
+        }
+        finally
+        {
+            try { if (!child.HasExited) child.Kill(); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Worker_IsDescendedFromAllowedApp_CorrectlyTraversesLineage()
+    {
+        var allowedApps = new List<string> { "Code", "devenv" };
+
+        var processTable = new Dictionary<int, FastProcessEntry>
+        {
+            // Allowed root: VS Code (PID 100)
+            [100] = new FastProcessEntry(100, "Code", "Code.exe", ParentId: 10),
+            // Direct child: terminal/node (PID 200, parent 100)
+            [200] = new FastProcessEntry(200, "node", "node.exe", ParentId: 100),
+            // Grandchild: compiler/tsc (PID 300, parent 200)
+            [300] = new FastProcessEntry(300, "tsc", "tsc.exe", ParentId: 200),
+            // Great-grandchild: helper tool (PID 400, parent 300)
+            [400] = new FastProcessEntry(400, "tool", "tool.exe", ParentId: 300),
+
+            // Disconnected tree: Explorer (PID 500) -> browser (PID 600)
+            [500] = new FastProcessEntry(500, "explorer", "explorer.exe", ParentId: 1),
+            [600] = new FastProcessEntry(600, "chrome", "chrome.exe", ParentId: 500),
+
+            // Cycle: 700 -> 701 -> 700
+            [700] = new FastProcessEntry(700, "cycleA", "cycleA.exe", ParentId: 701),
+            [701] = new FastProcessEntry(701, "cycleB", "cycleB.exe", ParentId: 700)
+        };
+
+        // Direct child of allowed app
+        Assert.True(Worker.IsDescendedFromAllowedApp(100, allowedApps, processTable));
+
+        // 2 hops (parent is 200 -> ancestor 100 is Code)
+        Assert.True(Worker.IsDescendedFromAllowedApp(200, allowedApps, processTable));
+
+        // 3 hops (parent is 300 -> ancestor 200 -> ancestor 100 is Code)
+        Assert.True(Worker.IsDescendedFromAllowedApp(300, allowedApps, processTable));
+
+        // 4 hops (parent is 400 -> ancestor 300 -> 200 -> 100)
+        Assert.True(Worker.IsDescendedFromAllowedApp(400, allowedApps, processTable));
+
+        // Not descended from allowed app
+        Assert.False(Worker.IsDescendedFromAllowedApp(500, allowedApps, processTable));
+        Assert.False(Worker.IsDescendedFromAllowedApp(600, allowedApps, processTable));
+
+        // Parent 0 or negative
+        Assert.False(Worker.IsDescendedFromAllowedApp(0, allowedApps, processTable));
+        Assert.False(Worker.IsDescendedFromAllowedApp(-1, allowedApps, processTable));
+
+        // Parent not in dictionary
+        Assert.False(Worker.IsDescendedFromAllowedApp(9999, allowedApps, processTable));
+
+        // Cycle does not loop infinitely and returns false
+        Assert.False(Worker.IsDescendedFromAllowedApp(700, allowedApps, processTable));
+        Assert.False(Worker.IsDescendedFromAllowedApp(701, allowedApps, processTable));
+
+        // Null or empty allowed apps
+        Assert.False(Worker.IsDescendedFromAllowedApp(200, new List<string>(), processTable));
+        Assert.False(Worker.IsDescendedFromAllowedApp(200, null!, processTable));
+    }
+
+    [Fact]
+    public void Worker_IsDescendedFromAllowedApp_MaxHopLimitEnforced()
+    {
+        var allowedApps = new List<string> { "RootAllowed" };
+        var processTable = new Dictionary<int, FastProcessEntry>();
+
+        // Create a chain of 25 processes: 25 -> 24 -> ... -> 2 -> 1 (where 1 is RootAllowed)
+        processTable[1] = new FastProcessEntry(1, "RootAllowed", "RootAllowed.exe", ParentId: 0);
+        for (int i = 2; i <= 25; i++)
+        {
+            processTable[i] = new FastProcessEntry(i, $"hop{i}", $"hop{i}.exe", ParentId: i - 1);
+        }
+
+        // Up to 16 hops should reach RootAllowed
+        // Starting at parent 16 -> hops: 16, 15, ..., 1 (16 hops reaches PID 1)
+        Assert.True(Worker.IsDescendedFromAllowedApp(16, allowedApps, processTable));
+
+        // Starting at parent 18 -> 16 hops only reaches PID 2 (not PID 1) -> returns false
+        Assert.False(Worker.IsDescendedFromAllowedApp(18, allowedApps, processTable));
+    }
+
+    [Fact]
+    public void Worker_MeditationSuspensionEngine_IntegrityVerification()
+    {
+        var dir = AppContext.BaseDirectory;
+        string? repoRoot = null;
+        var cur = new DirectoryInfo(dir);
+        while (cur != null)
+        {
+            if (File.Exists(Path.Combine(cur.FullName, "Blocker.sln")))
+            {
+                repoRoot = cur.FullName;
+                break;
+            }
+            cur = cur.Parent;
+        }
+
+        Assert.NotNull(repoRoot);
+        string workerPath = Path.Combine(repoRoot!, "src", "Blocker.Service", "Worker.cs");
+        Assert.True(File.Exists(workerPath));
+        string workerSrc = File.ReadAllText(workerPath);
+
+        // PR 1 & 3: PruneExited called in Worker loop
+        Assert.Contains("ProcessSuspender.Default.PruneExited()", workerSrc);
+
+        // PR 1 & 3: FinishSession called at session end
+        Assert.Contains("ProcessSuspender.Default.FinishSession(sessionStart)", workerSrc);
+
+        // PR 1 & 3: Cleanup logging and event recording
+        Assert.Contains("MeditationChildCleanup", workerSrc);
+
+        // PR 1 & 3: Lineage check and trusted helper guard in meditation suspension
+        Assert.Contains("IsDescendedFromAllowedApp(process.ParentId, allowedApps)", workerSrc);
+        Assert.Contains("SystemHelperGuard.IsTrusted(path)", workerSrc);
+
+        // Null-caching fix in GetProcessImagePath
+        Assert.Contains("if (!string.IsNullOrEmpty(path))", workerSrc);
+        Assert.Contains("_processPathCache[processId] = path;", workerSrc);
     }
 }

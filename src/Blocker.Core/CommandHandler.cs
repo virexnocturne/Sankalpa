@@ -2242,6 +2242,11 @@ public static class CommandHandler
             return Response.Fail($"Failed to promote meditation session {sessionId}.");
         }
 
+        if (req?.AllowedAppRoots != null && req.AllowedAppRoots.Count > 0)
+        {
+            store.ActiveAllowedAppRoots = new Dictionary<string, string>(req.AllowedAppRoots, StringComparer.OrdinalIgnoreCase);
+        }
+
         var activeSession = store.GetActiveMeditationSession();
         var allowedApps = activeSession?.GetAllowedApps() ?? new List<string>();
 
@@ -2253,17 +2258,19 @@ public static class CommandHandler
                 if (pid <= 4) continue;
 
                 string procName = string.Empty;
+                string? imagePath = null;
                 try
                 {
                     using var p = Process.GetProcessById(pid);
                     procName = p.ProcessName;
+                    try { imagePath = p.MainModule?.FileName; } catch { }
                 }
                 catch
                 {
                     continue;
                 }
 
-                if (ProtectedProcesses.IsProtected(procName))
+                if (ProtectedProcesses.IsProtected(procName, imagePath))
                 {
                     continue;
                 }
@@ -2272,8 +2279,23 @@ public static class CommandHandler
                 string normProc = ProcessMatcher.NormalizeProcessName(procName);
                 foreach (var app in allowedApps)
                 {
-                    if (string.Equals(normProc, ProcessMatcher.NormalizeProcessName(app), StringComparison.OrdinalIgnoreCase))
+                    string normApp = ProcessMatcher.NormalizeProcessName(app);
+                    if (string.Equals(normProc, normApp, StringComparison.OrdinalIgnoreCase))
                     {
+                        if (store.ActiveAllowedAppRoots != null &&
+                            store.ActiveAllowedAppRoots.TryGetValue(normApp, out var rootDir) &&
+                            !string.IsNullOrWhiteSpace(rootDir))
+                        {
+                            if (!string.IsNullOrWhiteSpace(imagePath))
+                            {
+                                if (ProtectedProcesses.IsPathInsideDirectory(imagePath, rootDir))
+                                {
+                                    isAllowed = true;
+                                    break;
+                                }
+                                continue;
+                            }
+                        }
                         isAllowed = true;
                         break;
                     }

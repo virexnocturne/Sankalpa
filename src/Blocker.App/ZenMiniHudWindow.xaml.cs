@@ -1,3 +1,4 @@
+using System.Windows.Controls;
 using System;
 using System.Windows;
 using System.Windows.Input;
@@ -24,6 +25,9 @@ public partial class ZenMiniHudWindow : Window
     private bool _hasBeenPositionedInitially;
     private bool _isAdjustingPosition;
     private string _rawFormattedTime = "18:45";
+
+    private Action? _statusOnClick;
+    private System.Windows.Threading.DispatcherTimer? _statusTimer;
 
     public bool IsCollapsed
     {
@@ -247,6 +251,7 @@ public partial class ZenMiniHudWindow : Window
         {
             // Collapsed ultra-compact pill mode: [ 🪷 18:45 ]
             ExpandedControlsPanel.Visibility = Visibility.Collapsed;
+            if (StatusTextBlock != null) StatusTextBlock.Visibility = Visibility.Collapsed;
             CountdownTextBlock.Margin = new Thickness(0, 0, 4, 0);
             HudBorder.Padding = new Thickness(12, 6, 12, 6);
             HudBorder.CornerRadius = new CornerRadius(16);
@@ -259,6 +264,10 @@ public partial class ZenMiniHudWindow : Window
         {
             // Expanded full Mini-HUD mode
             ExpandedControlsPanel.Visibility = Visibility.Visible;
+            if (StatusTextBlock != null)
+            {
+                StatusTextBlock.Visibility = string.IsNullOrEmpty(StatusTextBlock.Text) ? Visibility.Collapsed : Visibility.Visible;
+            }
             CountdownTextBlock.Margin = new Thickness(0, 0, 12, 0);
             HudBorder.Padding = new Thickness(16, 8, 16, 8);
             HudBorder.CornerRadius = new CornerRadius(20);
@@ -316,6 +325,93 @@ public partial class ZenMiniHudWindow : Window
         if (AudioToggleButton != null)
         {
             AudioToggleButton.Content = label;
+        }
+    }
+
+    /// <summary>
+    /// Displays a status message (e.g. opening an allowed app or an error with retry).
+    /// If isError is true, the message automatically clears after 6 seconds.
+    /// </summary>
+    public void SetStatus(string text, bool isError, Action? onClick)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.InvokeAsync(() => SetStatus(text, isError, onClick));
+            return;
+        }
+
+        _statusOnClick = onClick;
+        _statusTimer?.Stop();
+
+        if (StatusTextBlock == null) return;
+
+        StatusTextBlock.Text = text;
+        StatusTextBlock.Visibility = Visibility.Visible;
+        StatusTextBlock.ToolTip = onClick != null ? $"{text} (click to retry)" : text;
+        StatusTextBlock.Cursor = onClick != null ? Cursors.Hand : Cursors.Arrow;
+
+        if (isError)
+        {
+            StatusTextBlock.SetResourceReference(TextBlock.ForegroundProperty, "Danger");
+
+            if (_statusTimer == null)
+            {
+                _statusTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+                _statusTimer.Tick += (s, e) =>
+                {
+                    _statusTimer.Stop();
+                    ClearStatus();
+                };
+            }
+            _statusTimer.Start();
+        }
+        else
+        {
+            StatusTextBlock.SetResourceReference(TextBlock.ForegroundProperty, "Accent");
+        }
+
+        ClampToScreen();
+    }
+
+    /// <summary>
+    /// Clears any currently displayed status message.
+    /// </summary>
+    public void ClearStatus()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.InvokeAsync(ClearStatus);
+            return;
+        }
+
+        _statusTimer?.Stop();
+        _statusOnClick = null;
+        if (StatusTextBlock != null)
+        {
+            StatusTextBlock.Text = string.Empty;
+            StatusTextBlock.Visibility = Visibility.Collapsed;
+            StatusTextBlock.ToolTip = null;
+        }
+
+        ClampToScreen();
+    }
+
+    private void StatusTextBlock_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_statusOnClick != null)
+        {
+            e.Handled = true;
+        }
+    }
+
+    private void StatusTextBlock_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_statusOnClick != null)
+        {
+            e.Handled = true;
+            var cb = _statusOnClick;
+            ClearStatus();
+            cb();
         }
     }
 

@@ -71,4 +71,7 @@ public interface IBlockStore
     bool DeleteMeditationSchedule(int id) => true;
     bool SnoozeMeditationSchedule(int id, int snoozeMinutes = 5) => true;
     bool PromoteMeditationSessionToActive(int sessionId) => true;
+
+    Dictionary<string, string> ActiveAllowedAppRoots { get => _defaultRoots; set { } }
+    private static readonly Dictionary<string, string> _defaultRoots = new(StringComparer.OrdinalIgnoreCase);
 }

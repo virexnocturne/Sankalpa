@@ -24,20 +24,20 @@ public static class ProcessMatcher
         return trimmed;
     }
 
-    public static bool IsBlocked(string? processName, IEnumerable<string?>? blockedList, string? originalFileName = null)
+    public static bool IsBlocked(string? processName, IEnumerable<string?>? blockedList, string? originalFileName = null, string? imagePath = null)
     {
         if (blockedList == null)
         {
             return false;
         }
 
-        // Apply ProtectedProcesses check to BOTH names
-        if (ProtectedProcesses.IsProtected(processName))
+        // Apply ProtectedProcesses check to BOTH names with path verification if available
+        if (ProtectedProcesses.IsProtected(processName, imagePath))
         {
             return false;
         }
 
-        if (!string.IsNullOrWhiteSpace(originalFileName) && ProtectedProcesses.IsProtected(originalFileName))
+        if (!string.IsNullOrWhiteSpace(originalFileName) && ProtectedProcesses.IsProtected(originalFileName, imagePath))
         {
             return false;
         }

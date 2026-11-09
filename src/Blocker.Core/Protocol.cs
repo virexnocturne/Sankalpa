@@ -319,4 +319,7 @@ public class ConfirmTimerReadyRequest
 
     [JsonPropertyName("visibleWindowPids")]
     public List<int> VisibleWindowPids { get; set; } = new();
+
+    [JsonPropertyName("allowedAppRoots")]
+    public Dictionary<string, string> AllowedAppRoots { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

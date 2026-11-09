@@ -4,6 +4,23 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FIX-2026-11-09-01] Process Suspension Hardening, Cold-Launch Fast Path, Dynamic Switching & Path Pinning (v1.3.5)
+- **Timestamp**: 2026-11-09 22:15 IST
+- **Component**: System Helper Guard (SystemHelperGuard.cs), Process Suspender & Lifecycle (ProcessSuspender.cs, Worker.cs), ZenShield Watchdog & Discovery (ZenShieldWindow.xaml.cs, ZenMiniHudWindow.xaml, ZenMiniHudWindow.xaml.cs), Security & Path Pinning (ProtectedProcesses.cs, ProcessMatcher.cs, Protocol.cs, CommandHandler.cs, BlockerDatabase.cs)
+- **Status**: **RELEASED & VERIFIED IN TEST SUITES**
+- **Problems Identified & Solved**:
+  1. **Cold Launch Fast Path & Snapshot Elimination (Bugs 12 & 14)**: Added early return `if (candidatePids.Count == 0) return IntPtr.Zero;` in `FindMainWindowForProcess` and eliminated desktop-wide window snapshot enumerations on non-running targets, resolving 5-7 second stalls. Throttled fallback scans in `IsAllowedAppValid` to every 2 seconds.
+  2. **OS System Helper Immunity via Directory Pinning (Bugs 12 & 14)**: Exempted `RuntimeBroker.exe`, `ctfmon.exe`, `sihost.exe`, `fontdrvhost.exe`, `ApplicationFrameHost.exe` (`System32`) and `TextInputHost.exe` (`SystemApps` subtree) using strict path normalization, restoring typing, IME, and Win11 packaged app activation.
+  3. **Dynamic Cancellation & Bounded Grace Period (Bugs 13 & 14)**: Replaced boolean lock with `CancellationTokenSource`, allowing rapid app switching to cancel previous in-flight attempts. Extended discovery timeout to 30s for cold launches while strictly bounding the foreground watchdog grace period to 4s.
+  4. **Window Geometry Preservation & Mini-HUD Feedback (Bugs 13 & 14)**: Switched to Win32 `IsIconic` and `GetWindowPlacement`, restoring minimized windows without disrupting maximized window state. Added Mini-HUD progress status and tap-to-retry on launch failure. Isolated process working directory in `TryLaunch`.
+  5. **Session-Spawned Child Cleanup (Bug 13)**: Retained `SafeProcessHandle` and tracked `creationTimeUtc` via `GetProcessTimes`. On session exit, terminated only session-spawned children (`creationTimeUtc >= sessionStartUtc`) descended from allowed apps, preventing deferred terminal and CLI popups. Implemented 16-hop cycle-safe ancestor traversal.
+  6. **Path-Pinning Allowed & Protected Binaries**: Resolved installation roots for allowed apps via `AppPathResolver` (collapsing Squirrel directories) and transmitted roots via `ConfirmTimerReadyRequest`. `Worker.IsAppAllowed` verifies whether a process is inside the pinned root, resolving the `claude.exe` CLI vs. GUI collision. Hardened `ProtectedProcesses.IsProtected` and `ProcessMatcher.IsBlocked` against path spoofing in user folders and `%TEMP%`.
+- **Verification**:
+  - All 899 automated test suite assertions passing (89 in Sankalpa.Security.Tests, 810 in Sankalpa.Tests).
+  - New test suites: `SystemHelperGuardTests.cs` (5 tests) and `ProtectedProcessesAndPathPinningTests.cs` (11 tests).
+
+---
+
 ### [FIX-2026-11-08-01] Process Lifecycle Performance, App Picker Guard, Start Menu Icon & Audio Asset Hardening (v1.3.4)
 - **Timestamp**: 2026-11-08 11:50 IST
 - **Component**: Service Suspension Worker (Worker.cs), App Launch & Window Discovery (ZenShieldWindow.xaml.cs, LowLevelKeyboardHook.cs), App Picker (AppPickerLogic.cs, InstalledAppScanner.cs, BlockEditorDialog.xaml.cs), Installer & Shortcut AUMID (Sankalpa.iss, ExtensionHelper.cs, Blocker.App.csproj), Audio Engine & Exception Handling (AmbientSoundEngine.cs, MeditationViewModel.cs, App.xaml.cs)

@@ -384,6 +384,9 @@ public class Worker : BackgroundService
         {
             try
             {
+                // Prune any exited suspended processes
+                ProcessSuspender.Default.PruneExited();
+
                 // Check dev-only emergency unlock
                 CheckEmergencyUnlock();
 
@@ -737,7 +740,23 @@ public class Worker : BackgroundService
                 ServiceNotificationDispatcher.DispatchNotification("MeditationComplete", "Meditation", "Meditation session complete! Well done.");
                 _activeMeditationSession = null;
                 _loggedMeditationPids.Clear();
-                ProcessSuspender.Default.ResumeAll();
+
+                DateTime sessionStart = currentMeditation.StartUtc;
+                var (resumed, terminated) = ProcessSuspender.Default.FinishSession(sessionStart);
+                if (terminated > 0)
+                {
+                    string termMsg = $"[{ts}] [MEDITATION CLEANUP] Cleaned up {terminated} child process(es) spawned by allowed apps during meditation session.";
+                    Console.WriteLine(termMsg);
+                    _logger.LogInformation("{Message}", termMsg);
+                    _db.RecordBlockEvent(new BlockEvent
+                    {
+                        TimeUtc = DateTime.UtcNow,
+                        Kind = "MeditationChildCleanup",
+                        Name = $"{terminated} processes",
+                        ProfileName = "Meditation Whitelist",
+                        ServiceDispatched = false
+                    });
+                }
 
                 // Scheduled Blocks Integrity: Ensure meditation session cleanup does NOT touch, disable, or alter standard profile schedules.
                 // Standard profiles and their scheduled active windows operate strictly independently at all times.
@@ -752,7 +771,23 @@ public class Worker : BackgroundService
             if (_activeMeditationSession != null)
             {
                 _loggedMeditationPids.Clear();
-                ProcessSuspender.Default.ResumeAll();
+                DateTime sessionStart = _activeMeditationSession.StartUtc;
+                var (resumed, terminated) = ProcessSuspender.Default.FinishSession(sessionStart);
+                if (terminated > 0)
+                {
+                    string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    string termMsg = $"[{ts}] [MEDITATION CLEANUP] Cleaned up {terminated} child process(es) spawned by allowed apps during meditation session.";
+                    Console.WriteLine(termMsg);
+                    _logger.LogInformation("{Message}", termMsg);
+                    _db.RecordBlockEvent(new BlockEvent
+                    {
+                        TimeUtc = DateTime.UtcNow,
+                        Kind = "MeditationChildCleanup",
+                        Name = $"{terminated} processes",
+                        ProfileName = "Meditation Whitelist",
+                        ServiceDispatched = false
+                    });
+                }
             }
             _activeMeditationSession = null;
         }
@@ -764,8 +799,24 @@ public class Worker : BackgroundService
             {
                 _logger.LogWarning("Pending meditation session {SessionId} timed out waiting for UI timer confirmation. Cancelling cleanly.", _activeMeditationSession.Id);
                 _db.EndMeditationSession(_activeMeditationSession.Id, completed: false);
+                DateTime sessionStart = _activeMeditationSession.StartUtc;
                 _activeMeditationSession = null;
-                ProcessSuspender.Default.ResumeAll();
+                var (resumed, terminated) = ProcessSuspender.Default.FinishSession(sessionStart);
+                if (terminated > 0)
+                {
+                    string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    string termMsg = $"[{ts}] [MEDITATION CLEANUP] Cleaned up {terminated} child process(es) spawned by allowed apps during meditation session.";
+                    Console.WriteLine(termMsg);
+                    _logger.LogInformation("{Message}", termMsg);
+                    _db.RecordBlockEvent(new BlockEvent
+                    {
+                        TimeUtc = DateTime.UtcNow,
+                        Kind = "MeditationChildCleanup",
+                        Name = $"{terminated} processes",
+                        ProfileName = "Meditation Whitelist",
+                        ServiceDispatched = false
+                    });
+                }
             }
         }
 
@@ -922,9 +973,9 @@ public class Worker : BackgroundService
             for (int i = 0; i < runningProcesses.Count; i++)
             {
                 var p = runningProcesses[i];
-                if (IsAppAllowed(p.ProcessName, p.ExeName, allowedApps))
+                string? imagePath = GetProcessImagePath(p.Id);
+                if (IsAppAllowed(p.ProcessName, p.ExeName, allowedApps, imagePath, _db.ActiveAllowedAppRoots))
                 {
-                    string? imagePath = GetProcessImagePath(p.Id);
                     if (!string.IsNullOrEmpty(imagePath))
                     {
                         string? dir = Path.GetDirectoryName(imagePath);
@@ -1021,7 +1072,8 @@ public class Worker : BackgroundService
                 {
                     // Fast-path name check before inspecting disk or PE headers
                     string? originalFileName = null;
-                    bool nameMatchesBlocked = hasBlockedApps && ProcessMatcher.IsBlocked(processName, currentBlockedList);
+                    string? imagePath = GetProcessImagePath(processId);
+                    bool nameMatchesBlocked = hasBlockedApps && ProcessMatcher.IsBlocked(processName, currentBlockedList, null, imagePath);
                     bool nameMatchesAntiKill = isLockedActive && AntiKillTools.Any(t => t.Equals(processName, StringComparison.OrdinalIgnoreCase));
 
                     if (!nameMatchesBlocked && !nameMatchesAntiKill && isLockedActive)
@@ -1030,7 +1082,7 @@ public class Worker : BackgroundService
                     }
 
                     bool isAntiKillTool = isLockedActive && (nameMatchesAntiKill || (originalFileName != null && AntiKillTools.Any(t => t.Equals(originalFileName, StringComparison.OrdinalIgnoreCase))));
-                    bool isBlockedApp = nameMatchesBlocked || (hasBlockedApps && originalFileName != null && ProcessMatcher.IsBlocked(processName, currentBlockedList, originalFileName));
+                    bool isBlockedApp = nameMatchesBlocked || (hasBlockedApps && originalFileName != null && ProcessMatcher.IsBlocked(processName, currentBlockedList, originalFileName, imagePath));
 
                     if (isAntiKillTool || isBlockedApp)
                     {
@@ -1115,7 +1167,9 @@ public class Worker : BackgroundService
                         continue;
                     }
 
-                    bool isAppPermitted = IsAppAllowed(processName, exeName, allowedApps);
+                    string? path = GetProcessImagePath(processId);
+
+                    bool isAppPermitted = IsAppAllowed(processName, exeName, allowedApps, path, _db.ActiveAllowedAppRoots);
 
                     // Child exemption:
                     // If a process is NOT directly in allowedApps, check its ParentId:
@@ -1125,17 +1179,19 @@ public class Worker : BackgroundService
                     {
                         if (!allowedAppDirs.TryGetValue(process.ParentId, out string? parentInstallDir))
                         {
-                            if (_processByPid.TryGetValue(process.ParentId, out var parentEntry) &&
-                                IsAppAllowed(parentEntry.ProcessName, parentEntry.ExeName, allowedApps))
+                            if (_processByPid.TryGetValue(process.ParentId, out var parentEntry))
                             {
                                 string? parentImagePath = GetProcessImagePath(parentEntry.Id);
-                                if (!string.IsNullOrEmpty(parentImagePath))
+                                if (IsAppAllowed(parentEntry.ProcessName, parentEntry.ExeName, allowedApps, parentImagePath, _db.ActiveAllowedAppRoots))
                                 {
-                                    string? dir = Path.GetDirectoryName(parentImagePath);
-                                    if (!string.IsNullOrEmpty(dir) && !IsSystemOrRootDirectory(dir))
+                                    if (!string.IsNullOrEmpty(parentImagePath))
                                     {
-                                        parentInstallDir = dir;
-                                        allowedAppDirs[parentEntry.Id] = dir;
+                                        string? dir = Path.GetDirectoryName(parentImagePath);
+                                        if (!string.IsNullOrEmpty(dir) && !IsSystemOrRootDirectory(dir))
+                                        {
+                                            parentInstallDir = dir;
+                                            allowedAppDirs[parentEntry.Id] = dir;
+                                        }
                                     }
                                 }
                             }
@@ -1143,8 +1199,7 @@ public class Worker : BackgroundService
 
                         if (!string.IsNullOrEmpty(parentInstallDir))
                         {
-                            string? childPath = GetProcessImagePath(processId);
-                            if (!string.IsNullOrEmpty(childPath) && IsPathInsideDirectory(childPath, parentInstallDir))
+                            if (!string.IsNullOrEmpty(path) && ProtectedProcesses.IsPathInsideDirectory(path, parentInstallDir))
                             {
                                 allowedAppDirs[processId] = parentInstallDir;
                                 continue; // Exempt from suspension!
@@ -1153,8 +1208,8 @@ public class Worker : BackgroundService
                     }
 
                     if (!isAppPermitted &&
-                        !ProtectedProcesses.IsProtected(processName) &&
-                        !ProtectedProcesses.IsProtected(exeName))
+                        !ProtectedProcesses.IsProtected(processName, path) &&
+                        !ProtectedProcesses.IsProtected(exeName, path))
                     {
                         try
                         {
@@ -1170,7 +1225,19 @@ public class Worker : BackgroundService
 
                             if (isTargetInActiveSession)
                             {
-                                if (ProcessSuspender.Default.SuspendProcess(processId, exeName))
+                                if (string.IsNullOrEmpty(path))
+                                {
+                                    continue;
+                                }
+
+                                if (SystemHelperGuard.IsTrusted(path))
+                                {
+                                    continue;
+                                }
+
+                                bool fromAllowedApp = IsDescendedFromAllowedApp(process.ParentId, allowedApps);
+
+                                if (ProcessSuspender.Default.SuspendProcess(processId, exeName, fromAllowedApp))
                                 {
                                     if (_loggedMeditationPids.Add(processId))
                                     {
@@ -1265,29 +1332,16 @@ public class Worker : BackgroundService
             catch { }
         }
 
-        _processPathCache[processId] = path;
+        if (!string.IsNullOrEmpty(path))
+        {
+            _processPathCache[processId] = path;
+        }
         return path;
     }
 
     private static bool IsPathInsideDirectory(string filePath, string directoryPath)
     {
-        try
-        {
-            string fullFilePath = Path.GetFullPath(filePath);
-            string fullDirPath = Path.GetFullPath(directoryPath);
-
-            if (!fullDirPath.EndsWith(Path.DirectorySeparatorChar.ToString()) &&
-                !fullDirPath.EndsWith(Path.AltDirectorySeparatorChar.ToString()))
-            {
-                fullDirPath += Path.DirectorySeparatorChar;
-            }
-
-            return fullFilePath.StartsWith(fullDirPath, StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
+        return ProtectedProcesses.IsPathInsideDirectory(filePath, directoryPath);
     }
 
     private static bool IsSystemOrRootDirectory(string directoryPath)
@@ -1395,29 +1449,112 @@ public class Worker : BackgroundService
 
     public static bool IsAppAllowed(string processName, string exeName, List<string> allowedApps)
     {
+        return IsAppAllowed(processName, exeName, allowedApps, null, null);
+    }
+
+    public static bool IsAppAllowed(
+        string processName,
+        string exeName,
+        List<string> allowedApps,
+        string? imagePath,
+        IReadOnlyDictionary<string, string>? allowedAppRoots)
+    {
         string normProc = ProcessMatcher.NormalizeProcessName(processName);
         string normExe = ProcessMatcher.NormalizeProcessName(exeName);
 
-        // Always allow Snipping Tool and Screen Clipping Host during meditation
+        // Always allow Snipping Tool and Screen Clipping Host during meditation, verified against system folders if imagePath provided
         if (string.Equals(normProc, "screenclippinghost", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(normExe, "screenclippinghost", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(normProc, "snippingtool", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(normExe, "snippingtool", StringComparison.OrdinalIgnoreCase))
         {
-            return true;
+            if (string.IsNullOrWhiteSpace(imagePath))
+            {
+                return true;
+            }
+            return ProtectedProcesses.IsProtected(normProc, imagePath) || ProtectedProcesses.IsProtected(normExe, imagePath);
+        }
+
+        if (allowedApps == null || allowedApps.Count == 0)
+        {
+            return false;
         }
 
         foreach (var allowed in allowedApps)
         {
             string normAllowed = ProcessMatcher.NormalizeProcessName(allowed);
-            if (!string.IsNullOrEmpty(normProc) && string.Equals(normProc, normAllowed, StringComparison.OrdinalIgnoreCase))
+            bool nameMatch = (!string.IsNullOrEmpty(normProc) && string.Equals(normProc, normAllowed, StringComparison.OrdinalIgnoreCase)) ||
+                             (!string.IsNullOrEmpty(normExe) && string.Equals(normExe, normAllowed, StringComparison.OrdinalIgnoreCase));
+
+            if (nameMatch)
+            {
+                if (allowedAppRoots != null &&
+                    allowedAppRoots.TryGetValue(normAllowed, out var rootDir) &&
+                    !string.IsNullOrWhiteSpace(rootDir))
+                {
+                    if (!string.IsNullOrWhiteSpace(imagePath))
+                    {
+                        if (ProtectedProcesses.IsPathInsideDirectory(imagePath, rootDir))
+                        {
+                            return true;
+                        }
+                        // Executable path does not match the pinned root (e.g. claude.exe CLI vs desktop app)
+                        continue;
+                    }
+                }
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool IsDescendedFromAllowedApp(int parentId, List<string> allowedApps)
+    {
+        return IsDescendedFromAllowedApp(parentId, allowedApps, _processByPid, GetProcessImagePath, _db.ActiveAllowedAppRoots);
+    }
+
+    public static bool IsDescendedFromAllowedApp(int parentId, List<string> allowedApps, IReadOnlyDictionary<int, FastProcessEntry> processByPid)
+    {
+        return IsDescendedFromAllowedApp(parentId, allowedApps, processByPid, null, null);
+    }
+
+    public static bool IsDescendedFromAllowedApp(
+        int parentId,
+        List<string> allowedApps,
+        IReadOnlyDictionary<int, FastProcessEntry> processByPid,
+        Func<int, string?>? getImagePath,
+        IReadOnlyDictionary<string, string>? allowedAppRoots)
+    {
+        if (parentId <= 0 || allowedApps == null || allowedApps.Count == 0 || processByPid == null)
+        {
+            return false;
+        }
+
+        var visited = new HashSet<int>();
+        int currentPid = parentId;
+        int hops = 0;
+
+        while (currentPid > 0 && hops < 16)
+        {
+            if (!visited.Add(currentPid))
+            {
+                return false;
+            }
+
+            if (!processByPid.TryGetValue(currentPid, out var ancestor))
+            {
+                return false;
+            }
+
+            string? ancestorPath = getImagePath?.Invoke(ancestor.Id);
+            if (IsAppAllowed(ancestor.ProcessName, ancestor.ExeName, allowedApps, ancestorPath, allowedAppRoots))
             {
                 return true;
             }
-            if (!string.IsNullOrEmpty(normExe) && string.Equals(normExe, normAllowed, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
+
+            currentPid = ancestor.ParentId;
+            hops++;
         }
 
         return false;

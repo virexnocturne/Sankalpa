@@ -174,11 +174,11 @@ public class AppPathResolverAndKioskTests
         // 1. AppPathResolver integration
         Assert.Contains("AppPathResolver.ResolveExecutablePath", code);
 
-        // 2. Debounce protection against rapid repeated clicks
-        Assert.Contains("_isSwitchingAllowedApp", code);
+        // 2. Debounce and cancellation protection against rapid repeated clicks
+        Assert.True(code.Contains("_switchCts") || code.Contains("_isSwitchingAllowedApp"));
 
         // 3. Asynchronous window discovery loop
-        Assert.Contains("discoveredHwnd", code);
+        Assert.True(code.Contains("DiscoveryTimeoutMs") || code.Contains("discoveredHwnd"));
 
         // 4. Windows 11 TextInputHost and OS helper whitelisting to eliminate lag and focus fighting
         Assert.Contains("TextInputHost", code);
@@ -190,6 +190,39 @@ public class AppPathResolverAndKioskTests
         // 6. Robust FindMainWindowForProcess window discovery
         Assert.Contains("FindMainWindowForProcess", code);
         Assert.Contains("UAC_InputIndicatorOverlayWnd", code);
+
+        // 7. PR 2: Cold launch early return & IsIconic window restoration
+        Assert.Contains("if (candidatePids.Count == 0) return IntPtr.Zero;", code);
+        Assert.Contains("IsIconic", code);
+        Assert.Contains("GetWindowPlacement", code);
+
+        // 8. PR 2: Throttled fallback scan and bounded grace period
+        Assert.Contains("_lastFallbackScanUtc", code);
+        Assert.Contains("_graceUntilUtc", code);
+        Assert.Contains("SystemHelperGuard.IsTrusted", code);
+    }
+
+    [Fact]
+    public void ZenMiniHudWindow_ImplementsStatusTextBlock_AndSetClearStatus()
+    {
+        string root = GetRepoRoot();
+        string hudXaml = Path.Combine(root, "src", "Blocker.App", "ZenMiniHudWindow.xaml");
+        string hudCs = Path.Combine(root, "src", "Blocker.App", "ZenMiniHudWindow.xaml.cs");
+        Assert.True(File.Exists(hudXaml));
+        Assert.True(File.Exists(hudCs));
+
+        string xamlCode = File.ReadAllText(hudXaml);
+        string csCode = File.ReadAllText(hudCs);
+
+        // XAML contains collapsed-by-default StatusTextBlock
+        Assert.Contains("StatusTextBlock", xamlCode);
+        Assert.Contains("Visibility=\"Collapsed\"", xamlCode);
+
+        // Code-behind contains SetStatus and ClearStatus
+        Assert.Contains("public void SetStatus(", csCode);
+        Assert.Contains("public void ClearStatus()", csCode);
+        Assert.Contains("_statusTimer", csCode);
+        Assert.Contains("_statusOnClick", csCode);
     }
 
     [Fact]

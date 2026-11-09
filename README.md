@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.3.4" /></a>
+  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.3.5" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64)-blue?logo=windows" alt="Platform: Windows" />
   <img src="https://img.shields.io/badge/Framework-.NET%208.0%20WPF-purple?logo=dotnet" alt=".NET 8" />
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20%26%20Local-success?logo=shield" alt="Privacy First" />
@@ -24,6 +24,14 @@
 </p>
 
 ---
+
+## 🌟 What's New in v1.3.5 (Cold Launch Fast Path, Helper Immunity & Path Pinning)
+
+- ⚡ **Cold Launch Fast Path & Snapshot Elimination (Bugs 12 & 14)**: Deleted desktop-wide window enumerations on non-running candidate processes, eliminating 5-7 second stalls on cold launches. Throttled fallback discovery scans to every 2 seconds.
+- 🛡️ **OS System Helper Immunity via Directory Pinning (Bugs 12 & 14)**: Added `SystemHelperGuard` exempting `RuntimeBroker`, `ctfmon`, `TextInputHost`, `sihost`, `fontdrvhost`, and `ApplicationFrameHost` from suspension with strict path canonicalization, restoring instant keyboard typing, IME input, and packaged app activation.
+- 🔄 **Dynamic App Switching, Cancellation & Mini-HUD Feedback (Bugs 13 & 14)**: Switched to `CancellationTokenSource` cooperative cancellation to prevent dropped clicks during rapid app switching. Bounded watchdog grace period strictly to 4 seconds, restored minimized windows while preserving maximized states, and added status progress and tap-to-retry to Mini-HUD.
+- 🧹 **Session-Spawned Child Cleanup (Bug 13)**: Retained `SafeProcessHandle` and tracked creation timestamps to terminate only session-spawned children descended from allowed apps on session exit, preventing flood of queued Claude Code terminals and CLI shells.
+- 🎯 **Executable Path Pinning (CLI Collision Fix & Spoofing Guard)**: Transmits pinned installation roots to the background service to ensure CLI tools sharing GUI app names (e.g. `~/.local/bin/claude.exe`) cannot bypass lockdown, and prevents imposter executables in user folders or `%TEMP%` from claiming system binary protection.
 
 ## 🌟 What's New in v1.3.4 (Performance, App Picker Guard & System Hardening)
 

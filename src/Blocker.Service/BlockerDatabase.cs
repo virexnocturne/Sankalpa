@@ -37,6 +37,7 @@ public class BlockerDatabase : IBlockStore
     public int HostsDomainCount { get; set; }
     public string? HostsLastError { get; set; }
     public HostsFileManager HostsManager => _hostsManager;
+    public Dictionary<string, string> ActiveAllowedAppRoots { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public BlockerDatabase(string? customDbPath = null, HostsFileManager? customHostsManager = null)
     {
@@ -1279,6 +1280,8 @@ public class BlockerDatabase : IBlockStore
         cmd.Parameters.AddWithValue("@finalNotes", (object?)finalNotes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@status", completed ? "Completed" : "Stopped");
         cmd.ExecuteNonQuery();
+
+        ActiveAllowedAppRoots.Clear();
     }
 
     public bool PromoteMeditationSessionToActive(int sessionId)

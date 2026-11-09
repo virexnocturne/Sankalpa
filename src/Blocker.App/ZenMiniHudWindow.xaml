@@ -153,6 +153,19 @@
                        VerticalAlignment="Center"
                        Margin="0,0,12,0" />
 
+            <!-- Status Text Block (collapsible, displays opening/retry status) -->
+            <TextBlock x:Name="StatusTextBlock"
+                       Visibility="Collapsed"
+                       FontFamily="{DynamicResource FontBody}"
+                       FontSize="{DynamicResource FontSize12}"
+                       FontWeight="Medium"
+                       Foreground="{DynamicResource Accent}"
+                       VerticalAlignment="Center"
+                       Margin="0,0,12,0"
+                       Cursor="Hand"
+                       PreviewMouseLeftButtonDown="StatusTextBlock_PreviewMouseLeftButtonDown"
+                       PreviewMouseLeftButtonUp="StatusTextBlock_PreviewMouseLeftButtonUp" />
+
             <!-- Expanded Controls Panel (collapsible to pill) -->
             <StackPanel x:Name="ExpandedControlsPanel"
                         Orientation="Horizontal"
