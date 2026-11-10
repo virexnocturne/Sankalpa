@@ -1,10 +1,18 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using Blocker.Core;
+using MessageBox = System.Windows.MessageBox;
+using Application = System.Windows.Application;
 
 namespace Blocker.App;
 
@@ -61,10 +69,20 @@ public partial class MeditationViewModel
     private double _soundscapeVolume = 60.0;
 
     public ObservableCollection<SoundscapeItemViewModel> SoundscapeTracks { get; } = new();
+    public ObservableCollection<SoundscapeItemViewModel> BuiltInTracks { get; } = new();
+    public ObservableCollection<SoundscapeItemViewModel> CustomTracks { get; } = new();
+
+    public bool HasCustomTracks => CustomTracks.Count > 0;
+    public int CustomTracksCount => CustomTracks.Count;
 
     public ICommand ToggleSoundscapeCommand { get; private set; } = null!;
     public ICommand SelectSoundscapeCommand { get; private set; } = null!;
     public ICommand ToggleSoundscapeMenuCommand { get; private set; } = null!;
+    public ICommand ImportAudioCommand { get; private set; } = null!;
+    public ICommand ImportPlaylistCommand { get; private set; } = null!;
+    public ICommand OpenAudioFolderCommand { get; private set; } = null!;
+    public ICommand DeleteTrackCommand { get; private set; } = null!;
+    public ICommand RefreshSoundscapeCatalogCommand { get; private set; } = null!;
 
     public string SelectedSoundscapeId
     {
@@ -193,9 +211,12 @@ public partial class MeditationViewModel
             var allTracks = SoundscapeCatalog.GetAllTracks(uiSettings);
 
             SoundscapeTracks.Clear();
+            BuiltInTracks.Clear();
+            CustomTracks.Clear();
+
             foreach (var t in allTracks)
             {
-                SoundscapeTracks.Add(new SoundscapeItemViewModel
+                var item = new SoundscapeItemViewModel
                 {
                     Id = t.Id,
                     DisplayName = t.DisplayName,
@@ -203,8 +224,23 @@ public partial class MeditationViewModel
                     IsBuiltIn = t.IsBuiltIn,
                     VolumeTrim = t.VolumeTrim,
                     IsSelected = string.Equals(t.Id, _selectedSoundscapeId, StringComparison.OrdinalIgnoreCase)
-                });
+                };
+
+                SoundscapeTracks.Add(item);
+                if (t.IsBuiltIn)
+                {
+                    BuiltInTracks.Add(item);
+                }
+                else
+                {
+                    CustomTracks.Add(item);
+                }
             }
+
+            OnPropertyChanged(nameof(HasCustomTracks));
+            OnPropertyChanged(nameof(CustomTracksCount));
+            OnPropertyChanged(nameof(SelectedSoundscapeName));
+            OnPropertyChanged(nameof(SelectedSoundscapeDisplayName));
         }
         catch (Exception ex)
         {
@@ -262,6 +298,272 @@ public partial class MeditationViewModel
         OnPropertyChanged(nameof(IsSoundscapePlaying));
     }
 
+    private static async Task<(bool Decodable, double? Duration, string? Error)> ProbeAudioAsync(string filePath, TimeSpan timeout)
+    {
+        var tcs = new TaskCompletionSource<(bool Decodable, double? Duration, string? Error)>();
+        var player = new MediaPlayer();
+
+        void Cleanup()
+        {
+            try
+            {
+                player.MediaOpened -= OnOpened;
+                player.MediaFailed -= OnFailed;
+                player.Close();
+            }
+            catch { }
+        }
+
+        void OnOpened(object? sender, EventArgs e)
+        {
+            double? dur = player.NaturalDuration.HasTimeSpan ? player.NaturalDuration.TimeSpan.TotalSeconds : null;
+            Cleanup();
+            tcs.TrySetResult((true, dur, null));
+        }
+
+        void OnFailed(object? sender, ExceptionEventArgs e)
+        {
+            string msg = e.ErrorException?.Message ?? "Decoder failed";
+            Cleanup();
+            tcs.TrySetResult((false, null, msg));
+        }
+
+        player.MediaOpened += OnOpened;
+        player.MediaFailed += OnFailed;
+
+        try
+        {
+            player.Open(new Uri(filePath, UriKind.Absolute));
+        }
+        catch (Exception ex)
+        {
+            Cleanup();
+            return (false, null, ex.Message);
+        }
+
+        using var cts = new CancellationTokenSource(timeout);
+        cts.Token.Register(() =>
+        {
+            Cleanup();
+            tcs.TrySetResult((false, null, "Decoder probe timed out."));
+        });
+
+        return await tcs.Task;
+    }
+
+    public async Task ImportAudioActionAsync()
+    {
+        if (IsActive)
+        {
+            MessageBox.Show(
+                "Audio management is disabled while a meditation session is active.",
+                "Sankalpa",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var ofd = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import Audio Tracks",
+            Filter = "Audio and Playlists (*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac;*.m3u;*.m3u8)|*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac;*.m3u;*.m3u8|Audio Files (*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac)|*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac|Playlists (*.m3u;*.m3u8)|*.m3u;*.m3u8|All Files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = true
+        };
+
+        if (ofd.ShowDialog() != true) return;
+
+        var filesToImport = new List<string>();
+        var playlistWarnings = new List<string>();
+
+        foreach (var file in ofd.FileNames)
+        {
+            string ext = Path.GetExtension(file).ToLowerInvariant();
+            if (ext == ".m3u" || ext == ".m3u8")
+            {
+                if (AudioImportService.TryParsePlaylist(file, out var playlistFiles, out var warnings, out var err))
+                {
+                    filesToImport.AddRange(playlistFiles);
+                    playlistWarnings.AddRange(warnings);
+                }
+                else if (!string.IsNullOrEmpty(err))
+                {
+                    playlistWarnings.Add($"{Path.GetFileName(file)}: {err}");
+                }
+            }
+            else
+            {
+                filesToImport.Add(file);
+            }
+        }
+
+        if (filesToImport.Count == 0)
+        {
+            string msg = playlistWarnings.Count > 0
+                ? string.Join("\n", playlistWarnings)
+                : "No valid audio files selected.";
+            MessageBox.Show(msg, "Import Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var uiSettings = UiSettingsStore.Load();
+        var result = await AudioImportService.ImportAudioFilesAsync(filesToImport, uiSettings, null,
+            async path => await ProbeAudioAsync(path, TimeSpan.FromSeconds(4)));
+
+        RefreshSoundscapeCatalog();
+
+        if (result.ImportedTracks.Count > 0)
+        {
+            var latest = result.ImportedTracks[^1];
+            SelectTrack(latest.Id);
+        }
+
+        if (result.FailureCount > 0 || result.DuplicateCount > 0 || playlistWarnings.Count > 0)
+        {
+            string summary = result.GetSummaryMessage();
+            if (playlistWarnings.Count > 0)
+            {
+                summary += "\n\nPlaylist details:\n" + string.Join("\n", playlistWarnings.Take(5));
+            }
+            MessageBox.Show(summary, "Audio Import", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    public async Task ImportPlaylistActionAsync()
+    {
+        if (IsActive)
+        {
+            MessageBox.Show(
+                "Audio management is disabled while a meditation session is active.",
+                "Sankalpa",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var ofd = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import Playlist (.m3u, .m3u8)",
+            Filter = "Playlists (*.m3u;*.m3u8)|*.m3u;*.m3u8|All Files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (ofd.ShowDialog() != true) return;
+
+        if (!AudioImportService.TryParsePlaylist(ofd.FileName, out var resolvedFiles, out var warnings, out var err))
+        {
+            MessageBox.Show(err ?? "Failed to parse playlist.", "Import Playlist", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var uiSettings = UiSettingsStore.Load();
+        var result = await AudioImportService.ImportAudioFilesAsync(resolvedFiles, uiSettings, null,
+            async path => await ProbeAudioAsync(path, TimeSpan.FromSeconds(4)));
+
+        RefreshSoundscapeCatalog();
+
+        if (result.ImportedTracks.Count > 0)
+        {
+            var latest = result.ImportedTracks[^1];
+            SelectTrack(latest.Id);
+        }
+
+        string summary = result.GetSummaryMessage();
+        if (warnings.Count > 0)
+        {
+            summary += "\n\nWarnings:\n" + string.Join("\n", warnings.Take(5));
+        }
+
+        MessageBox.Show(summary, "Playlist Import", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    public void OpenAudioFolderAction()
+    {
+        if (IsActive)
+        {
+            MessageBox.Show(
+                "Opening the audio folder is disabled while a meditation session is active.",
+                "Sankalpa",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            string dir = SoundscapeCatalog.GetCustomAudioDirectory();
+            if (!Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = dir,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to open audio folder: {ex.Message}", "Sankalpa", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    public void DeleteTrackAction(string? trackId)
+    {
+        if (IsActive)
+        {
+            MessageBox.Show(
+                "Audio management is disabled while a meditation session is active.",
+                "Sankalpa",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(trackId)) return;
+
+        var uiSettings = UiSettingsStore.Load();
+        var meta = uiSettings.CustomSoundtracks.FirstOrDefault(t => string.Equals(t.Id, trackId, StringComparison.OrdinalIgnoreCase));
+        if (meta == null) return;
+
+        var confirm = MessageBox.Show(
+            $"Are you sure you want to remove '{meta.DisplayName}'?",
+            "Remove Custom Audio",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        bool wasSelected = string.Equals(SelectedSoundscapeId, trackId, StringComparison.OrdinalIgnoreCase);
+
+        AudioImportService.DeleteCustomTrack(trackId, uiSettings);
+
+        if (wasSelected)
+        {
+            SelectTrack(SoundscapeCatalog.RainId);
+        }
+
+        RefreshSoundscapeCatalog();
+    }
+
+    private void OnSoundscapeCatalogChanged()
+    {
+        if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+        {
+            Application.Current.Dispatcher.InvokeAsync(RefreshSoundscapeCatalog);
+        }
+        else
+        {
+            RefreshSoundscapeCatalog();
+        }
+    }
+
+    public void DisposeAudio()
+    {
+        SoundscapeCatalog.CatalogChanged -= OnSoundscapeCatalogChanged;
+    }
+
     private void InitializeAudio()
     {
         try
@@ -276,6 +578,7 @@ public partial class MeditationViewModel
         catch { }
 
         RefreshSoundscapeCatalog();
+        SoundscapeCatalog.CatalogChanged += OnSoundscapeCatalogChanged;
 
         ToggleSoundscapeCommand = new RelayCommand(ToggleSoundscape);
         SelectSoundscapeCommand = new RelayCommand<string>(soundName =>
@@ -286,5 +589,10 @@ public partial class MeditationViewModel
             }
         });
         ToggleSoundscapeMenuCommand = new RelayCommand(() => IsSoundscapeMenuOpen = !IsSoundscapeMenuOpen);
+        ImportAudioCommand = new RelayCommand(async () => await ImportAudioActionAsync());
+        ImportPlaylistCommand = new RelayCommand(async () => await ImportPlaylistActionAsync());
+        OpenAudioFolderCommand = new RelayCommand(OpenAudioFolderAction);
+        DeleteTrackCommand = new RelayCommand<string>(DeleteTrackAction);
+        RefreshSoundscapeCatalogCommand = new RelayCommand(RefreshSoundscapeCatalog);
     }
 }

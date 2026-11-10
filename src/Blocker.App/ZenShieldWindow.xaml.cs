@@ -975,10 +975,19 @@ public partial class ZenShieldWindow : Window
     /// </summary>
     public static IntPtr FindMainWindowForProcess(string processName, int? targetPid = null)
     {
-        return FindMainWindowForProcess(processName, null, targetPid);
+        return FindMainWindowForProcess(processName, null, targetPid, allowIconic: true);
     }
 
     public static IntPtr FindMainWindowForProcess(string processName, IReadOnlyDictionary<string, string>? allowedRoots, int? targetPid = null)
+    {
+        return FindMainWindowForProcess(processName, allowedRoots, targetPid, allowIconic: true);
+    }
+
+    public static IntPtr FindMainWindowForProcess(
+        string processName,
+        IReadOnlyDictionary<string, string>? allowedRoots,
+        int? targetPid = null,
+        bool allowIconic = true)
     {
         string normTarget = ProcessMatcher.NormalizeProcessName(processName);
         if (string.IsNullOrEmpty(normTarget)) return IntPtr.Zero;
@@ -1004,6 +1013,11 @@ public partial class ZenShieldWindow : Window
                 bool isIconic = IsIconic(hWnd);
                 if (isIconic)
                 {
+                    if (!allowIconic)
+                    {
+                        return true;
+                    }
+
                     var wp = new WINDOWPLACEMENT { length = Marshal.SizeOf<WINDOWPLACEMENT>() };
                     if (GetWindowPlacement(hWnd, ref wp))
                     {
@@ -1084,7 +1098,6 @@ public partial class ZenShieldWindow : Window
             ShowWindow(hwnd, SW_RESTORE);
         }
 
-        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
         SetForegroundWindow(hwnd);
     }
 
@@ -1312,12 +1325,14 @@ public partial class ZenShieldWindow : Window
             backdrop.Topmost = true;
         }
 
-        // Keep the allowed application window floating cleanly above ZenShieldWindow
+        // Keep the allowed application window non-topmost and focused, while Mini-HUD floats above it in topmost band
         if (_lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
         {
-            SetWindowPos(_lastAllowedAppHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            SetWindowPos(_lastAllowedAppHwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             SetForegroundWindow(_lastAllowedAppHwnd);
         }
+
+        _miniHudWindow.EnsureTopmost();
     }
 
 
@@ -1779,6 +1794,7 @@ public partial class ZenShieldWindow : Window
                                 _lastAllowedAppHwnd = fgHwnd;
                                 _appTracker?.SetTrackedWindow(fgHwnd, (int)fgPid, procName ?? "");
                             }
+                            _miniHudWindow?.EnsureTopmost();
                         }
                         // If !_isAllowedAppMode: do NOT flip mode! Mode only changes via explicit launch/switch
                         return;
@@ -1787,6 +1803,7 @@ public partial class ZenShieldWindow : Window
                     {
                         // Helper / toast / tooltip window of allowed app during allowed app mode
                         _unauthorizedBreachCount = 0;
+                        _miniHudWindow?.EnsureTopmost();
                         return;
                     }
                 }
@@ -1818,12 +1835,22 @@ public partial class ZenShieldWindow : Window
             // re-assert ZenShieldWindow as Topmost = true (RestoreZenScreen()) to immediately cover the screen with the Zen Shield!
             if (IsAllowedAppValid() && _unauthorizedBreachCount < ZenLaunchConstants.MaxUnauthorizedBreaches)
             {
-                SetWindowPos(_lastAllowedAppHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 if (IsIconic(_lastAllowedAppHwnd))
                 {
                     ShowWindow(_lastAllowedAppHwnd, SW_RESTORE);
                 }
                 SetForegroundWindow(_lastAllowedAppHwnd);
+                _miniHudWindow?.EnsureTopmost();
+            }
+            else if (_unauthorizedBreachCount >= ZenLaunchConstants.MaxUnauthorizedBreaches)
+            {
+                _unauthorizedBreachCount = 0;
+                RestoreZenScreen();
+            }
+            else if (_isAllowedAppMode)
+            {
+                // Tracked app is minimized or lost: delegate lifecycle transition to tracker's 750ms debounce
+                _appTracker?.EvaluateNow();
             }
             else
             {
@@ -1932,7 +1959,7 @@ public partial class ZenShieldWindow : Window
         _lastFallbackScanUtc = now;
         foreach (var allowedName in _allowedAppProcessNames)
         {
-            IntPtr found = FindMainWindowForProcess(allowedName, _allowedAppRoots, null);
+            IntPtr found = FindMainWindowForProcess(allowedName, _allowedAppRoots, null, allowIconic: false);
             if (found != IntPtr.Zero)
             {
                 _lastAllowedAppHwnd = found;
@@ -1946,12 +1973,21 @@ public partial class ZenShieldWindow : Window
     {
         if (IsAllowedAppValid() && _unauthorizedBreachCount < ZenLaunchConstants.MaxUnauthorizedBreaches)
         {
-            SetWindowPos(_lastAllowedAppHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             if (IsIconic(_lastAllowedAppHwnd))
             {
                 ShowWindow(_lastAllowedAppHwnd, SW_RESTORE);
             }
             SetForegroundWindow(_lastAllowedAppHwnd);
+            _miniHudWindow?.EnsureTopmost();
+        }
+        else if (_unauthorizedBreachCount >= ZenLaunchConstants.MaxUnauthorizedBreaches)
+        {
+            _unauthorizedBreachCount = 0;
+            RestoreZenScreen();
+        }
+        else if (_isAllowedAppMode)
+        {
+            _appTracker?.EvaluateNow();
         }
         else
         {

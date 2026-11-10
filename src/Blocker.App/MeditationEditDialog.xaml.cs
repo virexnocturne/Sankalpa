@@ -608,9 +608,10 @@ public partial class MeditationEditDialog : Window
         SoundscapeWrapPanel.Children.Clear();
 
         var uiSettings = UiSettingsStore.Load();
-        var allTracks = SoundscapeCatalog.GetAllTracks(uiSettings);
+        var builtInTracks = SoundscapeCatalog.GetBuiltInTracks();
 
-        foreach (var track in allTracks)
+        // 1. Built-in presets (Rain, Library, Forest, Singing Bowls, Mute)
+        foreach (var track in builtInTracks)
         {
             var rb = new RadioButton
             {
@@ -625,26 +626,33 @@ public partial class MeditationEditDialog : Window
             SoundscapeWrapPanel.Children.Add(rb);
         }
 
-        // Populate Custom Tracks list
-        if (CustomTracksListPanel == null || CustomTracksHeader == null) return;
+        // 2. Custom Tracks list
+        if (CustomTracksListPanel == null) return;
         CustomTracksListPanel.Children.Clear();
 
-        if (uiSettings.CustomSoundtracks.Count == 0)
+        int customCount = uiSettings.CustomSoundtracks.Count;
+        if (CustomTracksCountLabel != null)
         {
-            CustomTracksHeader.Visibility = Visibility.Collapsed;
+            CustomTracksCountLabel.Text = $"({customCount})";
+        }
+
+        if (customCount == 0)
+        {
+            if (EmptyCustomTracksMessage != null) EmptyCustomTracksMessage.Visibility = Visibility.Visible;
         }
         else
         {
-            CustomTracksHeader.Visibility = Visibility.Visible;
+            if (EmptyCustomTracksMessage != null) EmptyCustomTracksMessage.Visibility = Visibility.Collapsed;
+
             foreach (var meta in uiSettings.CustomSoundtracks)
             {
                 var rowBorder = new Border
                 {
-                    Background = (Brush)FindResource("SurfaceRaised"),
+                    Background = (Brush)FindResource("Surface"),
                     BorderBrush = (Brush)FindResource("Border"),
                     BorderThickness = new Thickness(1),
                     CornerRadius = (CornerRadius)FindResource("RadiusCard"),
-                    Padding = new Thickness(10, 6, 10, 6),
+                    Padding = new Thickness(8, 5, 8, 5),
                     Margin = new Thickness(0, 0, 0, 4)
                 };
 
@@ -653,24 +661,27 @@ public partial class MeditationEditDialog : Window
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-                var titleBlock = new TextBlock
+                var rb = new RadioButton
                 {
-                    Text = meta.DisplayName,
+                    Content = meta.DisplayName,
+                    GroupName = "SoundscapePresetGroup",
+                    Tag = meta.Id,
+                    IsChecked = string.Equals(meta.Id, SelectedSoundscapeId, StringComparison.OrdinalIgnoreCase),
+                    VerticalAlignment = VerticalAlignment.Center,
                     FontFamily = (System.Windows.Media.FontFamily)FindResource("FontBody"),
                     FontSize = (double)FindResource("FontSize12"),
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = (Brush)FindResource("TextPrimary"),
-                    VerticalAlignment = VerticalAlignment.Center
+                    Foreground = (Brush)FindResource("TextPrimary")
                 };
-                Grid.SetColumn(titleBlock, 0);
-                grid.Children.Add(titleBlock);
+                rb.Checked += SoundscapePreset_Checked;
+                Grid.SetColumn(rb, 0);
+                grid.Children.Add(rb);
 
                 var renameBtn = new Button
                 {
                     Content = "Rename",
                     Style = (Style)FindResource("SecondaryButton"),
-                    FontSize = (double)FindResource("FontSize12"),
-                    Padding = new Thickness(8, 3, 8, 3),
+                    FontSize = (double)FindResource("FontSize11"),
+                    Padding = new Thickness(8, 2, 8, 2),
                     Margin = new Thickness(0, 0, 6, 0),
                     Tag = meta.Id
                 };
@@ -682,8 +693,8 @@ public partial class MeditationEditDialog : Window
                 {
                     Content = "Delete",
                     Style = (Style)FindResource("SecondaryButton"),
-                    FontSize = (double)FindResource("FontSize12"),
-                    Padding = new Thickness(8, 3, 8, 3),
+                    FontSize = (double)FindResource("FontSize11"),
+                    Padding = new Thickness(8, 2, 8, 2),
                     Tag = meta.Id
                 };
                 deleteBtn.Click += DeleteTrack_Click;
@@ -707,7 +718,6 @@ public partial class MeditationEditDialog : Window
 
     private async void ImportAudio_Click(object sender, RoutedEventArgs e)
     {
-        // HARD CONSTRAINT 1: Shell escape prevention & lockdown security
         if (IsMeditationSessionActive())
         {
             ShowSoundscapeError("Importing audio is disabled while a meditation session is active.");
@@ -718,98 +728,131 @@ public partial class MeditationEditDialog : Window
 
         var ofd = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Import Audio Track",
-            Filter = "Audio Files (*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac)|*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac|All Files (*.*)|*.*",
+            Title = "Import Audio Tracks",
+            Filter = "Audio and Playlists (*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac;*.m3u;*.m3u8)|*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac;*.m3u;*.m3u8|Audio Files (*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac)|*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac|Playlists (*.m3u;*.m3u8)|*.m3u;*.m3u8|All Files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = true
+        };
+
+        if (ofd.ShowDialog(this) != true) return;
+
+        var filesToImport = new List<string>();
+        var playlistWarnings = new List<string>();
+
+        foreach (var file in ofd.FileNames)
+        {
+            string ext = Path.GetExtension(file).ToLowerInvariant();
+            if (ext == ".m3u" || ext == ".m3u8")
+            {
+                if (AudioImportService.TryParsePlaylist(file, out var playlistFiles, out var warnings, out var err))
+                {
+                    filesToImport.AddRange(playlistFiles);
+                    playlistWarnings.AddRange(warnings);
+                }
+                else if (!string.IsNullOrEmpty(err))
+                {
+                    playlistWarnings.Add($"{Path.GetFileName(file)}: {err}");
+                }
+            }
+            else
+            {
+                filesToImport.Add(file);
+            }
+        }
+
+        if (filesToImport.Count == 0)
+        {
+            ShowSoundscapeError(playlistWarnings.Count > 0 ? string.Join("; ", playlistWarnings) : "No valid audio files selected.");
+            return;
+        }
+
+        ShowSoundscapeError("Importing and verifying audio files...");
+
+        var currentSettings = UiSettingsStore.Load();
+        var result = await AudioImportService.ImportAudioFilesAsync(
+            filesToImport,
+            currentSettings,
+            null,
+            async path =>
+            {
+                var probe = await ProbeAudioDecodableAsync(path, TimeSpan.FromSeconds(4));
+                return (probe.Success, probe.Duration?.TotalSeconds, probe.Error);
+            });
+
+        if (result.ImportedTracks.Count > 0)
+        {
+            SelectedSoundscapeId = result.ImportedTracks[^1].Id;
+            SelectedSoundscape = SoundscapeType.Custom;
+        }
+
+        HideSoundscapeError();
+        PopulateSoundscapes();
+
+        if (result.FailureCount > 0 || result.DuplicateCount > 0 || playlistWarnings.Count > 0)
+        {
+            string summary = result.GetSummaryMessage();
+            if (playlistWarnings.Count > 0)
+            {
+                summary += " " + string.Join("; ", playlistWarnings.Take(3));
+            }
+            ShowSoundscapeError(summary);
+        }
+    }
+
+    private async void ImportPlaylist_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsMeditationSessionActive())
+        {
+            ShowSoundscapeError("Importing playlists is disabled while a meditation session is active.");
+            return;
+        }
+
+        HideSoundscapeError();
+
+        var ofd = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import Playlist (.m3u, .m3u8)",
+            Filter = "Playlists (*.m3u;*.m3u8)|*.m3u;*.m3u8|All Files (*.*)|*.*",
             CheckFileExists = true,
             Multiselect = false
         };
 
         if (ofd.ShowDialog(this) != true) return;
 
-        string sourcePath = ofd.FileName;
-
-        if (!SoundscapeCatalog.ValidateAudioFile(sourcePath, out string? valErr))
+        if (!AudioImportService.TryParsePlaylist(ofd.FileName, out var resolvedFiles, out var warnings, out var err))
         {
-            ShowSoundscapeError(valErr ?? "Invalid audio file.");
+            ShowSoundscapeError(err ?? "Failed to parse playlist.");
             return;
         }
 
-        string hash;
-        try
-        {
-            hash = SoundscapeCatalog.ComputeSha256(sourcePath);
-        }
-        catch (Exception ex)
-        {
-            ShowSoundscapeError($"Unable to read audio file: {ex.Message}");
-            return;
-        }
+        ShowSoundscapeError("Importing playlist entries...");
 
         var currentSettings = UiSettingsStore.Load();
-        if (SoundscapeCatalog.IsDuplicate(hash, currentSettings, out var existingTrack))
-        {
-            ShowSoundscapeError($"Track '{existingTrack!.DisplayName}' with identical audio content already exists.");
-            SelectedSoundscapeId = existingTrack.Id;
-            PopulateSoundscapes();
-            return;
-        }
-
-        // Decodability probe with MediaPlayer
-        ShowSoundscapeError("Verifying audio stream...");
-        var probeResult = await ProbeAudioDecodableAsync(sourcePath, TimeSpan.FromSeconds(5));
-        if (!probeResult.Success)
-        {
-            ShowSoundscapeError($"Audio file could not be decoded: {probeResult.Error ?? "Unsupported or corrupted stream."}");
-            return;
-        }
-
-        // Copy file into %LOCALAPPDATA%\Sankalpa\custom_audio\ under GUID filename
-        string targetDir = SoundscapeCatalog.GetCustomAudioDirectory();
-        try
-        {
-            if (!Directory.Exists(targetDir))
+        var result = await AudioImportService.ImportAudioFilesAsync(
+            resolvedFiles,
+            currentSettings,
+            null,
+            async path =>
             {
-                Directory.CreateDirectory(targetDir);
-            }
+                var probe = await ProbeAudioDecodableAsync(path, TimeSpan.FromSeconds(4));
+                return (probe.Success, probe.Duration?.TotalSeconds, probe.Error);
+            });
 
-            string ext = Path.GetExtension(sourcePath).ToLowerInvariant();
-            string guid = Guid.NewGuid().ToString("N");
-            string targetFileName = $"{guid}{ext}";
-            string targetPath = Path.Combine(targetDir, targetFileName);
-
-            await Task.Run(() => File.Copy(sourcePath, targetPath, overwrite: false));
-
-            string displayName = SoundscapeCatalog.SanitizeDisplayName(Path.GetFileNameWithoutExtension(sourcePath));
-            var fileInfo = new FileInfo(targetPath);
-
-            var newTrack = new CustomSoundtrackMetadata
-            {
-                Id = $"{SoundscapeCatalog.CustomPrefix}{guid}",
-                DisplayName = displayName,
-                FileName = targetFileName,
-                VolumeTrim = 1.0,
-                DurationSeconds = probeResult.Duration?.TotalSeconds,
-                FileSizeBytes = fileInfo.Length,
-                Sha256Hash = hash,
-                OriginalFileName = Path.GetFileName(sourcePath),
-                CreatedAt = DateTime.UtcNow
-            };
-
-            currentSettings.CustomSoundtracks.Add(newTrack);
-            currentSettings.MeditationSoundscape = newTrack.Id;
-            UiSettingsStore.Save(currentSettings);
-            UiSettings.LastSelectedCustomSoundscapeId = newTrack.Id;
-
-            SelectedSoundscapeId = newTrack.Id;
+        if (result.ImportedTracks.Count > 0)
+        {
+            SelectedSoundscapeId = result.ImportedTracks[^1].Id;
             SelectedSoundscape = SoundscapeType.Custom;
+        }
 
-            HideSoundscapeError();
-            PopulateSoundscapes();
-        }
-        catch (Exception ex)
+        HideSoundscapeError();
+        PopulateSoundscapes();
+
+        string summary = result.GetSummaryMessage();
+        if (warnings.Count > 0)
         {
-            ShowSoundscapeError($"Failed to import audio track: {ex.Message}");
+            summary += " Warnings: " + string.Join("; ", warnings.Take(3));
         }
+        ShowSoundscapeError(summary);
     }
 
     private void RenameTrack_Click(object sender, RoutedEventArgs e)
@@ -841,12 +884,7 @@ public partial class MeditationEditDialog : Window
         if (string.IsNullOrWhiteSpace(clean)) return;
 
         var uiSettings = UiSettingsStore.Load();
-        var meta = uiSettings.CustomSoundtracks.FirstOrDefault(t => t.Id == _renamingTrackId);
-        if (meta != null)
-        {
-            meta.DisplayName = clean;
-            UiSettingsStore.Save(uiSettings);
-        }
+        AudioImportService.RenameCustomTrack(_renamingTrackId, clean, uiSettings);
 
         if (RenameTrackPanel != null) RenameTrackPanel.Visibility = Visibility.Collapsed;
         _renamingTrackId = null;
@@ -878,28 +916,15 @@ public partial class MeditationEditDialog : Window
 
             if (result != MessageBoxResult.Yes) return;
 
-            uiSettings.CustomSoundtracks.RemoveAll(t => t.Id == trackId);
+            bool wasSelected = string.Equals(SelectedSoundscapeId, trackId, StringComparison.OrdinalIgnoreCase);
 
-            if (string.Equals(SelectedSoundscapeId, trackId, StringComparison.OrdinalIgnoreCase))
+            AudioImportService.DeleteCustomTrack(trackId, uiSettings);
+
+            if (wasSelected)
             {
                 SelectedSoundscapeId = SoundscapeCatalog.RainId;
                 SelectedSoundscape = SoundscapeType.Rain;
-                uiSettings.MeditationSoundscape = SoundscapeCatalog.RainId;
             }
-
-            UiSettingsStore.Save(uiSettings);
-
-            // Delete physical file from disk defensively
-            try
-            {
-                string dir = SoundscapeCatalog.GetCustomAudioDirectory();
-                string filePath = Path.Combine(dir, meta.FileName);
-                if (File.Exists(filePath))
-                {
-                    File.Delete(filePath);
-                }
-            }
-            catch { }
 
             PopulateSoundscapes();
         }
