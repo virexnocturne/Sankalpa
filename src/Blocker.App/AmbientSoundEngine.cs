@@ -1,36 +1,43 @@
+using System;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using Blocker.Core;
 using WpfApplication = System.Windows.Application;
 
 namespace Blocker.App;
 
-public enum SoundscapeType
-{
-    None,
-    Rain,
-    Library,
-    Forest,
-    SingingBowls
-}
-
 /// <summary>
 /// Thread-safe ambient audio playback engine for meditation and focus soundscapes.
+/// Supports both built-in presets and user-imported custom tracks with per-track trim volume
+/// and seamless looping via MediaTimeline.
 /// </summary>
 public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
 {
     private readonly Dispatcher _dispatcher;
     private MediaPlayer _mediaPlayer = null!;
+    private MediaClock? _mediaClock;
+    private bool _usingClock;
     private double _volume = 0.7;
+    private double _trackTrimVolume = 1.0;
     private double _fadeTargetVolume = 0.7;
     private CancellationTokenSource? _fadeCts;
     private bool _disposed;
+    private string _currentSoundscapeId = SoundscapeCatalog.RainId;
+    private SoundscapeItem? _currentSoundscapeItem;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public SoundscapeType CurrentSoundscape { get; private set; } = SoundscapeType.None;
+
+    public string CurrentSoundscapeId => _currentSoundscapeId;
+
+    public SoundscapeItem? CurrentSoundscapeItem => _currentSoundscapeItem;
 
     public bool IsPlaying { get; private set; }
 
@@ -46,14 +53,14 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
             if (Math.Abs(_volume - clamped) < 0.001) return;
 
             _volume = clamped;
-            _fadeTargetVolume = clamped;
+            _fadeTargetVolume = clamped * _trackTrimVolume;
             OnPropertyChanged();
 
             RunOnDispatcher(() =>
             {
                 if (IsPlaying && _fadeCts == null)
                 {
-                    _mediaPlayer.Volume = _volume;
+                    _mediaPlayer.Volume = Math.Clamp(_volume * _trackTrimVolume, 0.0, 1.0);
                 }
             });
         }
@@ -82,43 +89,86 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Selects and starts playing the specified soundscape with a smooth 1-second fade-in.
+    /// Selects and starts playing the specified soundscape by legacy enum.
     /// Passing <see cref="SoundscapeType.None"/> smoothly stops playback.
     /// </summary>
     public void SetSoundscape(SoundscapeType type)
     {
+        if (type == SoundscapeType.Custom)
+        {
+            var uiSettings = UiSettingsStore.Load();
+            SetSoundscape(uiSettings.MeditationSoundscape);
+            return;
+        }
+
+        string id = SoundscapeCatalog.FromLegacyEnum(type);
+        SetSoundscape(id);
+    }
+
+    /// <summary>
+    /// Selects and starts playing the specified soundscape by ID (built-in ID or "custom:<guid>").
+    /// </summary>
+    public void SetSoundscape(string? soundscapeId)
+    {
         RunOnDispatcher(() =>
         {
-            if (type == SoundscapeType.None)
+            string normalized = SoundscapeCatalog.NormalizeId(soundscapeId);
+
+            if (string.Equals(normalized, SoundscapeCatalog.MuteId, StringComparison.OrdinalIgnoreCase))
             {
+                _currentSoundscapeId = SoundscapeCatalog.MuteId;
                 CurrentSoundscape = SoundscapeType.None;
+                _currentSoundscapeItem = null;
                 OnPropertyChanged(nameof(CurrentSoundscape));
+                OnPropertyChanged(nameof(CurrentSoundscapeId));
+                OnPropertyChanged(nameof(CurrentSoundscapeItem));
                 Stop(fadeOut: true);
                 return;
             }
 
-            if (type == CurrentSoundscape && IsPlaying)
+            if (string.Equals(_currentSoundscapeId, normalized, StringComparison.OrdinalIgnoreCase) && IsPlaying)
             {
                 return;
             }
 
-            string fileName = type switch
-            {
-                SoundscapeType.Rain => "rain.wav",
-                SoundscapeType.Library => "library.wav",
-                SoundscapeType.Forest => "forest.wav",
-                SoundscapeType.SingingBowls => "bowls.wav",
-                _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
-            };
+            var uiSettings = UiSettingsStore.Load();
+            var track = SoundscapeCatalog.FindTrack(normalized, uiSettings);
 
-            string filePath = ResolveAudioFilePath(fileName);
-            if (!File.Exists(filePath))
+            if (track.Id == SoundscapeCatalog.MuteId)
             {
-                System.Diagnostics.Trace.WriteLine($"[AmbientSoundEngine] Ambient audio file not found: {filePath}");
-                CancelFade();
+                _currentSoundscapeId = SoundscapeCatalog.MuteId;
                 CurrentSoundscape = SoundscapeType.None;
+                _currentSoundscapeItem = null;
+                OnPropertyChanged(nameof(CurrentSoundscape));
+                OnPropertyChanged(nameof(CurrentSoundscapeId));
+                OnPropertyChanged(nameof(CurrentSoundscapeItem));
+                Stop(fadeOut: true);
+                return;
+            }
+
+            string filePath;
+            if (track.IsBuiltIn)
+            {
+                string fileName = track.FilePath ?? "rain.wav";
+                filePath = ResolveAudioFilePath(fileName);
+            }
+            else
+            {
+                filePath = track.FilePath ?? string.Empty;
+            }
+
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            {
+                System.Diagnostics.Trace.WriteLine($"[AmbientSoundEngine] Ambient audio file not found: {filePath}. Falling back to default.");
+                CancelFade();
+                StopPlayer();
+                _currentSoundscapeId = SoundscapeCatalog.MuteId;
+                CurrentSoundscape = SoundscapeType.None;
+                _currentSoundscapeItem = null;
                 IsPlaying = false;
                 OnPropertyChanged(nameof(CurrentSoundscape));
+                OnPropertyChanged(nameof(CurrentSoundscapeId));
+                OnPropertyChanged(nameof(CurrentSoundscapeItem));
                 OnPropertyChanged(nameof(IsPlaying));
                 return;
             }
@@ -126,25 +176,69 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
             try
             {
                 CancelFade();
-                CurrentSoundscape = type;
-                OnPropertyChanged(nameof(CurrentSoundscape));
+                StopPlayer();
 
-                _mediaPlayer.Volume = 0.0;
-                _mediaPlayer.Open(new Uri(filePath, UriKind.Absolute));
-                _mediaPlayer.Position = TimeSpan.Zero;
-                _mediaPlayer.Play();
+                _currentSoundscapeId = track.Id;
+                CurrentSoundscape = SoundscapeCatalog.ToLegacyEnum(track.Id);
+                _currentSoundscapeItem = track;
+                _trackTrimVolume = Math.Clamp(track.VolumeTrim, 0.0, 1.0);
+
+                OnPropertyChanged(nameof(CurrentSoundscape));
+                OnPropertyChanged(nameof(CurrentSoundscapeId));
+                OnPropertyChanged(nameof(CurrentSoundscapeItem));
+
+                // Attempt seamless looping using MediaTimeline with RepeatBehavior.Forever
+                bool clockStarted = false;
+                try
+                {
+                    var timeline = new MediaTimeline(new Uri(filePath, UriKind.Absolute))
+                    {
+                        RepeatBehavior = RepeatBehavior.Forever
+                    };
+                    var clock = timeline.CreateClock();
+                    _mediaClock = clock;
+                    _mediaPlayer.Volume = 0.0;
+                    _mediaPlayer.Clock = clock;
+                    clock.Controller.Seek(TimeSpan.Zero, TimeSeekOrigin.BeginTime);
+                    clock.Controller.Resume();
+                    _usingClock = true;
+                    clockStarted = true;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Trace.WriteLine($"[AmbientSoundEngine] MediaTimeline creation failed ({ex.Message}), falling back to direct MediaPlayer playback.");
+                    _mediaClock = null;
+                    _mediaPlayer.Clock = null;
+                    _usingClock = false;
+                    clockStarted = false;
+                }
+
+                if (!clockStarted)
+                {
+                    _mediaPlayer.Volume = 0.0;
+                    _mediaPlayer.Open(new Uri(filePath, UriKind.Absolute));
+                    _mediaPlayer.Position = TimeSpan.Zero;
+                    _mediaPlayer.Play();
+                }
+
                 IsPlaying = true;
                 OnPropertyChanged(nameof(IsPlaying));
 
-                StartFade(Volume, TimeSpan.FromSeconds(1.0));
+                double targetVol = Math.Clamp(Volume * _trackTrimVolume, 0.0, 1.0);
+                StartFade(targetVol, TimeSpan.FromSeconds(1.0));
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.WriteLine($"[AmbientSoundEngine] Error playing soundscape '{filePath}': {ex.Message}");
                 CancelFade();
+                StopPlayer();
+                _currentSoundscapeId = SoundscapeCatalog.MuteId;
                 CurrentSoundscape = SoundscapeType.None;
+                _currentSoundscapeItem = null;
                 IsPlaying = false;
                 OnPropertyChanged(nameof(CurrentSoundscape));
+                OnPropertyChanged(nameof(CurrentSoundscapeId));
+                OnPropertyChanged(nameof(CurrentSoundscapeItem));
                 OnPropertyChanged(nameof(IsPlaying));
             }
         });
@@ -157,7 +251,7 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
     {
         RunOnDispatcher(() =>
         {
-            if (CurrentSoundscape == SoundscapeType.None)
+            if (string.Equals(_currentSoundscapeId, SoundscapeCatalog.MuteId, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
@@ -171,11 +265,21 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
             {
                 CancelFade();
                 _mediaPlayer.Volume = 0.0;
-                _mediaPlayer.Play();
+
+                if (_usingClock && _mediaClock?.Controller != null)
+                {
+                    _mediaClock.Controller.Resume();
+                }
+                else
+                {
+                    _mediaPlayer.Play();
+                }
+
                 IsPlaying = true;
                 OnPropertyChanged(nameof(IsPlaying));
 
-                StartFade(Volume, TimeSpan.FromSeconds(1.0));
+                double targetVol = Math.Clamp(Volume * _trackTrimVolume, 0.0, 1.0);
+                StartFade(targetVol, TimeSpan.FromSeconds(1.0));
             }
             catch (Exception ex)
             {
@@ -201,7 +305,14 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
             try
             {
                 CancelFade();
-                _mediaPlayer.Pause();
+                if (_usingClock && _mediaClock?.Controller != null)
+                {
+                    _mediaClock.Controller.Pause();
+                }
+                else
+                {
+                    _mediaPlayer.Pause();
+                }
             }
             catch (Exception ex)
             {
@@ -227,8 +338,7 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
                 if (!IsPlaying)
                 {
                     CancelFade();
-                    _mediaPlayer.Stop();
-                    _mediaPlayer.Position = TimeSpan.Zero;
+                    StopPlayer();
                     return;
                 }
 
@@ -241,22 +351,14 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
                     {
                         RunOnDispatcher(() =>
                         {
-                            try
-                            {
-                                _mediaPlayer.Stop();
-                                _mediaPlayer.Position = TimeSpan.Zero;
-                                _mediaPlayer.Volume = Volume;
-                            }
-                            catch { }
+                            StopPlayer();
                         });
                     });
                 }
                 else
                 {
                     CancelFade();
-                    _mediaPlayer.Stop();
-                    _mediaPlayer.Position = TimeSpan.Zero;
-                    _mediaPlayer.Volume = Volume;
+                    StopPlayer();
                     IsPlaying = false;
                     OnPropertyChanged(nameof(IsPlaying));
                 }
@@ -270,14 +372,43 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
         });
     }
 
+    private void StopPlayer()
+    {
+        try
+        {
+            if (_usingClock && _mediaClock?.Controller != null)
+            {
+                _mediaClock.Controller.Stop();
+                _mediaPlayer.Clock = null;
+                _mediaClock = null;
+                _usingClock = false;
+            }
+            else
+            {
+                _mediaPlayer.Stop();
+                _mediaPlayer.Position = TimeSpan.Zero;
+            }
+            _mediaPlayer.Volume = Math.Clamp(Volume * _trackTrimVolume, 0.0, 1.0);
+        }
+        catch
+        {
+            // Best-effort stop
+        }
+    }
+
     private void OnMediaEnded(object? sender, EventArgs e)
     {
         RunOnDispatcher(() =>
         {
-            if (IsPlaying && CurrentSoundscape != SoundscapeType.None)
+            // In fallback mode (!usingClock), loop manually on MediaEnded
+            if (!_usingClock && IsPlaying && !string.Equals(_currentSoundscapeId, SoundscapeCatalog.MuteId, StringComparison.OrdinalIgnoreCase))
             {
-                _mediaPlayer.Position = TimeSpan.Zero;
-                _mediaPlayer.Play();
+                try
+                {
+                    _mediaPlayer.Position = TimeSpan.Zero;
+                    _mediaPlayer.Play();
+                }
+                catch { }
             }
         });
     }
@@ -286,6 +417,7 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
     {
         RunOnDispatcher(() =>
         {
+            System.Diagnostics.Trace.WriteLine($"[AmbientSoundEngine] MediaFailed: {e.ErrorException?.Message}");
             IsPlaying = false;
             OnPropertyChanged(nameof(IsPlaying));
         });
@@ -439,7 +571,7 @@ public class AmbientSoundEngine : IDisposable, INotifyPropertyChanged
                 {
                     _mediaPlayer.MediaEnded -= OnMediaEnded;
                     _mediaPlayer.MediaFailed -= OnMediaFailed;
-                    _mediaPlayer.Stop();
+                    StopPlayer();
                     _mediaPlayer.Close();
                 }
                 catch

@@ -3,7 +3,7 @@ using System;
 namespace Blocker.Core;
 
 /// <summary>
-/// Single-source constants for Meditation (Zen) mode application launching, switching, and timeouts.
+/// Constants governing allowed-application launch, window-discovery, and mini-HUD lifecycle.
 /// Adheres to Shared Contract C-5: single definition point for launch timeouts, poll intervals, and grace periods.
 /// </summary>
 public static class ZenLaunchConstants
@@ -30,9 +30,21 @@ public static class ZenLaunchConstants
     public const int LaunchGracePeriodMs = 4000;
 
     /// <summary>
-    /// Minimum width and height for a window to be considered USABLE per Shared Contract C-1.
+    /// Minimum width and height in pixels for a window to be considered a genuine, usable, non-helper application top-level window.
+    /// Excludes system indicator windows, tray popups, toasts, and tooltips.
     /// </summary>
     public const int MinWindowDimension = 100;
+
+    /// <summary>
+    /// Short debounce interval (in milliseconds) after an allowed application window is minimized, hidden,
+    /// or destroyed, before the mini-HUD is hidden and the Zen screen is restored.
+    /// </summary>
+    public const int DefaultDebounceMs = 750;
+
+    /// <summary>
+    /// Watchdog polling backstop interval (in milliseconds).
+    /// </summary>
+    public const int WatchdogIntervalMs = 500;
 
     /// <summary>
     /// Window discovery polling interval in milliseconds.

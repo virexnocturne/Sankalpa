@@ -160,9 +160,9 @@ Contemplating silent awareness.";
         Assert.Equal(string.Empty, serialized);
         Assert.Empty(NoteCardCollection.Deserialize(serialized));
 
-        // 2. Source contract verification in MeditationViewModel.cs
+        // 2. Source contract verification in MeditationViewModel.Notes.cs
         string root = GetRepoRoot();
-        string vmPath = Path.Combine(root, "src", "Blocker.App", "MeditationViewModel.cs");
+        string vmPath = Path.Combine(root, "src", "Blocker.App", "MeditationViewModel.Notes.cs");
         Assert.True(File.Exists(vmPath));
 
         string vmCode = File.ReadAllText(vmPath);
@@ -175,7 +175,7 @@ Contemplating silent awareness.";
     public void SavingNote_TriggersTransientAutoSaveStatus()
     {
         string root = GetRepoRoot();
-        string vmPath = Path.Combine(root, "src", "Blocker.App", "MeditationViewModel.cs");
+        string vmPath = Path.Combine(root, "src", "Blocker.App", "MeditationViewModel.Notes.cs");
         Assert.True(File.Exists(vmPath));
 
         string vmCode = File.ReadAllText(vmPath);
@@ -393,7 +393,7 @@ Contemplating silent awareness.";
     public void MeditationViewModel_AutoDetectsTitle_FromHeadingsOrFirstLine_SourceContract()
     {
         string root = GetRepoRoot();
-        string vmPath = Path.Combine(root, "src", "Blocker.App", "MeditationViewModel.cs");
+        string vmPath = Path.Combine(root, "src", "Blocker.App", "MeditationViewModel.Notes.cs");
         Assert.True(File.Exists(vmPath));
 
         string vmCode = File.ReadAllText(vmPath);

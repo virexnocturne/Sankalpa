@@ -49,6 +49,22 @@ public class MarkdownBlockItem : INotifyPropertyChanged
 
 public class NoteCard : INotifyPropertyChanged
 {
+    private static readonly Regex TaskRegex = new(
+        @"^\s*(?:[-*•]\s*)?(?:\[([ xX])\]|([☐☑]))\s*(.*)$",
+        RegexOptions.Compiled);
+
+    private static readonly Regex ImageWikiRegex = new(
+        @"^!\[\[(.*?)\]\]$",
+        RegexOptions.Compiled);
+
+    private static readonly Regex ImageMdRegex = new(
+        @"^!\[(.*?)\]\((.*?)\)$",
+        RegexOptions.Compiled);
+
+    private static readonly Regex CheckboxToggleRegex = new(
+        @"^(\s*(?:[-*•]\s*)?)(?:\[([ xX])\]|([☐☑]))(.*)$",
+        RegexOptions.Multiline | RegexOptions.Compiled);
+
     private string _id = Guid.NewGuid().ToString("N");
     private string _title = string.Empty;
     private string _markdownContent = string.Empty;
@@ -190,9 +206,6 @@ public class NoteCard : INotifyPropertyChanged
         }
 
         var lines = MarkdownContent.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-        var taskRegex = new Regex(@"^\s*(?:[-*•]\s*)?(?:\[([ xX])\]|([☐☑]))\s*(.*)$");
-        var imageWikiRegex = new Regex(@"^!\[\[(.*?)\]\]$");
-        var imageMdRegex = new Regex(@"^!\[(.*?)\]\((.*?)\)$");
         int taskCount = 0;
 
         foreach (var line in lines)
@@ -203,9 +216,9 @@ public class NoteCard : INotifyPropertyChanged
                 continue;
             }
 
-            var taskMatch = taskRegex.Match(trimmed);
-            var wikiMatch = imageWikiRegex.Match(trimmed);
-            var mdMatch = imageMdRegex.Match(trimmed);
+            var taskMatch = TaskRegex.Match(trimmed);
+            var wikiMatch = ImageWikiRegex.Match(trimmed);
+            var mdMatch = ImageMdRegex.Match(trimmed);
 
             if (taskMatch.Success)
             {
@@ -325,8 +338,7 @@ public class NoteCard : INotifyPropertyChanged
             return false;
         }
 
-        var regex = new Regex(@"^(\s*(?:[-*•]\s*)?)(?:\[([ xX])\]|([☐☑]))(.*)$", RegexOptions.Multiline);
-        var matches = regex.Matches(MarkdownContent);
+        var matches = CheckboxToggleRegex.Matches(MarkdownContent);
 
         if (taskIndex >= matches.Count)
         {
@@ -356,6 +368,29 @@ public class NoteCard : INotifyPropertyChanged
         OnPropertyChanged(nameof(UpdatedAtUtc));
         OnPropertyChanged(nameof(RelativeTime));
         return true;
+    }
+
+    public bool IsContentEquivalent(NoteCard? other)
+    {
+        if (other == null) return false;
+        return string.Equals(Id, other.Id, StringComparison.Ordinal)
+            && string.Equals(Title, other.Title, StringComparison.Ordinal)
+            && string.Equals(MarkdownContent, other.MarkdownContent, StringComparison.Ordinal)
+            && UpdatedAtUtc == other.UpdatedAtUtc;
+    }
+
+    public NoteCard Clone()
+    {
+        return new NoteCard
+        {
+            Id = this.Id,
+            Title = this.Title,
+            MarkdownContent = this.MarkdownContent,
+            CreatedAtUtc = this.CreatedAtUtc,
+            UpdatedAtUtc = this.UpdatedAtUtc,
+            IsExpanded = this.IsExpanded,
+            IsFullExpanded = this.IsFullExpanded
+        };
     }
 
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)

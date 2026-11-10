@@ -114,95 +114,32 @@
                     </Button>
                 </Grid>
 
-                <!-- Track 1: Rain -->
-                <Button Content="Rain"
-                        Command="{Binding SelectSoundscapeCommand}" CommandParameter="Rain"
-                        Padding="10,6" Margin="0,0,0,3" FontSize="{DynamicResource FontSize12}">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
-                            <Setter Property="HorizontalContentAlignment" Value="Left" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsRainSelected}" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource Accent}" />
-                                    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
-
-                <!-- Track 2: Library -->
-                <Button Content="Library"
-                        Command="{Binding SelectSoundscapeCommand}" CommandParameter="Library"
-                        Padding="10,6" Margin="0,0,0,3" FontSize="{DynamicResource FontSize12}">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
-                            <Setter Property="HorizontalContentAlignment" Value="Left" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsLibrarySelected}" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource Accent}" />
-                                    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
-
-                <!-- Track 3: Forest -->
-                <Button Content="Forest"
-                        Command="{Binding SelectSoundscapeCommand}" CommandParameter="Forest"
-                        Padding="10,6" Margin="0,0,0,3" FontSize="{DynamicResource FontSize12}">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
-                            <Setter Property="HorizontalContentAlignment" Value="Left" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsForestSelected}" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource Accent}" />
-                                    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
-
-                <!-- Track 4: Singing Bowls -->
-                <Button Content="Singing Bowls"
-                        Command="{Binding SelectSoundscapeCommand}" CommandParameter="SingingBowls"
-                        Padding="10,6" Margin="0,0,0,3" FontSize="{DynamicResource FontSize12}">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
-                            <Setter Property="HorizontalContentAlignment" Value="Left" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsBowlsSelected}" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource Accent}" />
-                                    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
-
-                <!-- Track 5: Mute -->
-                <Button Content="Mute"
-                        Command="{Binding SelectSoundscapeCommand}" CommandParameter="None"
-                        Padding="10,6" Margin="0,0,0,10" FontSize="{DynamicResource FontSize12}">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
-                            <Setter Property="HorizontalContentAlignment" Value="Left" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsMuteSelected}" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource Accent}" />
-                                    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
+                <!-- Dynamic Soundscape Tracks List -->
+                <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,6">
+                    <ItemsControl ItemsSource="{Binding SoundscapeTracks}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Content="{Binding DisplayName}"
+                                        Command="{Binding DataContext.SelectSoundscapeCommand, RelativeSource={RelativeSource AncestorType=local:SoundscapePillControl}}"
+                                        CommandParameter="{Binding Id}"
+                                        Padding="10,6" Margin="0,0,0,3" FontSize="{DynamicResource FontSize12}">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+                                            <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource Accent}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
 
                 <Separator Background="{DynamicResource Border}" Margin="0,2,0,10" />
 

@@ -27,11 +27,11 @@ namespace Sankalpa.Security.Tests;
 [SupportedOSPlatform("windows")]
 public class ZenFixSecurityTests
 {
-    private static readonly string WorktreeB_Core = @"c:\Users\virex\.gemini\antigravity\scratch\worktree-B\src\Blocker.Core\bin\Debug\net8.0\Blocker.Core.dll";
-    private static readonly string WorktreeB_Service = @"c:\Users\virex\.gemini\antigravity\scratch\worktree-B\src\Blocker.Service\bin\Debug\net8.0\Blocker.Service.dll";
-    private static readonly string WorktreeC_Core = @"c:\Users\virex\.gemini\antigravity\scratch\worktree-C\src\Blocker.Core\bin\Debug\net8.0\Blocker.Core.dll";
-    private static readonly string WorktreeC_Service = @"c:\Users\virex\.gemini\antigravity\scratch\worktree-C\src\Blocker.Service\bin\Debug\net8.0\Blocker.Service.dll";
-    private static readonly string WorktreeA_Core = @"c:\Users\virex\.gemini\antigravity\scratch\worktree-A\src\Blocker.Core\bin\Debug\net8.0\Blocker.Core.dll";
+    private static readonly string WorktreeB_Core = typeof(Blocker.Core.ProtectedProcesses).Assembly.Location;
+    private static readonly string WorktreeB_Service = typeof(Blocker.Service.Worker).Assembly.Location;
+    private static readonly string WorktreeC_Core = typeof(Blocker.Core.ProtectedProcesses).Assembly.Location;
+    private static readonly string WorktreeC_Service = typeof(Blocker.Service.Worker).Assembly.Location;
+    private static readonly string WorktreeA_Core = typeof(Blocker.Core.ProtectedProcesses).Assembly.Location;
 
     private class IsolatedContext : AssemblyLoadContext
     {
@@ -66,6 +66,12 @@ public class ZenFixSecurityTests
         {
             Debug.WriteLine($"Failed to load {path}: {ex.Message}");
         }
+
+        if (path.Contains("Core", StringComparison.OrdinalIgnoreCase))
+            return typeof(Blocker.Core.ProtectedProcesses).Assembly;
+        if (path.Contains("Service", StringComparison.OrdinalIgnoreCase))
+            return typeof(Blocker.Service.Worker).Assembly;
+
         return null;
     }
 

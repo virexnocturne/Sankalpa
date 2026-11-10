@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using Blocker.Core;
 using Clipboard = System.Windows.Clipboard;
 
 namespace Blocker.App;
@@ -13,6 +16,15 @@ public static class NotesAttachmentManager
     {
         ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"
     };
+
+    private static readonly NotesAttachmentCache<BitmapSource> _bitmapCache = new();
+
+    public static void ClearBitmapCache()
+    {
+        _bitmapCache.Clear();
+    }
+
+    public static int GetCachedBitmapCount() => _bitmapCache.Count;
 
     public static string GetAttachmentsDirectory()
     {
@@ -122,6 +134,14 @@ public static class NotesAttachmentManager
     }
 
     /// <summary>
+    /// Extracts markdown image references (![[img.png]] or ![alt](img.png)) using precompiled regexes.
+    /// </summary>
+    public static List<string> ExtractImageReferences(string? text)
+    {
+        return NoteCardCollection.ExtractImageReferences(text);
+    }
+
+    /// <summary>
     /// Resolves an attachment reference (e.g. "Pasted_Image_...png", "![[...]]", or full path) to a full on-disk path.
     /// </summary>
     public static string ResolveAttachmentPath(string attachmentRef)
@@ -189,9 +209,9 @@ public static class NotesAttachmentManager
     }
 
     /// <summary>
-    /// Safely loads a BitmapImage from the specified attachment reference without locking the underlying file on disk.
+    /// Safely loads a BitmapSource with caching and height constraint (~120 for edit thumbnails, ~480 for card images).
     /// </summary>
-    public static BitmapImage? LoadBitmapSafely(string imageRefOrPath)
+    public static BitmapSource? LoadBitmapSafely(string imageRefOrPath, int targetHeight = 0)
     {
         string fullPath = ResolveAttachmentPath(imageRefOrPath);
         if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
@@ -201,17 +221,57 @@ public static class NotesAttachmentManager
 
         try
         {
+            DateTime lastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
+            int decodeHeight = targetHeight > 0 ? targetHeight : 480;
+
+            if (_bitmapCache.TryGet(fullPath, lastWriteUtc, decodeHeight, out var cached))
+            {
+                return cached;
+            }
+
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
             bitmap.UriSource = new Uri(fullPath, UriKind.Absolute);
+            bitmap.DecodePixelHeight = decodeHeight;
             bitmap.EndInit();
             bitmap.Freeze();
+
+            _bitmapCache.Set(fullPath, lastWriteUtc, decodeHeight, bitmap);
             return bitmap;
         }
         catch
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Asynchronously decodes and freezes a BitmapSource on a background thread.
+    /// Returned BitmapSource is frozen and can be assigned to UI thread elements without thread blocking.
+    /// </summary>
+    public static Task<BitmapSource?> LoadBitmapSafelyAsync(string imageRefOrPath, int targetHeight = 0)
+    {
+        string fullPath = ResolveAttachmentPath(imageRefOrPath);
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+        {
+            return Task.FromResult<BitmapSource?>(null);
+        }
+
+        try
+        {
+            DateTime lastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
+            int decodeHeight = targetHeight > 0 ? targetHeight : 480;
+            if (_bitmapCache.TryGet(fullPath, lastWriteUtc, decodeHeight, out var cached))
+            {
+                return Task.FromResult<BitmapSource?>(cached);
+            }
+        }
+        catch
+        {
+            return Task.FromResult<BitmapSource?>(null);
+        }
+
+        return Task.Run(() => LoadBitmapSafely(imageRefOrPath, targetHeight));
     }
 }

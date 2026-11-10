@@ -27,7 +27,28 @@ public class UiSettings
     public bool ShowDnsAlerts { get; set; } = true;
     public int MeditationDurationMinutes { get; set; } = 20;
     public string MeditationLockMode { get; set; } = "Locked";
-    public string MeditationSoundscape { get; set; } = "Rain";
+    private string _meditationSoundscape = "Rain";
+    public string MeditationSoundscape
+    {
+        get => _meditationSoundscape;
+        set
+        {
+            if (string.Equals(value, "Custom", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(LastSelectedCustomSoundscapeId))
+            {
+                _meditationSoundscape = LastSelectedCustomSoundscapeId;
+            }
+            else
+            {
+                _meditationSoundscape = value ?? "Rain";
+                if (!string.IsNullOrEmpty(value) && value.StartsWith("custom:", StringComparison.OrdinalIgnoreCase))
+                {
+                    LastSelectedCustomSoundscapeId = value;
+                }
+            }
+        }
+    }
+    public static string? LastSelectedCustomSoundscapeId { get; set; }
+    public List<CustomSoundtrackMetadata> CustomSoundtracks { get; set; } = new();
     public string? MeditationPasswordHash { get; set; }
     public bool IsKeyboardShortcutsExpanded { get; set; } = false;
 
@@ -204,6 +225,15 @@ public static class UiSettingsStore
             if (string.IsNullOrWhiteSpace(parsed.AccentColor)) parsed.AccentColor = "Emerald";
             if (string.IsNullOrWhiteSpace(parsed.CardDensity)) parsed.CardDensity = "Comfortable";
             if (string.IsNullOrWhiteSpace(parsed.TimeFormat)) parsed.TimeFormat = "24h";
+
+            if (parsed.CustomSoundtracks == null)
+            {
+                parsed.CustomSoundtracks = new List<CustomSoundtrackMetadata>();
+            }
+            else
+            {
+                parsed.CustomSoundtracks.RemoveAll(item => item == null || string.IsNullOrWhiteSpace(item.Id));
+            }
 
             return parsed;
         }
