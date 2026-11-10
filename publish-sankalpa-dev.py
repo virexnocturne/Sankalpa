@@ -8,9 +8,10 @@ REPO_ROOT = r"C:\Users\virex\.gemini\antigravity\scratch\Blocker"
 DEV_DIR = r"C:\Users\virex\.gemini\antigravity\scratch\Sankalpa dev"
 DEV_LOCAL_DIR = os.path.join(REPO_ROOT, "dist", "Sankalpa dev")
 RELEASE_DIR = os.path.join(REPO_ROOT, "dist", "Sankalpa-Release")
+RELEASE_SCRATCH_DIR = r"C:\Users\virex\.gemini\antigravity\scratch\Sankalpa release"
 STAGING_DIR = os.path.join(REPO_ROOT, "dist", "staging")
 
-CANDIDATE_DIRS = [DEV_DIR, DEV_LOCAL_DIR, RELEASE_DIR]
+CANDIDATE_DIRS = [DEV_DIR, DEV_LOCAL_DIR, RELEASE_DIR, RELEASE_SCRATCH_DIR]
 TARGET_DIRS = []
 for d in CANDIDATE_DIRS:
     os.makedirs(d, exist_ok=True)
