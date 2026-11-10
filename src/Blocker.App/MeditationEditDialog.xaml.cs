@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -39,7 +42,9 @@ public partial class MeditationEditDialog : Window
     public string ScheduleEndTime => ScheduleEndTimeInput.Text.Trim();
     public int ScheduleDurationMinutes { get; set; } = 60;
     public List<DayOfWeek> ScheduleDays { get; set; } = new();
+    public string SelectedSoundscapeId { get; set; } = SoundscapeCatalog.RainId;
     public SoundscapeType SelectedSoundscape { get; set; } = SoundscapeType.Rain;
+    private string? _renamingTrackId;
 
     public MeditationEditDialog(
         int durationMinutes = 20,
@@ -51,7 +56,8 @@ public partial class MeditationEditDialog : Window
         SoundscapeType soundscape = SoundscapeType.Rain,
         string? scheduleEndTime = null,
         string? passwordHash = null,
-        IEnumerable<string>? blockedApps = null)
+        IEnumerable<string>? blockedApps = null,
+        string? soundscapeId = null)
     {
         InitializeComponent();
         WindowHelper.EnableDarkMode(this);
@@ -142,25 +148,25 @@ public partial class MeditationEditDialog : Window
         DaySat.IsChecked = days.Contains(DayOfWeek.Saturday);
         DaySun.IsChecked = days.Contains(DayOfWeek.Sunday);
 
-        SelectedSoundscape = soundscape;
-        switch (soundscape)
+        if (!string.IsNullOrWhiteSpace(soundscapeId))
         {
-            case SoundscapeType.Library:
-                SoundLibrary.IsChecked = true;
-                break;
-            case SoundscapeType.Forest:
-                SoundForest.IsChecked = true;
-                break;
-            case SoundscapeType.SingingBowls:
-                SoundBowls.IsChecked = true;
-                break;
-            case SoundscapeType.None:
-                SoundMute.IsChecked = true;
-                break;
-            default:
-                SoundRain.IsChecked = true;
-                break;
+            SelectedSoundscapeId = SoundscapeCatalog.NormalizeId(soundscapeId);
         }
+        else if (soundscape != SoundscapeType.Rain && soundscape != SoundscapeType.None)
+        {
+            SelectedSoundscapeId = SoundscapeCatalog.FromLegacyEnum(soundscape);
+        }
+        else if (soundscape == SoundscapeType.None)
+        {
+            SelectedSoundscapeId = SoundscapeCatalog.MuteId;
+        }
+        else
+        {
+            var uiSettings = UiSettingsStore.Load();
+            SelectedSoundscapeId = SoundscapeCatalog.NormalizeId(uiSettings.MeditationSoundscape);
+        }
+        SelectedSoundscape = SoundscapeCatalog.ToLegacyEnum(SelectedSoundscapeId);
+        PopulateSoundscapes();
     }
 
     public bool IsAppBlocked(string app)
@@ -574,19 +580,16 @@ public partial class MeditationEditDialog : Window
         if (DaySat.IsChecked == true) ScheduleDays.Add(DayOfWeek.Saturday);
         if (DaySun.IsChecked == true) ScheduleDays.Add(DayOfWeek.Sunday);
 
-        if (SoundLibrary.IsChecked == true) SelectedSoundscape = SoundscapeType.Library;
-        else if (SoundForest.IsChecked == true) SelectedSoundscape = SoundscapeType.Forest;
-        else if (SoundBowls.IsChecked == true) SelectedSoundscape = SoundscapeType.SingingBowls;
-        else if (SoundMute.IsChecked == true) SelectedSoundscape = SoundscapeType.None;
-        else SelectedSoundscape = SoundscapeType.Rain;
+        SelectedSoundscape = SoundscapeCatalog.ToLegacyEnum(SelectedSoundscapeId);
 
-        // Persist settings to UiSettingsStore (Bug 10)
+        // Persist settings to UiSettingsStore
         try
         {
             var uiSettings = UiSettingsStore.Load();
             uiSettings.MeditationDurationMinutes = DurationMinutes;
             uiSettings.MeditationLockMode = LockProtection.ToString();
-            uiSettings.MeditationSoundscape = SelectedSoundscape.ToString();
+            uiSettings.MeditationSoundscape = SelectedSoundscapeId;
+            UiSettings.LastSelectedCustomSoundscapeId = SelectedSoundscapeId;
             if (LockProtection == LockMode.Password && !string.IsNullOrEmpty(PasswordHash))
             {
                 uiSettings.MeditationPasswordHash = PasswordHash;
@@ -597,6 +600,416 @@ public partial class MeditationEditDialog : Window
 
         DialogResult = true;
         Close();
+    }
+
+    private void PopulateSoundscapes()
+    {
+        if (SoundscapeWrapPanel == null) return;
+        SoundscapeWrapPanel.Children.Clear();
+
+        var uiSettings = UiSettingsStore.Load();
+        var allTracks = SoundscapeCatalog.GetAllTracks(uiSettings);
+
+        foreach (var track in allTracks)
+        {
+            var rb = new RadioButton
+            {
+                Content = track.DisplayName,
+                Style = (Style)FindResource("PillRadioButton"),
+                GroupName = "SoundscapePresetGroup",
+                Margin = new Thickness(0, 0, 6, 6),
+                Tag = track.Id,
+                IsChecked = string.Equals(track.Id, SelectedSoundscapeId, StringComparison.OrdinalIgnoreCase)
+            };
+            rb.Checked += SoundscapePreset_Checked;
+            SoundscapeWrapPanel.Children.Add(rb);
+        }
+
+        // Populate Custom Tracks list
+        if (CustomTracksListPanel == null || CustomTracksHeader == null) return;
+        CustomTracksListPanel.Children.Clear();
+
+        if (uiSettings.CustomSoundtracks.Count == 0)
+        {
+            CustomTracksHeader.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            CustomTracksHeader.Visibility = Visibility.Visible;
+            foreach (var meta in uiSettings.CustomSoundtracks)
+            {
+                var rowBorder = new Border
+                {
+                    Background = (Brush)FindResource("SurfaceRaised"),
+                    BorderBrush = (Brush)FindResource("Border"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = (CornerRadius)FindResource("RadiusCard"),
+                    Padding = new Thickness(10, 6, 10, 6),
+                    Margin = new Thickness(0, 0, 0, 4)
+                };
+
+                var grid = new Grid();
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var titleBlock = new TextBlock
+                {
+                    Text = meta.DisplayName,
+                    FontFamily = (System.Windows.Media.FontFamily)FindResource("FontBody"),
+                    FontSize = (double)FindResource("FontSize12"),
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("TextPrimary"),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(titleBlock, 0);
+                grid.Children.Add(titleBlock);
+
+                var renameBtn = new Button
+                {
+                    Content = "Rename",
+                    Style = (Style)FindResource("SecondaryButton"),
+                    FontSize = (double)FindResource("FontSize12"),
+                    Padding = new Thickness(8, 3, 8, 3),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    Tag = meta.Id
+                };
+                renameBtn.Click += RenameTrack_Click;
+                Grid.SetColumn(renameBtn, 1);
+                grid.Children.Add(renameBtn);
+
+                var deleteBtn = new Button
+                {
+                    Content = "Delete",
+                    Style = (Style)FindResource("SecondaryButton"),
+                    FontSize = (double)FindResource("FontSize12"),
+                    Padding = new Thickness(8, 3, 8, 3),
+                    Tag = meta.Id
+                };
+                deleteBtn.Click += DeleteTrack_Click;
+                Grid.SetColumn(deleteBtn, 2);
+                grid.Children.Add(deleteBtn);
+
+                rowBorder.Child = grid;
+                CustomTracksListPanel.Children.Add(rowBorder);
+            }
+        }
+    }
+
+    private void SoundscapePreset_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton rb && rb.Tag is string trackId)
+        {
+            SelectedSoundscapeId = trackId;
+            SelectedSoundscape = SoundscapeCatalog.ToLegacyEnum(trackId);
+        }
+    }
+
+    private async void ImportAudio_Click(object sender, RoutedEventArgs e)
+    {
+        // HARD CONSTRAINT 1: Shell escape prevention & lockdown security
+        if (IsMeditationSessionActive())
+        {
+            ShowSoundscapeError("Importing audio is disabled while a meditation session is active.");
+            return;
+        }
+
+        HideSoundscapeError();
+
+        var ofd = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import Audio Track",
+            Filter = "Audio Files (*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac)|*.mp3;*.wav;*.m4a;*.wma;*.aac;*.flac|All Files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (ofd.ShowDialog(this) != true) return;
+
+        string sourcePath = ofd.FileName;
+
+        if (!SoundscapeCatalog.ValidateAudioFile(sourcePath, out string? valErr))
+        {
+            ShowSoundscapeError(valErr ?? "Invalid audio file.");
+            return;
+        }
+
+        string hash;
+        try
+        {
+            hash = SoundscapeCatalog.ComputeSha256(sourcePath);
+        }
+        catch (Exception ex)
+        {
+            ShowSoundscapeError($"Unable to read audio file: {ex.Message}");
+            return;
+        }
+
+        var currentSettings = UiSettingsStore.Load();
+        if (SoundscapeCatalog.IsDuplicate(hash, currentSettings, out var existingTrack))
+        {
+            ShowSoundscapeError($"Track '{existingTrack!.DisplayName}' with identical audio content already exists.");
+            SelectedSoundscapeId = existingTrack.Id;
+            PopulateSoundscapes();
+            return;
+        }
+
+        // Decodability probe with MediaPlayer
+        ShowSoundscapeError("Verifying audio stream...");
+        var probeResult = await ProbeAudioDecodableAsync(sourcePath, TimeSpan.FromSeconds(5));
+        if (!probeResult.Success)
+        {
+            ShowSoundscapeError($"Audio file could not be decoded: {probeResult.Error ?? "Unsupported or corrupted stream."}");
+            return;
+        }
+
+        // Copy file into %LOCALAPPDATA%\Sankalpa\custom_audio\ under GUID filename
+        string targetDir = SoundscapeCatalog.GetCustomAudioDirectory();
+        try
+        {
+            if (!Directory.Exists(targetDir))
+            {
+                Directory.CreateDirectory(targetDir);
+            }
+
+            string ext = Path.GetExtension(sourcePath).ToLowerInvariant();
+            string guid = Guid.NewGuid().ToString("N");
+            string targetFileName = $"{guid}{ext}";
+            string targetPath = Path.Combine(targetDir, targetFileName);
+
+            await Task.Run(() => File.Copy(sourcePath, targetPath, overwrite: false));
+
+            string displayName = SoundscapeCatalog.SanitizeDisplayName(Path.GetFileNameWithoutExtension(sourcePath));
+            var fileInfo = new FileInfo(targetPath);
+
+            var newTrack = new CustomSoundtrackMetadata
+            {
+                Id = $"{SoundscapeCatalog.CustomPrefix}{guid}",
+                DisplayName = displayName,
+                FileName = targetFileName,
+                VolumeTrim = 1.0,
+                DurationSeconds = probeResult.Duration?.TotalSeconds,
+                FileSizeBytes = fileInfo.Length,
+                Sha256Hash = hash,
+                OriginalFileName = Path.GetFileName(sourcePath),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            currentSettings.CustomSoundtracks.Add(newTrack);
+            currentSettings.MeditationSoundscape = newTrack.Id;
+            UiSettingsStore.Save(currentSettings);
+            UiSettings.LastSelectedCustomSoundscapeId = newTrack.Id;
+
+            SelectedSoundscapeId = newTrack.Id;
+            SelectedSoundscape = SoundscapeType.Custom;
+
+            HideSoundscapeError();
+            PopulateSoundscapes();
+        }
+        catch (Exception ex)
+        {
+            ShowSoundscapeError($"Failed to import audio track: {ex.Message}");
+        }
+    }
+
+    private void RenameTrack_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsMeditationSessionActive()) return;
+
+        if (sender is Button btn && btn.Tag is string trackId)
+        {
+            var uiSettings = UiSettingsStore.Load();
+            var meta = uiSettings.CustomSoundtracks.FirstOrDefault(t => t.Id == trackId);
+            if (meta == null) return;
+
+            _renamingTrackId = trackId;
+            if (RenameTrackInput != null && RenameTrackPanel != null)
+            {
+                RenameTrackInput.Text = meta.DisplayName;
+                RenameTrackPanel.Visibility = Visibility.Visible;
+                RenameTrackInput.Focus();
+                RenameTrackInput.SelectAll();
+            }
+        }
+    }
+
+    private void SaveRenameTrack_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_renamingTrackId) || RenameTrackInput == null) return;
+
+        string clean = SoundscapeCatalog.SanitizeDisplayName(RenameTrackInput.Text);
+        if (string.IsNullOrWhiteSpace(clean)) return;
+
+        var uiSettings = UiSettingsStore.Load();
+        var meta = uiSettings.CustomSoundtracks.FirstOrDefault(t => t.Id == _renamingTrackId);
+        if (meta != null)
+        {
+            meta.DisplayName = clean;
+            UiSettingsStore.Save(uiSettings);
+        }
+
+        if (RenameTrackPanel != null) RenameTrackPanel.Visibility = Visibility.Collapsed;
+        _renamingTrackId = null;
+        PopulateSoundscapes();
+    }
+
+    private void CancelRenameTrack_Click(object sender, RoutedEventArgs e)
+    {
+        if (RenameTrackPanel != null) RenameTrackPanel.Visibility = Visibility.Collapsed;
+        _renamingTrackId = null;
+    }
+
+    private void DeleteTrack_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsMeditationSessionActive()) return;
+
+        if (sender is Button btn && btn.Tag is string trackId)
+        {
+            var uiSettings = UiSettingsStore.Load();
+            var meta = uiSettings.CustomSoundtracks.FirstOrDefault(t => t.Id == trackId);
+            if (meta == null) return;
+
+            var result = System.Windows.MessageBox.Show(
+                this,
+                $"Are you sure you want to remove '{meta.DisplayName}'?",
+                "Delete Soundtrack",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            uiSettings.CustomSoundtracks.RemoveAll(t => t.Id == trackId);
+
+            if (string.Equals(SelectedSoundscapeId, trackId, StringComparison.OrdinalIgnoreCase))
+            {
+                SelectedSoundscapeId = SoundscapeCatalog.RainId;
+                SelectedSoundscape = SoundscapeType.Rain;
+                uiSettings.MeditationSoundscape = SoundscapeCatalog.RainId;
+            }
+
+            UiSettingsStore.Save(uiSettings);
+
+            // Delete physical file from disk defensively
+            try
+            {
+                string dir = SoundscapeCatalog.GetCustomAudioDirectory();
+                string filePath = Path.Combine(dir, meta.FileName);
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                }
+            }
+            catch { }
+
+            PopulateSoundscapes();
+        }
+    }
+
+    private void OpenAudioFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsMeditationSessionActive()) return;
+
+        try
+        {
+            string dir = SoundscapeCatalog.GetCustomAudioDirectory();
+            if (!Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = dir,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowSoundscapeError($"Could not open audio directory: {ex.Message}");
+        }
+    }
+
+    private static async Task<(bool Success, TimeSpan? Duration, string? Error)> ProbeAudioDecodableAsync(string filePath, TimeSpan timeout)
+    {
+        var tcs = new TaskCompletionSource<(bool Success, TimeSpan? Duration, string? Error)>();
+        var player = new MediaPlayer();
+
+        void Cleanup()
+        {
+            try
+            {
+                player.MediaOpened -= OnOpened;
+                player.MediaFailed -= OnFailed;
+                player.Close();
+            }
+            catch { }
+        }
+
+        void OnOpened(object? sender, EventArgs e)
+        {
+            TimeSpan? dur = player.NaturalDuration.HasTimeSpan ? player.NaturalDuration.TimeSpan : null;
+            Cleanup();
+            tcs.TrySetResult((true, dur, null));
+        }
+
+        void OnFailed(object? sender, ExceptionEventArgs e)
+        {
+            string msg = e.ErrorException?.Message ?? "Decoder failed";
+            Cleanup();
+            tcs.TrySetResult((false, null, msg));
+        }
+
+        player.MediaOpened += OnOpened;
+        player.MediaFailed += OnFailed;
+
+        try
+        {
+            player.Open(new Uri(filePath, UriKind.Absolute));
+        }
+        catch (Exception ex)
+        {
+            Cleanup();
+            return (false, null, ex.Message);
+        }
+
+        using var cts = new CancellationTokenSource(timeout);
+        cts.Token.Register(() =>
+        {
+            Cleanup();
+            tcs.TrySetResult((false, null, "Decoder probe timed out."));
+        });
+
+        return await tcs.Task;
+    }
+
+    public static bool IsMeditationSessionActive()
+    {
+        try
+        {
+            if (Application.Current?.MainWindow?.DataContext is MainViewModel mainVm)
+            {
+                if (mainVm.Meditation?.IsActive == true)
+                {
+                    return true;
+                }
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    private void ShowSoundscapeError(string message)
+    {
+        if (SoundscapeStatusMessage == null) return;
+        SoundscapeStatusMessage.Text = message;
+        SoundscapeStatusMessage.Visibility = Visibility.Visible;
+    }
+
+    private void HideSoundscapeError()
+    {
+        if (SoundscapeStatusMessage == null) return;
+        SoundscapeStatusMessage.Visibility = Visibility.Collapsed;
+        SoundscapeStatusMessage.Text = string.Empty;
     }
 
     public static string ComputeSha256Hash(string rawData)

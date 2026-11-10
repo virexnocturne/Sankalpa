@@ -314,20 +314,46 @@
                     <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
                             CornerRadius="{DynamicResource RadiusCard}" Padding="14">
                         <StackPanel>
-                            <TextBlock Text="DEFAULT SOUNDSCAPE" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
-                                       Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,8" />
-                            <WrapPanel>
-                                <RadioButton x:Name="SoundRain" Content="🌧 Rain" Style="{StaticResource PillRadioButton}"
-                                             GroupName="SoundscapePreset" Margin="0,0,6,6" IsChecked="True" Tag="Rain" />
-                                <RadioButton x:Name="SoundLibrary" Content="📚 Library" Style="{StaticResource PillRadioButton}"
-                                             GroupName="SoundscapePreset" Margin="0,0,6,6" Tag="Library" />
-                                <RadioButton x:Name="SoundForest" Content="🌲 Forest" Style="{StaticResource PillRadioButton}"
-                                             GroupName="SoundscapePreset" Margin="0,0,6,6" Tag="Forest" />
-                                <RadioButton x:Name="SoundBowls" Content="🥣 Singing Bowls" Style="{StaticResource PillRadioButton}"
-                                             GroupName="SoundscapePreset" Margin="0,0,6,6" Tag="SingingBowls" />
-                                <RadioButton x:Name="SoundMute" Content="🔇 Mute" Style="{StaticResource PillRadioButton}"
-                                             GroupName="SoundscapePreset" Margin="0,0,0,6" Tag="None" />
-                            </WrapPanel>
+                            <Grid Margin="0,0,0,8">
+                                <TextBlock Text="DEFAULT SOUNDSCAPE" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                                <Button Content="Open audio folder" Style="{StaticResource SecondaryButton}"
+                                        FontSize="{DynamicResource FontSize12}" Padding="8,3"
+                                        HorizontalAlignment="Right" Click="OpenAudioFolder_Click" />
+                            </Grid>
+
+                            <!-- Soundscape Pills WrapPanel -->
+                            <WrapPanel x:Name="SoundscapeWrapPanel" Margin="0,0,0,8" />
+
+                            <!-- Custom Audio Tracks Management -->
+                            <StackPanel x:Name="CustomTracksSection" Margin="0,4,0,0">
+                                <TextBlock x:Name="CustomTracksHeader" Text="CUSTOM AUDIO TRACKS" FontWeight="Bold"
+                                           FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}"
+                                           Margin="0,4,0,6" Visibility="Collapsed" />
+
+                                <StackPanel x:Name="CustomTracksListPanel" Margin="0,0,0,8" />
+
+                                <!-- Inline Rename Panel -->
+                                <Grid x:Name="RenameTrackPanel" Visibility="Collapsed" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="RenameTrackInput" Height="30" Padding="8,4" VerticalContentAlignment="Center" Margin="0,0,6,0" />
+                                    <Button Grid.Column="1" Content="Save" Style="{StaticResource PrimaryButton}" Padding="10,4" Margin="0,0,4,0" Click="SaveRenameTrack_Click" />
+                                    <Button Grid.Column="2" Content="Cancel" Style="{StaticResource SecondaryButton}" Padding="10,4" Click="CancelRenameTrack_Click" />
+                                </Grid>
+
+                                <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button x:Name="ImportAudioButton" Content="Import audio track" Style="{StaticResource SecondaryButton}"
+                                            FontSize="{DynamicResource FontSize12}" Padding="10,5" Click="ImportAudio_Click" Margin="0,0,8,4" />
+                                </WrapPanel>
+
+                                <TextBlock x:Name="SoundscapeStatusMessage" Foreground="{DynamicResource Danger}"
+                                           FontSize="{DynamicResource FontSize12}" Margin="0,4,0,0"
+                                           Visibility="Collapsed" TextWrapping="Wrap" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
