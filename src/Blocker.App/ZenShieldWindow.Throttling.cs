@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows.Threading;
 using Blocker.Core;
 
@@ -16,7 +17,7 @@ public partial class ZenShieldWindow
         _throttlingInitialized = true;
 
         _backgroundThrottler = BackgroundAppThrottler.Default;
-        _backgroundThrottler.StartSession(_allowedAppProcessNames, _allowedAppRoots);
+        _backgroundThrottler.StartSession(_allowedAppProcessNames?.ToList(), _allowedAppRoots);
 
         _throttlerTickTimer = new DispatcherTimer
         {
