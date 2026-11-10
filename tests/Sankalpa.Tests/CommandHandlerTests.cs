@@ -2115,7 +2115,31 @@ public class CommandHandlerTests
     }
 
     [Fact]
-    public void DeleteProfile_WithTypingChallengeOrDelayedUnlock_EnforcesChallenge()
+    public void DeleteProfile_DisabledPasswordProfile_DeletedWithoutCredentials()
+    {
+        var store = new FakeBlockStore();
+        PasswordSecurity.HashPassword("secret123", out string salt, out string hash);
+        store.SaveProfile(new Profile
+        {
+            Name = "PwdDel",
+            Enabled = false,
+            LockMode = LockMode.Password,
+            PasswordSalt = salt,
+            PasswordHash = hash
+        });
+
+        var delReq = new Request
+        {
+            Command = CommandNames.DeleteProfile,
+            Args = new() { ["name"] = "PwdDel" }
+        };
+        var delResp = Handle(delReq, store);
+        Assert.True(delResp.Ok);
+        Assert.Null(store.GetProfileByName("PwdDel"));
+    }
+
+    [Fact]
+    public void DeleteProfile_DisabledTypingChallengeProfile_DeletedWithoutCredentials()
     {
         var store = new FakeBlockStore();
         store.SaveProfile(new Profile
@@ -2125,44 +2149,171 @@ public class CommandHandlerTests
             LockMode = LockMode.TypingChallenge
         });
 
-        // 1. Delete without challenge -> Refused
-        var delReq1 = new Request
+        var delReq = new Request
         {
             Command = CommandNames.DeleteProfile,
             Args = new() { ["name"] = "TypingDel" }
         };
-        var delResp1 = Handle(delReq1, store);
-        Assert.False(delResp1.Ok);
-        Assert.Contains("typing challenge", delResp1.Error);
-
-        // Request challenge and delete with correct challenge
-        var ch = Handle(new Request { Command = CommandNames.GetUnlockChallenge, Args = new() { ["name"] = "TypingDel" } }, store);
-        var delReq2 = new Request
-        {
-            Command = CommandNames.DeleteProfile,
-            Args = new() { ["name"] = "TypingDel", ["unlock_text"] = ch.Data! }
-        };
-        var delResp2 = Handle(delReq2, store);
-        Assert.True(delResp2.Ok);
+        var delResp = Handle(delReq, store);
+        Assert.True(delResp.Ok);
         Assert.Null(store.GetProfileByName("TypingDel"));
+    }
 
-        // 2. Delayed unlock profile delete without token
+    [Fact]
+    public void DeleteProfile_DisabledDelayedUnlockProfile_DeletedWithoutToken()
+    {
+        var store = new FakeBlockStore();
         store.SaveProfile(new Profile
         {
             Name = "DelayDel",
             Enabled = false,
             LockMode = LockMode.DelayedUnlock,
-            DelayedUnlockMinutes = 15
+            DelayedUnlockMinutes = 30
         });
 
-        var delReq3 = new Request
+        var delReq = new Request
         {
             Command = CommandNames.DeleteProfile,
             Args = new() { ["name"] = "DelayDel" }
         };
-        var delResp3 = Handle(delReq3, store);
-        Assert.False(delResp3.Ok);
-        Assert.Contains("delayed unlock timer", delResp3.Error);
+        var delResp = Handle(delReq, store);
+        Assert.True(delResp.Ok);
+        Assert.Null(store.GetProfileByName("DelayDel"));
+    }
+
+    [Fact]
+    public void DeleteProfile_EnabledProtectedProfiles_CannotBeDeleted()
+    {
+        var store = new FakeBlockStore();
+        PasswordSecurity.HashPassword("secret123", out string salt, out string hash);
+
+        var pwdProfile = store.SaveProfile(new Profile
+        {
+            Name = "EnabledPwd",
+            Enabled = true,
+            LockMode = LockMode.Password,
+            PasswordSalt = salt,
+            PasswordHash = hash
+        });
+        var delayProfile = store.SaveProfile(new Profile
+        {
+            Name = "EnabledDelay",
+            Enabled = true,
+            LockMode = LockMode.DelayedUnlock,
+            DelayedUnlockMinutes = 15
+        });
+        var typingProfile = store.SaveProfile(new Profile
+        {
+            Name = "EnabledTyping",
+            Enabled = true,
+            LockMode = LockMode.TypingChallenge
+        });
+
+        foreach (var name in new[] { "EnabledPwd", "EnabledDelay", "EnabledTyping" })
+        {
+            var delReq = new Request
+            {
+                Command = CommandNames.DeleteProfile,
+                Args = new() { ["name"] = name }
+            };
+            var delResp = Handle(delReq, store);
+            Assert.False(delResp.Ok);
+            Assert.Contains("while it is turned On", delResp.Error);
+            Assert.NotNull(store.GetProfileByName(name));
+        }
+    }
+
+    [Fact]
+    public void DeleteProfile_ActiveLockedSession_CannotBeDeleted()
+    {
+        var store = new FakeBlockStore();
+        var profile = store.SaveProfile(new Profile
+        {
+            Name = "LockedSessionProfile",
+            Enabled = false
+        });
+        store.StartSession(profile.Id, 3600, locked: true);
+
+        var delReq = new Request
+        {
+            Command = CommandNames.DeleteProfile,
+            Args = new() { ["name"] = "LockedSessionProfile" }
+        };
+        var delResp = Handle(delReq, store);
+        Assert.False(delResp.Ok);
+        Assert.Contains("while an active LOCKED session is using it", delResp.Error);
+        Assert.NotNull(store.GetProfileByName("LockedSessionProfile"));
+    }
+
+    [Fact]
+    public void DeleteProfile_ActiveUnlockedSession_CannotBeDeleted()
+    {
+        var store = new FakeBlockStore();
+        var profile = store.SaveProfile(new Profile
+        {
+            Name = "UnlockedSessionProfile",
+            Enabled = false
+        });
+        store.StartSession(profile.Id, 1800, locked: false);
+
+        var delReq = new Request
+        {
+            Command = CommandNames.DeleteProfile,
+            Args = new() { ["name"] = "UnlockedSessionProfile" }
+        };
+        var delResp = Handle(delReq, store);
+        Assert.False(delResp.Ok);
+        Assert.Contains("while an active session is running for it", delResp.Error);
+        Assert.NotNull(store.GetProfileByName("UnlockedSessionProfile"));
+    }
+
+    [Fact]
+    public void DeleteProfile_DefaultProfile_CannotBeDeleted()
+    {
+        var store = new FakeBlockStore();
+        store.SaveProfile(new Profile
+        {
+            Name = "Default",
+            Enabled = false
+        });
+
+        var delReq = new Request
+        {
+            Command = CommandNames.DeleteProfile,
+            Args = new() { ["name"] = "Default" }
+        };
+        var delResp = Handle(delReq, store);
+        Assert.False(delResp.Ok);
+        Assert.Contains("The 'Default' profile cannot be deleted", delResp.Error);
+        Assert.NotNull(store.GetProfileByName("Default"));
+    }
+
+    [Fact]
+    public void DeleteProfile_MissingProfile_ReturnsAppropriateFailure()
+    {
+        var store = new FakeBlockStore();
+        var delReq = new Request
+        {
+            Command = CommandNames.DeleteProfile,
+            Args = new() { ["name"] = "NonExistentProfile" }
+        };
+        var delResp = Handle(delReq, store);
+        Assert.False(delResp.Ok);
+        Assert.Contains("not found", delResp.Error);
+    }
+
+    [Fact]
+    public void DeleteProfile_MissingNameArg_ReturnsAppropriateFailure()
+    {
+        var store = new FakeBlockStore();
+        var delReq = new Request
+        {
+            Command = CommandNames.DeleteProfile,
+            Args = new() { ["name"] = "   " }
+        };
+        var delResp = Handle(delReq, store);
+        Assert.False(delResp.Ok);
+        Assert.Equal("Missing required argument: 'name'.", delResp.Error);
     }
 
     [Fact]
