@@ -267,6 +267,73 @@ public class CustomSongsAndSoundscapeTests
     }
 
     [Fact]
+    public void CustomSongPlayback_MatchesBothGuidFormats_WithoutFallingBackToRain()
+    {
+        string tempAudioDir = Path.Combine(Path.GetTempPath(), $"audio_dir_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempAudioDir);
+
+        try
+        {
+            var rawGuid = Guid.NewGuid();
+            string guidN = rawGuid.ToString("N");
+            string guidD = rawGuid.ToString("D");
+            string testFileName = $"{guidN}.mp3";
+            string testFilePath = Path.Combine(tempAudioDir, testFileName);
+            File.WriteAllBytes(testFilePath, new byte[64]); // create valid dummy file
+
+            // Case 1: Saved in settings using N format (no hyphens)
+            var settingsWithN = new UiSettings
+            {
+                CustomSoundtracks = new List<CustomSoundtrackMetadata>
+                {
+                    new($"{SoundscapeCatalog.CustomPrefix}{guidN}", "Test Track N", testFileName)
+                }
+            };
+
+            // Query using D format (canonical with hyphens)
+            var trackFromDQuery = SoundscapeCatalog.FindTrack($"{SoundscapeCatalog.CustomPrefix}{guidD}", settingsWithN, tempAudioDir);
+            Assert.NotNull(trackFromDQuery);
+            Assert.NotEqual(SoundscapeCatalog.RainId, trackFromDQuery.Id);
+            Assert.Equal(SoundscapeCatalog.NormalizeId($"{SoundscapeCatalog.CustomPrefix}{guidD}"), trackFromDQuery.Id);
+            Assert.Equal("Test Track N", trackFromDQuery.DisplayName);
+            Assert.Equal(testFilePath, trackFromDQuery.FilePath);
+
+            // Case 2: Saved in settings using D format (with hyphens)
+            var settingsWithD = new UiSettings
+            {
+                CustomSoundtracks = new List<CustomSoundtrackMetadata>
+                {
+                    new($"{SoundscapeCatalog.CustomPrefix}{guidD}", "Test Track D", testFileName)
+                }
+            };
+
+            // Query using N format (without hyphens)
+            var trackFromNQuery = SoundscapeCatalog.FindTrack($"{SoundscapeCatalog.CustomPrefix}{guidN}", settingsWithD, tempAudioDir);
+            Assert.NotNull(trackFromNQuery);
+            Assert.NotEqual(SoundscapeCatalog.RainId, trackFromNQuery.Id);
+            Assert.Equal(SoundscapeCatalog.NormalizeId($"{SoundscapeCatalog.CustomPrefix}{guidN}"), trackFromNQuery.Id);
+            Assert.Equal("Test Track D", trackFromNQuery.DisplayName);
+            Assert.Equal(testFilePath, trackFromNQuery.FilePath);
+        }
+        finally
+        {
+            if (Directory.Exists(tempAudioDir)) Directory.Delete(tempAudioDir, true);
+        }
+    }
+
+    [Fact]
+    public void WindowsNotificationHelper_EnableNotificationInWindows_RepairsRegistryKey()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        bool enabled = WindowsNotificationHelper.EnableNotificationInWindows();
+        Assert.True(enabled);
+
+        bool isDisabled = WindowsNotificationHelper.IsNotificationDisabledInWindows();
+        Assert.False(isDisabled);
+    }
+
+    [Fact]
     public void PathTraversalProtection_StripsDirectoriesFromCustomFileName()
     {
         string tempAudioDir = Path.Combine(Path.GetTempPath(), $"audio_dir_{Guid.NewGuid():N}");

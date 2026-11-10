@@ -676,11 +676,12 @@ public partial class MeditationEditDialog : Window
                 Grid.SetColumn(rb, 0);
                 grid.Children.Add(rb);
 
+                double actionFontSize = TryFindResource("FontSize11") is double fs ? fs : 12.0;
                 var renameBtn = new Button
                 {
                     Content = "Rename",
                     Style = (Style)FindResource("SecondaryButton"),
-                    FontSize = (double)FindResource("FontSize11"),
+                    FontSize = actionFontSize,
                     Padding = new Thickness(8, 2, 8, 2),
                     Margin = new Thickness(0, 0, 6, 0),
                     Tag = meta.Id
@@ -693,7 +694,7 @@ public partial class MeditationEditDialog : Window
                 {
                     Content = "Delete",
                     Style = (Style)FindResource("SecondaryButton"),
-                    FontSize = (double)FindResource("FontSize11"),
+                    FontSize = actionFontSize,
                     Padding = new Thickness(8, 2, 8, 2),
                     Tag = meta.Id
                 };

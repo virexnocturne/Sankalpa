@@ -347,8 +347,8 @@ public static class AudioImportService
 
             // 4. Copy file with GUID filename & rollback on error
             string ext = Path.GetExtension(sourcePath).ToLowerInvariant();
-            string guid = Guid.NewGuid().ToString("N");
-            string targetFileName = $"{guid}{ext}";
+            var trackGuid = Guid.NewGuid();
+            string targetFileName = $"{trackGuid:N}{ext}";
             string targetPath = Path.Combine(targetDir, targetFileName);
 
             try
@@ -357,10 +357,11 @@ public static class AudioImportService
 
                 var fileInfo = new FileInfo(targetPath);
                 string displayName = SoundscapeCatalog.SanitizeDisplayName(Path.GetFileNameWithoutExtension(sourcePath));
+                string canonicalTrackId = SoundscapeCatalog.NormalizeId($"{SoundscapeCatalog.CustomPrefix}{trackGuid:D}");
 
                 var newTrack = new CustomSoundtrackMetadata
                 {
-                    Id = $"{SoundscapeCatalog.CustomPrefix}{guid}",
+                    Id = canonicalTrackId,
                     DisplayName = displayName,
                     FileName = targetFileName,
                     VolumeTrim = 1.0,

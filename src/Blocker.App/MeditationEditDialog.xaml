@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:Blocker.App"
         local:WindowHelper.UseThemeTitleBar="True"
         Title="Configure Meditation &amp; Lockdown"
-        Width="520"
+        Width="560"
         SizeToContent="Height"
         MaxHeight="720"
         WindowStartupLocation="CenterOwner"
@@ -327,25 +327,29 @@
                                 <StackPanel>
                                     <!-- Custom Audio Toolbar / Header -->
                                     <Grid Margin="0,0,0,8">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="CUSTOM TRACKS" FontWeight="SemiBold" FontSize="{DynamicResource FontSize11}"
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                                            <TextBlock Text="CUSTOM TRACKS" FontWeight="SemiBold" FontSize="{DynamicResource FontSize12}"
                                                        Foreground="{DynamicResource TextDisabled}" VerticalAlignment="Center" />
-                                            <TextBlock x:Name="CustomTracksCountLabel" Text="" FontWeight="Normal" FontSize="{DynamicResource FontSize11}"
+                                            <TextBlock x:Name="CustomTracksCountLabel" Text="" FontWeight="Normal" FontSize="{DynamicResource FontSize12}"
                                                        Foreground="{DynamicResource TextDisabled}" VerticalAlignment="Center" Margin="4,0,0,0" />
                                         </StackPanel>
 
                                         <!-- Grouped Audio Management Actions -->
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
                                             <Button x:Name="ImportAudioButton" Content="Import Audio" Style="{StaticResource SecondaryButton}"
-                                                    FontSize="{DynamicResource FontSize11}" Padding="8,3" Margin="0,0,5,0" Click="ImportAudio_Click"
+                                                    FontSize="{DynamicResource FontSize11}" Padding="8,3" Margin="0,0,5,2" Click="ImportAudio_Click"
                                                     ToolTip="Import one or more audio files (MP3, WAV, FLAC, M4A...)" />
                                             <Button x:Name="ImportPlaylistButton" Content="Import Playlist" Style="{StaticResource SecondaryButton}"
-                                                    FontSize="{DynamicResource FontSize11}" Padding="8,3" Margin="0,0,5,0" Click="ImportPlaylist_Click"
+                                                    FontSize="{DynamicResource FontSize11}" Padding="8,3" Margin="0,0,5,2" Click="ImportPlaylist_Click"
                                                     ToolTip="Import .m3u or .m3u8 playlist" />
                                             <Button x:Name="OpenFolderButton" Content="Open Folder" Style="{StaticResource SecondaryButton}"
-                                                    FontSize="{DynamicResource FontSize11}" Padding="8,3" Click="OpenAudioFolder_Click"
+                                                    FontSize="{DynamicResource FontSize11}" Padding="8,3" Margin="0,0,0,2" Click="OpenAudioFolder_Click"
                                                     ToolTip="Open Sankalpa custom audio folder" />
-                                        </StackPanel>
+                                        </WrapPanel>
                                     </Grid>
 
                                     <!-- Custom Tracks List Panel -->
@@ -353,8 +357,8 @@
 
                                     <!-- Empty State Message when no custom tracks exist -->
                                     <TextBlock x:Name="EmptyCustomTracksMessage" Text="No custom audio tracks imported yet. Import individual tracks or M3U playlists."
-                                               FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextDisabled}"
-                                               HorizontalAlignment="Center" Margin="0,4,0,4" Visibility="Collapsed" />
+                                               FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextDisabled}"
+                                               TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Stretch" Margin="0,6,0,6" Visibility="Collapsed" />
 
                                     <!-- Inline Rename Panel -->
                                     <Grid x:Name="RenameTrackPanel" Visibility="Collapsed" Margin="0,6,0,4">

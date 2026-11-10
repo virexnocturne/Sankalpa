@@ -588,7 +588,14 @@ public partial class MeditationViewModel
                 SelectTrack(soundName);
             }
         });
-        ToggleSoundscapeMenuCommand = new RelayCommand(() => IsSoundscapeMenuOpen = !IsSoundscapeMenuOpen);
+        ToggleSoundscapeMenuCommand = new RelayCommand(() =>
+        {
+            IsSoundscapeMenuOpen = !IsSoundscapeMenuOpen;
+            if (IsSoundscapeMenuOpen && IsNotesDrawerOpen)
+            {
+                IsNotesDrawerOpen = false;
+            }
+        });
         ImportAudioCommand = new RelayCommand(async () => await ImportAudioActionAsync());
         ImportPlaylistCommand = new RelayCommand(async () => await ImportPlaylistActionAsync());
         OpenAudioFolderCommand = new RelayCommand(OpenAudioFolderAction);

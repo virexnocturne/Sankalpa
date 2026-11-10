@@ -124,9 +124,10 @@ public static class SoundscapeCatalog
                 // Path traversal defense: ensure FileName has no directory separators
                 string safeFileName = Path.GetFileName(meta.FileName);
                 string resolvedPath = Path.Combine(dir, safeFileName);
+                string canonicalId = NormalizeId(meta.Id);
 
                 tracks.Add(new SoundscapeItem(
-                    id: meta.Id,
+                    id: canonicalId,
                     displayName: string.IsNullOrWhiteSpace(meta.DisplayName) ? "Custom Track" : meta.DisplayName,
                     iconGlyph: "music",
                     isBuiltIn: false,
@@ -150,7 +151,7 @@ public static class SoundscapeCatalog
         string normalized = NormalizeId(soundscapeId);
         var allTracks = GetAllTracks(settings, customAudioDir);
 
-        var match = allTracks.FirstOrDefault(t => string.Equals(t.Id, normalized, StringComparison.OrdinalIgnoreCase));
+        var match = allTracks.FirstOrDefault(t => string.Equals(NormalizeId(t.Id), normalized, StringComparison.OrdinalIgnoreCase));
         if (match != null)
         {
             // If it's a custom track and the file is missing on disk, fallback gracefully to Rain
