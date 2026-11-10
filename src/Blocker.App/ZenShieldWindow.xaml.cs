@@ -331,8 +331,11 @@ public partial class ZenShieldWindow : Window
     private string? _switchingTo;
     private DateTime _graceUntilUtc;
     private readonly Dictionary<string, DateTime> _recentLaunchUtc = new(StringComparer.OrdinalIgnoreCase);
-    private const int DiscoveryTimeoutMs = 30_000;
+    private const int DiscoveryTimeoutMs = ZenLaunchConstants.MaxDiscoveryTimeoutMs;
     private DateTime _lastFallbackScanUtc = DateTime.MinValue;
+    private readonly ZenLaunchStateMachine _stateMachine = new();
+
+    public ZenLaunchStateMachine LaunchStateMachine => _stateMachine;
 
     private bool _isSnippingActive;
 
@@ -942,26 +945,18 @@ public partial class ZenShieldWindow : Window
     /// </summary>
     public static IntPtr FindMainWindowForProcess(string processName, int? targetPid = null)
     {
+        return FindMainWindowForProcess(processName, null, targetPid);
+    }
+
+    public static IntPtr FindMainWindowForProcess(string processName, IReadOnlyDictionary<string, string>? allowedRoots, int? targetPid = null)
+    {
         string normTarget = ProcessMatcher.NormalizeProcessName(processName);
+        if (string.IsNullOrEmpty(normTarget)) return IntPtr.Zero;
+
         IntPtr bestHwnd = IntPtr.Zero;
         long bestArea = 0;
 
         var candidatePids = new HashSet<uint>();
-        try
-        {
-            if (!string.IsNullOrEmpty(normTarget))
-            {
-                foreach (var p in Process.GetProcessesByName(normTarget))
-                {
-                    candidatePids.Add((uint)p.Id);
-                    p.Dispose();
-                }
-            }
-        }
-        catch { }
-
-        if (targetPid is int t && t > 0) candidatePids.Add((uint)t);
-        if (candidatePids.Count == 0) return IntPtr.Zero; // nothing running -> no window can exist
 
         try
         {
@@ -970,16 +965,13 @@ public partial class ZenShieldWindow : Window
                 if (!IsWindow(hWnd) || !IsWindowVisible(hWnd))
                     return true;
 
-                GetWindowThreadProcessId(hWnd, out uint pid);
-                if (pid == 0 || !candidatePids.Contains(pid))
-                    return true;
-
                 // Exclude known dummy / indicator / tool / IME classes
                 var sbClass = new System.Text.StringBuilder(128);
                 GetClassName(hWnd, sbClass, sbClass.Capacity);
                 string cls = sbClass.ToString();
 
                 if (cls.StartsWith("UAC_", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cls, "UAC_InputIndicatorOverlayWnd", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(cls, "UAC Input Indicator", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(cls, "Touch Tooltip Window", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(cls, "CicLoaderWndClass", StringComparison.OrdinalIgnoreCase) ||
@@ -1015,27 +1007,56 @@ public partial class ZenShieldWindow : Window
                 GetWindowText(hWnd, sbTitle, sbTitle.Capacity);
                 bool hasTitle = sbTitle.Length > 0;
 
-                if ((w >= 100 && h >= 100) || (isIconic && hasTitle))
+                if (!((w >= ZenLaunchConstants.MinWindowDimension && h >= ZenLaunchConstants.MinWindowDimension) || (isIconic && hasTitle)))
                 {
-                    long area = (long)Math.Max(w, 100) * Math.Max(h, 100);
+                    return true;
+                }
 
-                    // Prefer windows with actual titles, or largest area
-                    if (hasTitle && area > bestArea)
+                GetWindowThreadProcessId(hWnd, out uint pid);
+                if (pid <= 4)
+                    return true;
+
+                string? procName = GetProcessNameCached(pid);
+                if (string.IsNullOrEmpty(procName))
+                    return true;
+
+                string normProc = ProcessMatcher.NormalizeProcessName(procName);
+                if (!string.Equals(normProc, normTarget, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (allowedRoots != null && allowedRoots.TryGetValue(normTarget, out var rootDir) && !string.IsNullOrWhiteSpace(rootDir))
+                {
+                    string? imagePath = GetProcessImagePath((int)pid);
+                    if (string.IsNullOrWhiteSpace(imagePath) || !ProtectedProcesses.IsPathInsideDirectory(imagePath, rootDir))
                     {
-                        bestArea = area;
-                        bestHwnd = hWnd;
+                        return true;
                     }
-                    else if (bestHwnd == IntPtr.Zero && area > bestArea)
-                    {
-                        bestArea = area;
-                        bestHwnd = hWnd;
-                    }
+                }
+
+                candidatePids.Add(pid);
+
+                long area = (long)Math.Max(w, ZenLaunchConstants.MinWindowDimension) * Math.Max(h, ZenLaunchConstants.MinWindowDimension);
+
+                // Prefer windows with actual titles, or largest area
+                if (hasTitle && area > bestArea)
+                {
+                    bestArea = area;
+                    bestHwnd = hWnd;
+                }
+                else if (bestHwnd == IntPtr.Zero && area > bestArea)
+                {
+                    bestArea = area;
+                    bestHwnd = hWnd;
                 }
 
                 return true;
             }, IntPtr.Zero);
         }
         catch { }
+
+        if (candidatePids.Count == 0) return IntPtr.Zero; // nothing running -> no window can exist
 
         return bestHwnd;
     }
@@ -1059,20 +1080,47 @@ public partial class ZenShieldWindow : Window
             ? app.ExecutableName[..^4]
             : app.ExecutableName;
 
+        // Debounce rapid accidental double-clicks within SettleDelayMs (300ms) for the same app
         if (_switchCts != null && name.Equals(_switchingTo, StringComparison.OrdinalIgnoreCase))
         {
-            return; // ignore repeat click on same app
+            if (_stateMachine.CurrentState == ZenLaunchState.Launching &&
+                (DateTime.UtcNow - _stateMachine.StateEnteredUtc).TotalMilliseconds < ZenLaunchConstants.SettleDelayMs)
+            {
+                return;
+            }
         }
 
         _switchCts?.Cancel();
 
         var cts = _switchCts = new CancellationTokenSource();
         _switchingTo = name;
-        _graceUntilUtc = DateTime.UtcNow.AddSeconds(4);
+        _graceUntilUtc = DateTime.UtcNow.Add(ZenLaunchConstants.LaunchGracePeriod);
         _isAllowedAppMode = true;
         _unauthorizedBreachCount = 0;
 
         ShowMiniHud();
+
+        // 1. Check if a USABLE window already exists (Warm switch)
+        IntPtr existingHwnd = FindMainWindowForProcess(name, _allowedAppRoots, null);
+        if (existingHwnd != IntPtr.Zero)
+        {
+            GetWindowThreadProcessId(existingHwnd, out uint winPid);
+            _stateMachine.RequestLaunch(name, hasUsableWindow: true, existingHwnd, (int)winPid);
+
+            _lastAllowedAppHwnd = existingHwnd;
+            BringToFront(existingHwnd);
+            _miniHudWindow?.ClearStatus();
+
+            string timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            Debug.WriteLine($"[ZenLaunch] [{timestamp}] Warm switch completed for '{name}' (HWND: 0x{existingHwnd:X}).");
+
+            _switchCts = null;
+            _switchingTo = null;
+            return;
+        }
+
+        // 2. Cold launch required
+        _stateMachine.RequestLaunch(name, hasUsableWindow: false);
         _miniHudWindow?.SetStatus($"Opening {app.DisplayName}…", false, null);
 
         _ = RunSwitchAsync(app, name, cts);
@@ -1081,67 +1129,64 @@ public partial class ZenShieldWindow : Window
     private async Task RunSwitchAsync(WhitelistedAppItem app, string name, CancellationTokenSource cts)
     {
         var ct = cts.Token;
+        var sw = Stopwatch.StartNew();
         try
         {
             ct.ThrowIfCancellationRequested();
 
-            IntPtr hwnd = await Task.Run(() => FindMainWindowForProcess(name), ct);
-            if (hwnd == IntPtr.Zero)
+            string startTimestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            Debug.WriteLine($"[ZenLaunch] [{startTimestamp}] Initiating cold launch for '{name}'...");
+
+            // Never skip launch just because background processes exist!
+            var r = await Task.Run(() => TryLaunch(app), ct);
+            if (r.Error != null)
             {
-                int? pid = null;
-                bool starting = _recentLaunchUtc.TryGetValue(name, out var t) &&
-                                DateTime.UtcNow - t < TimeSpan.FromSeconds(45) &&
-                                await Task.Run(() =>
-                                {
-                                    try
-                                    {
-                                        return Process.GetProcessesByName(name).Length > 0;
-                                    }
-                                    catch
-                                    {
-                                        return false;
-                                    }
-                                }, ct);
+                _stateMachine.LaunchFailed(r.Error);
+                string errTime = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                Debug.WriteLine($"[ZenLaunch] [{errTime}] Cold launch failed for '{name}': {r.Error}");
+                _miniHudWindow?.SetStatus(r.Error + " — click to retry", true, () => SwitchToAllowedApp(app));
+                return;
+            }
 
-                if (!starting)
-                {
-                    var r = await Task.Run(() => TryLaunch(app), ct);
-                    if (r.Error != null)
-                    {
-                        _miniHudWindow?.SetStatus(r.Error + " — click to retry", true, () => SwitchToAllowedApp(app));
-                        return;
-                    }
+            int? pid = r.Pid;
+            _recentLaunchUtc[name] = DateTime.UtcNow;
 
-                    pid = r.Pid;
-                    _recentLaunchUtc[name] = DateTime.UtcNow;
-                }
-
-                var sw = Stopwatch.StartNew();
-                while (hwnd == IntPtr.Zero && sw.ElapsedMilliseconds < DiscoveryTimeoutMs)
-                {
-                    await Task.Delay(sw.ElapsedMilliseconds < 3000 ? 100 : 250, ct);
-                    hwnd = await Task.Run(() => FindMainWindowForProcess(name, pid), ct);
-                }
+            IntPtr hwnd = IntPtr.Zero;
+            while (hwnd == IntPtr.Zero && sw.ElapsedMilliseconds < DiscoveryTimeoutMs)
+            {
+                await Task.Delay(ZenLaunchConstants.PollIntervalMs, ct);
+                hwnd = await Task.Run(() => FindMainWindowForProcess(name, _allowedAppRoots, pid), ct);
             }
 
             if (hwnd == IntPtr.Zero)
             {
+                _stateMachine.Timeout();
+                string timeoutTime = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                Debug.WriteLine($"[ZenLaunch] [{timeoutTime}] Cold launch discovery timed out after {sw.ElapsedMilliseconds}ms for '{name}'.");
                 _miniHudWindow?.SetStatus($"{app.DisplayName} is taking longer than usual — click to retry", true, () => SwitchToAllowedApp(app));
                 return;
             }
 
             // Discovered allowed app window (discoveredHwnd)
             _lastAllowedAppHwnd = hwnd;
+            GetWindowThreadProcessId(hwnd, out uint winPid);
+            _stateMachine.WindowDiscovered(hwnd, (int)winPid);
+
             BringToFront(hwnd);
             _miniHudWindow?.ClearStatus();
+
+            string successTime = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            Debug.WriteLine($"[ZenLaunch] [{successTime}] Cold launch completed for '{name}' in {sw.ElapsedMilliseconds}ms (HWND: 0x{hwnd:X}).");
         }
         catch (OperationCanceledException)
         {
-            // Switch was superseded by another app or cancelled
+            string cancelTime = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            Debug.WriteLine($"[ZenLaunch] [{cancelTime}] Launch/switch to '{name}' was cancelled.");
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[ZenShield] RunSwitchAsync error for '{name}': {ex.Message}");
+            string exTime = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            Debug.WriteLine($"[ZenLaunch] [{exTime}] RunSwitchAsync error for '{name}': {ex.Message}");
         }
         finally
         {
@@ -1309,13 +1354,27 @@ public partial class ZenShieldWindow : Window
 
     public void RestoreZenScreen()
     {
+        _switchCts?.Cancel();
+        _switchCts = null;
+        _switchingTo = null;
+        _recentLaunchUtc.Clear();
+        _stateMachine.ReturnToZen();
+
         _isAllowedAppMode = false;
         _unauthorizedBreachCount = 0;
+
+        if (_lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
+        {
+            SetWindowPos(_lastAllowedAppHwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            ShowWindow(_lastAllowedAppHwnd, SW_MINIMIZE);
+        }
+        _lastAllowedAppHwnd = IntPtr.Zero;
 
         if (_miniHudWindow != null)
         {
             _quickNotesOverlay?.Hide();
             _miniHudWindow.Hide();
+            _miniHudWindow.ClearStatus();
         }
 
         WindowState = WindowState.Maximized;
@@ -1341,6 +1400,9 @@ public partial class ZenShieldWindow : Window
                 SetWindowPos(secHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             }
         }
+
+        string timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
+        Debug.WriteLine($"[ZenLaunch] [{timestamp}] RestoreZenScreen completed cleanly.");
     }
 
     #endregion
@@ -1666,20 +1728,7 @@ public partial class ZenShieldWindow : Window
                     RestoreTopmostAfterSnipping();
                 }
 
-                bool isAllowedApp = _allowedAppProcessNames.Contains(procName) ||
-                                    _allowedAppProcessNames.Contains(procName + ".exe");
-
-                if (isAllowedApp)
-                {
-                    string normProc = ProcessMatcher.NormalizeProcessName(procName);
-                    if (_allowedAppRoots.TryGetValue(normProc, out var rootDir) && !string.IsNullOrWhiteSpace(rootDir))
-                    {
-                        if (!string.IsNullOrWhiteSpace(helperPath) && !ProtectedProcesses.IsPathInsideDirectory(helperPath, rootDir))
-                        {
-                            isAllowedApp = false;
-                        }
-                    }
-                }
+                bool isAllowedApp = ZenLaunchMatcher.IsAppAllowed(procName, procName, _allowedAppProcessNames, helperPath, _allowedAppRoots);
 
                 if (isAllowedApp)
                 {
@@ -1702,7 +1751,7 @@ public partial class ZenShieldWindow : Window
                     return;
                 }
 
-                if (_switchCts != null && DateTime.UtcNow < _graceUntilUtc)
+                if ((_switchCts != null || _stateMachine.CurrentState == ZenLaunchState.Launching) && DateTime.UtcNow < _graceUntilUtc)
                 {
                     // While actively launching or discovering an allowed app within bounded grace period, do not suppress foreground window
                     return;
@@ -1718,7 +1767,7 @@ public partial class ZenShieldWindow : Window
 
             // If the allowed app is no longer valid or if unauthorized apps repeatedly breach,
             // re-assert ZenShieldWindow as Topmost = true (RestoreZenScreen()) to immediately cover the screen with the Zen Shield!
-            if (IsAllowedAppValid() && _unauthorizedBreachCount < 3)
+            if (IsAllowedAppValid() && _unauthorizedBreachCount < ZenLaunchConstants.MaxUnauthorizedBreaches)
             {
                 SetWindowPos(_lastAllowedAppHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 if (IsIconic(_lastAllowedAppHwnd))
@@ -1824,21 +1873,15 @@ public partial class ZenShieldWindow : Window
             catch { }
         }
 
-        // Only run the fallback scan when no switch is in progress (_switchCts == null)
-        // and at most once every 2 seconds
-        if (_switchCts == null && DateTime.UtcNow - _lastFallbackScanUtc > TimeSpan.FromSeconds(2))
+        // Active fallback scan for any USABLE top-level window belonging to an allowed app
+        _lastFallbackScanUtc = DateTime.UtcNow;
+        foreach (var allowedName in _allowedAppProcessNames)
         {
-            _lastFallbackScanUtc = DateTime.UtcNow;
-
-            // Fallback: check if any allowed app has an active top-level window
-            foreach (var allowedName in _allowedAppProcessNames)
+            IntPtr found = FindMainWindowForProcess(allowedName, _allowedAppRoots, null);
+            if (found != IntPtr.Zero)
             {
-                IntPtr found = FindMainWindowForProcess(allowedName);
-                if (found != IntPtr.Zero)
-                {
-                    _lastAllowedAppHwnd = found;
-                    return true;
-                }
+                _lastAllowedAppHwnd = found;
+                return true;
             }
         }
 
@@ -1847,7 +1890,7 @@ public partial class ZenShieldWindow : Window
 
     private void EnforceFocus()
     {
-        if (IsAllowedAppValid() && _unauthorizedBreachCount < 3)
+        if (IsAllowedAppValid() && _unauthorizedBreachCount < ZenLaunchConstants.MaxUnauthorizedBreaches)
         {
             SetWindowPos(_lastAllowedAppHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             if (IsIconic(_lastAllowedAppHwnd))
@@ -1865,6 +1908,7 @@ public partial class ZenShieldWindow : Window
 
     private void EndSession()
     {
+        _stateMachine.StartClosing();
         _sessionTimer.Stop();
         _autoSaveTimer.Stop();
         _watchdogTimer.Stop();
@@ -1905,6 +1949,7 @@ public partial class ZenShieldWindow : Window
 
         base.OnClosed(e);
 
+        _stateMachine.StartClosing();
         _sessionTimer.Stop();
         _autoSaveTimer.Stop();
         _watchdogTimer.Stop();
