@@ -104,6 +104,7 @@ public class Worker : BackgroundService
     private readonly Dictionary<string, (string ProcessName, string ExeName)> _processNameCache = new(512, StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<int, string?> _processPathCache = new();
     private readonly Dictionary<int, FastProcessEntry> _processByPid = new(512);
+    private readonly MeditationAllowedCache _meditationAllowedCache = new();
     private DateTime _lastDnsWatchdogApplyUtc = DateTime.MinValue;
 
     public Worker(ILogger<Worker> logger, IBlockStore? db = null)
@@ -125,6 +126,9 @@ public class Worker : BackgroundService
 
         // Check process elevation and initialize hosts state
         CheckElevationAndInitializeHostsState();
+
+        // Recover any background apps throttled prior to crash/restart
+        BackgroundAppThrottler.RecoverFromJournal();
 
         // Restore active session if one was running prior to service shutdown/restart
         RestoreActiveSessionOnStartup();
@@ -150,6 +154,7 @@ public class Worker : BackgroundService
 
             // Unconditionally resume any suspended processes during service shutdown
             ProcessSuspender.Default.ResumeAll();
+            BackgroundAppThrottler.Default.RestoreAll();
 
             if (isLockedActive)
             {
@@ -277,6 +282,7 @@ public class Worker : BackgroundService
                     _activeMeditationSession = null;
                     _loggedMeditationPids.Clear();
                     ProcessSuspender.Default.ResumeAll();
+                BackgroundAppThrottler.Default.RestoreAll();
                     // Scheduled Blocks Integrity: Ensure meditation session cleanup does NOT touch, disable, or alter standard profile schedules.
                 }
             }
@@ -390,15 +396,16 @@ public class Worker : BackgroundService
                 // Check dev-only emergency unlock
                 CheckEmergencyUnlock();
 
+                // Compute active profile set and enforce union of apps and hosts
+                DateTime localNow = DateTime.Now;
+                var allProfiles = _db.ListProfiles();
+
                 // Synchronize session state with database
-                SyncSessionState();
+                SyncSessionState(allProfiles);
 
                 // Check scheduled meditation routines
                 CheckMeditationSchedules(DateTime.Now);
 
-                // Compute active profile set and enforce union of apps and hosts
-                DateTime localNow = DateTime.Now;
-                var allProfiles = _db.ListProfiles();
                 var activeSessions = _trackedSessions.Values.Select(t => t.Session).ToList();
                 var activeProfiles = allProfiles.Where(p => ProfileStateLogic.IsProfileActiveWithSessions(p, activeSessions, localNow, out _)).ToList();
                 var (unionApps, _) = ProfileStateLogic.ComputeActiveUnionWithSessions(allProfiles, activeSessions, localNow);
@@ -585,6 +592,7 @@ public class Worker : BackgroundService
                     _activeMeditationSession = null;
                 }
                 ProcessSuspender.Default.ResumeAll();
+                BackgroundAppThrottler.Default.RestoreAll();
                 _db.DisableAllProfiles();
                 _db.CleanHosts();
                 _db.ConsumeEmergencyUnlock();
@@ -613,9 +621,10 @@ public class Worker : BackgroundService
         }
     }
 
-    private void SyncSessionState()
+    private void SyncSessionState(List<Profile>? cachedProfiles = null)
     {
         var dbSessions = _db.GetActiveSessions();
+        var dbSessionsById = dbSessions.ToDictionary(s => s.Id);
         var dbSessionIds = dbSessions.Select(s => s.Id).ToHashSet();
 
         // 1. Detect new sessions started externally or via IPC
@@ -640,7 +649,7 @@ public class Worker : BackgroundService
 
                 if (remainingSeconds > 0)
                 {
-                    var prof = _db.GetProfileById(dbSession.ProfileId);
+                    var prof = (cachedProfiles?.FirstOrDefault(p => p.Id == dbSession.ProfileId)) ?? _db.GetProfileById(dbSession.ProfileId);
                     _trackedSessions[dbSession.Id] = new TrackedSession
                     {
                         Session = dbSession,
@@ -665,7 +674,11 @@ public class Worker : BackgroundService
             var tracked = kvp.Value;
 
             // Check if the session was explicitly ended or removed from the database
-            var currentDbSession = _db.GetSessionById(sId);
+            if (!dbSessionsById.TryGetValue(sId, out var currentDbSession) || currentDbSession.EndedUtc != null)
+            {
+                currentDbSession = _db.GetSessionById(sId);
+            }
+
             if (currentDbSession == null || currentDbSession.EndedUtc != null)
             {
                 string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
@@ -822,7 +835,7 @@ public class Worker : BackgroundService
 
         // 3. Process & service DACL lockdown maintenance
         DateTime localNow = DateTime.Now;
-        var allProfiles = _db.ListProfiles();
+        var allProfiles = cachedProfiles ?? _db.ListProfiles();
         bool anySessionLocked = _trackedSessions.Values.Any(t => t.Session.Locked);
         bool anyScheduleLocked = allProfiles.Any(p => p.Schedule != null && p.Schedule.Count > 0 && ScheduleLogic.IsActive(p.Schedule, localNow));
         bool anyHardLocked = anySessionLocked || anyScheduleLocked;
@@ -958,38 +971,31 @@ public class Worker : BackgroundService
         // Check standalone File Explorer windows during active meditation (only if promoted from Pending)
         bool isMeditationActive = _activeMeditationSession != null &&
             !string.Equals(_activeMeditationSession.Status, "Pending", StringComparison.OrdinalIgnoreCase);
-        var allowedApps = isMeditationActive ? (_activeMeditationSession!.GetAllowedApps() ?? new List<string>()) : null;
-        var allowedAppDirs = new Dictionary<int, string>();
 
-        if (isMeditationActive && allowedApps != null && allowedApps.Count > 0)
+        List<string>? allowedApps = null;
+        var allowedAppDirs = new Dictionary<int, string>();
+        if (isMeditationActive)
         {
-            bool isExplorerAllowed = IsAppAllowed("explorer", "explorer.exe", allowedApps);
-            if (!isExplorerAllowed)
+            allowedApps = _activeMeditationSession!.GetAllowedApps() ?? new List<string>();
+            _meditationAllowedCache.SyncSession(
+                _activeMeditationSession.Id,
+                _activeMeditationSession.Status,
+                _activeMeditationSession.StartUtc,
+                allowedApps,
+                _db.ActiveAllowedAppRoots);
+
+            if (!_meditationAllowedCache.IsExplorerAllowed)
             {
                 SuppressStandaloneExplorerWindows(timestamp);
             }
-
-            // Pre-populate allowed app installation directories for child exemption
-            for (int i = 0; i < runningProcesses.Count; i++)
-            {
-                var p = runningProcesses[i];
-                string? imagePath = GetProcessImagePath(p.Id);
-                if (IsAppAllowed(p.ProcessName, p.ExeName, allowedApps, imagePath, _db.ActiveAllowedAppRoots))
-                {
-                    if (!string.IsNullOrEmpty(imagePath))
-                    {
-                        string? dir = Path.GetDirectoryName(imagePath);
-                        if (!string.IsNullOrEmpty(dir) && !IsSystemOrRootDirectory(dir))
-                        {
-                            allowedAppDirs[p.Id] = dir;
-                        }
-                    }
-                }
-            }
         }
-        else if (_loggedCabinetHwnds.Count > 0)
+        else
         {
-            _loggedCabinetHwnds.Clear();
+            _meditationAllowedCache.Reset();
+            if (_loggedCabinetHwnds.Count > 0)
+            {
+                _loggedCabinetHwnds.Clear();
+            }
         }
 
         for (int i = 0; i < runningProcesses.Count; i++)
@@ -1167,99 +1173,149 @@ public class Worker : BackgroundService
                         continue;
                     }
 
-                    string? path = GetProcessImagePath(processId);
-
-                    bool isAppPermitted = IsAppAllowed(processName, exeName, allowedApps, path, _db.ActiveAllowedAppRoots);
-
-                    // Child exemption:
-                    // If a process is NOT directly in allowedApps, check its ParentId:
-                    // If process.ParentId > 0 and the parent process is an allowed app (or parent PID is tracked as an allowed app):
-                    // Check if the child process executable/image path is inside that allowed app's installation directory!
-                    if (!isAppPermitted && process.ParentId > 0)
+                    // Query process creation time & image path in a single syscall
+                    long creationTime = 0;
+                    string? path = null;
+                    if (!_meditationAllowedCache.TryGetCachedIdentity(processId, out creationTime, out path))
                     {
-                        if (!allowedAppDirs.TryGetValue(process.ParentId, out string? parentInstallDir))
+                        ProcessIdentityHelper.GetProcessIdentity(processId, out creationTime, out path);
+                        if (string.IsNullOrEmpty(path))
                         {
-                            if (_processByPid.TryGetValue(process.ParentId, out var parentEntry))
+                            path = GetProcessImagePath(processId);
+                        }
+                        _meditationAllowedCache.CacheIdentity(processId, creationTime, path);
+                    }
+
+                    // Fast-path decision lookup: keyed by (PID, creationTime) to guarantee PID reuse safety
+                    if (_meditationAllowedCache.TryGetCachedDecision(processId, creationTime, out var decision))
+                    {
+                        if (decision == ProcessAllowDecision.Allowed || decision == ProcessAllowDecision.Exempt)
+                        {
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        bool isAppPermitted = _meditationAllowedCache.IsAppAllowedFast(processName, exeName, path);
+
+                        // Child exemption:
+                        // If a process is NOT directly in allowedApps, check its ParentId:
+                        // If process.ParentId > 0 and the parent process is an allowed app (or parent PID is tracked as an allowed app):
+                        // Check if the child process executable/image path is inside that allowed app's installation directory!
+                        if (!isAppPermitted && process.ParentId > 0)
+                        {
+                            if (!allowedAppDirs.TryGetValue(process.ParentId, out string? parentInstallDir))
                             {
-                                string? parentImagePath = GetProcessImagePath(parentEntry.Id);
-                                if (IsAppAllowed(parentEntry.ProcessName, parentEntry.ExeName, allowedApps, parentImagePath, _db.ActiveAllowedAppRoots))
+                                if (!_meditationAllowedCache.TryGetAllowedAppDir(process.ParentId, out parentInstallDir))
                                 {
-                                    if (!string.IsNullOrEmpty(parentImagePath))
+                                    if (_processByPid.TryGetValue(process.ParentId, out var parentEntry))
                                     {
-                                        string? dir = Path.GetDirectoryName(parentImagePath);
-                                        if (!string.IsNullOrEmpty(dir) && !IsSystemOrRootDirectory(dir))
+                                        string? parentImagePath = GetProcessImagePath(parentEntry.Id);
+                                        if (_meditationAllowedCache.IsAppAllowedFast(parentEntry.ProcessName, parentEntry.ExeName, parentImagePath))
                                         {
-                                            parentInstallDir = dir;
-                                            allowedAppDirs[parentEntry.Id] = dir;
+                                            if (!string.IsNullOrEmpty(parentImagePath))
+                                            {
+                                                string? dir = Path.GetDirectoryName(parentImagePath);
+                                                if (!string.IsNullOrEmpty(dir) && !IsSystemOrRootDirectory(dir))
+                                                {
+                                                    parentInstallDir = dir;
+                                                    allowedAppDirs[parentEntry.Id] = dir;
+                                                    _meditationAllowedCache.RecordAllowedAppDir(parentEntry.Id, dir);
+                                                }
+                                            }
                                         }
                                     }
                                 }
+                                else if (!string.IsNullOrEmpty(parentInstallDir))
+                                {
+                                    allowedAppDirs[process.ParentId] = parentInstallDir;
+                                }
+                            }
+
+                            if (!string.IsNullOrEmpty(parentInstallDir))
+                            {
+                                if (!string.IsNullOrEmpty(path) && ProtectedProcesses.IsPathInsideDirectory(path, parentInstallDir))
+                                {
+                                    allowedAppDirs[processId] = parentInstallDir;
+                                    _meditationAllowedCache.RecordAllowedAppDir(processId, parentInstallDir);
+                                    _meditationAllowedCache.CacheDecision(processId, creationTime, ProcessAllowDecision.Allowed);
+                                    continue; // Exempt from suspension!
+                                }
                             }
                         }
 
-                        if (!string.IsNullOrEmpty(parentInstallDir))
+                        if (isAppPermitted)
                         {
-                            if (!string.IsNullOrEmpty(path) && ProtectedProcesses.IsPathInsideDirectory(path, parentInstallDir))
+                            if (!string.IsNullOrEmpty(path))
                             {
-                                allowedAppDirs[processId] = parentInstallDir;
-                                continue; // Exempt from suspension!
+                                string? dir = Path.GetDirectoryName(path);
+                                if (!string.IsNullOrEmpty(dir) && !IsSystemOrRootDirectory(dir))
+                                {
+                                    allowedAppDirs[processId] = dir;
+                                    _meditationAllowedCache.RecordAllowedAppDir(processId, dir);
+                                }
                             }
+                            _meditationAllowedCache.CacheDecision(processId, creationTime, ProcessAllowDecision.Allowed);
+                            continue;
                         }
+
+                        if (ProtectedProcesses.IsProtected(processName, path) ||
+                            ProtectedProcesses.IsProtected(exeName, path))
+                        {
+                            _meditationAllowedCache.CacheDecision(processId, creationTime, ProcessAllowDecision.Exempt);
+                            continue;
+                        }
+
+                        int targetSession = -1;
+                        if (OperatingSystem.IsWindows() && ProcessIdToSessionId((uint)processId, out uint sessId))
+                        {
+                            targetSession = (int)sessId;
+                        }
+
+                        bool isTargetInActiveSession = (activeSessionId != 0xFFFFFFFF && targetSession == (int)activeSessionId) ||
+                                                      (targetSession > 0 && targetSession == CurrentProcessSessionId) ||
+                                                      (activeSessionId == 0xFFFFFFFF && targetSession > 0);
+
+                        if (!isTargetInActiveSession || string.IsNullOrEmpty(path))
+                        {
+                            _meditationAllowedCache.CacheDecision(processId, creationTime, ProcessAllowDecision.Exempt);
+                            continue;
+                        }
+
+                        if (SystemHelperGuard.IsTrusted(path))
+                        {
+                            _meditationAllowedCache.CacheDecision(processId, creationTime, ProcessAllowDecision.Exempt);
+                            continue;
+                        }
+
+                        _meditationAllowedCache.CacheDecision(processId, creationTime, ProcessAllowDecision.MustSuspend);
                     }
 
-                    if (!isAppPermitted &&
-                        !ProtectedProcesses.IsProtected(processName, path) &&
-                        !ProtectedProcesses.IsProtected(exeName, path))
+                    try
                     {
-                        try
+                        bool fromAllowedApp = IsDescendedFromAllowedApp(process.ParentId, allowedApps);
+
+                        if (ProcessSuspender.Default.SuspendProcess(processId, exeName, fromAllowedApp))
                         {
-                            int targetSession = -1;
-                            if (OperatingSystem.IsWindows() && ProcessIdToSessionId((uint)processId, out uint sessId))
+                            if (_loggedMeditationPids.Add(processId))
                             {
-                                targetSession = (int)sessId;
-                            }
+                                string msg = $"[{timestamp}] [MEDITATION SUSPEND] Process '{exeName}' (PID: {processId}) suspended (not in allowed meditation apps).";
+                                Console.WriteLine(msg);
+                                _logger.LogInformation("{Message}", msg);
 
-                            bool isTargetInActiveSession = (activeSessionId != 0xFFFFFFFF && targetSession == (int)activeSessionId) ||
-                                                          (targetSession > 0 && targetSession == CurrentProcessSessionId) ||
-                                                          (activeSessionId == 0xFFFFFFFF && targetSession > 0);
-
-                            if (isTargetInActiveSession)
-                            {
-                                if (string.IsNullOrEmpty(path))
+                                _db.RecordBlockEvent(new BlockEvent
                                 {
-                                    continue;
-                                }
-
-                                if (SystemHelperGuard.IsTrusted(path))
-                                {
-                                    continue;
-                                }
-
-                                bool fromAllowedApp = IsDescendedFromAllowedApp(process.ParentId, allowedApps);
-
-                                if (ProcessSuspender.Default.SuspendProcess(processId, exeName, fromAllowedApp))
-                                {
-                                    if (_loggedMeditationPids.Add(processId))
-                                    {
-                                        string msg = $"[{timestamp}] [MEDITATION SUSPEND] Process '{exeName}' (PID: {processId}) suspended (not in allowed meditation apps).";
-                                        Console.WriteLine(msg);
-                                        _logger.LogInformation("{Message}", msg);
-
-                                        _db.RecordBlockEvent(new BlockEvent
-                                        {
-                                            TimeUtc = DateTime.UtcNow,
-                                            Kind = "MeditationSuspend",
-                                            Name = exeName,
-                                            ProfileName = "Meditation Whitelist",
-                                            ServiceDispatched = false
-                                        });
-                                    }
-                                }
+                                    TimeUtc = DateTime.UtcNow,
+                                    Kind = "MeditationSuspend",
+                                    Name = exeName,
+                                    ProfileName = "Meditation Whitelist",
+                                    ServiceDispatched = false
+                                });
                             }
                         }
-                        catch { }
-                        continue;
                     }
+                    catch { }
+                    continue;
                 }
             }
             catch
@@ -1272,6 +1328,7 @@ public class Worker : BackgroundService
         _loggedKillPids.IntersectWith(currentPids);
         _loggedFailurePids.IntersectWith(currentPids);
         _loggedMeditationPids.IntersectWith(currentPids);
+        _meditationAllowedCache.PruneExited(currentPids);
         foreach (var pid in _pidOriginalFileNameCache.Keys)
         {
             if (!currentPids.Contains(pid))

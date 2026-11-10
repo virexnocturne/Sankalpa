@@ -15,7 +15,7 @@ public class LowLevelKeyboardHookHardeningTests
         string dir = AppContext.BaseDirectory;
         while (!string.IsNullOrEmpty(dir))
         {
-            if (File.Exists(Path.Combine(dir, "Sankalpa.sln")) || Directory.Exists(Path.Combine(dir, ".git")))
+            if (File.Exists(Path.Combine(dir, "Blocker.sln")) || File.Exists(Path.Combine(dir, "Sankalpa.sln")) || Directory.Exists(Path.Combine(dir, ".git")) || File.Exists(Path.Combine(dir, ".git")))
             {
                 return dir;
             }
