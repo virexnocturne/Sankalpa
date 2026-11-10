@@ -1,14 +1,39 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 using Blocker.Core;
 
 namespace Blocker.Service;
 
+public record NotificationRequest(
+    string Kind,
+    string Name,
+    string ProfileOrReason,
+    string? Tag = null,
+    string? Group = null,
+    int ExpirationSeconds = 0,
+    bool IsRetract = false
+);
+
 public static class ServiceNotificationDispatcher
 {
     private static readonly NotificationThrottler _throttler = new(TimeSpan.FromSeconds(4));
+
+    // Bounded coalescing queue: monitor loop enqueues in <1ms and never blocks.
+    private static readonly Channel<string> _requestChannel = Channel.CreateBounded<string>(
+        new BoundedChannelOptions(32) { FullMode = BoundedChannelFullMode.DropOldest });
+
+    private static readonly ConcurrentDictionary<string, NotificationRequest> _pendingRequests = new(StringComparer.OrdinalIgnoreCase);
+
+    static ServiceNotificationDispatcher()
+    {
+        Task.Run(ProcessQueueAsync);
+    }
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint WTSGetActiveConsoleSessionId();
@@ -97,7 +122,10 @@ public static class ServiceNotificationDispatcher
     {
         try
         {
-            string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}";
+            string line = message.StartsWith("[ZenNotify]")
+                ? message
+                : $"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}";
+
             lock (_logLock)
             {
                 // 1. Service base directory log
@@ -133,109 +161,214 @@ public static class ServiceNotificationDispatcher
         catch { }
     }
 
+    /// <summary>
+    /// Non-blocking dispatch: enqueues into a bounded coalescing queue and returns immediately.
+    /// The monitor loop is never stalled.
+    /// </summary>
     public static bool DispatchNotification(string kind, string name, string profileOrReason)
+    {
+        return DispatchNotification(kind, name, profileOrReason, tag: name, group: "Sankalpa." + kind, expirationSeconds: 0);
+    }
+
+    /// <summary>
+    /// Non-blocking dispatch with Tag, Group, and Expiration support.
+    /// Coalesces rapid updates for the same target and runs off the monitor loop.
+    /// </summary>
+    public static bool DispatchNotification(string kind, string name, string profileOrReason, string? tag, string? group, int expirationSeconds = 0)
     {
         try
         {
-            // Milestone extraction: ensure countdown milestones (60s, 30s, 10s) for the same browser are not throttled
-            string? milestone = null;
-            if (string.Equals(kind, "BrowserGrace", StringComparison.OrdinalIgnoreCase))
-            {
-                var match = System.Text.RegularExpressions.Regex.Match(profileOrReason, @"\b(\d+s)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                if (match.Success)
-                {
-                    milestone = match.Groups[1].Value;
-                }
-                else if (!string.IsNullOrWhiteSpace(profileOrReason))
-                {
-                    milestone = profileOrReason;
-                }
-            }
+            string t = !string.IsNullOrEmpty(tag) ? tag : name;
+            string g = !string.IsNullOrEmpty(group) ? group : ("Sankalpa." + kind);
+            string key = $"{kind}:{name}".ToLowerInvariant();
 
-            if (!_throttler.ShouldNotify(name, DateTime.UtcNow, kind, milestone))
-            {
-                Log($"[ServiceNotification] Notification throttled: kind='{kind}', name='{name}', milestone='{milestone}'");
-                return false;
-            }
+            var req = new NotificationRequest(kind, name, profileOrReason, t, g, expirationSeconds, IsRetract: false);
+            _pendingRequests[key] = req;
+            _requestChannel.Writer.TryWrite(key);
 
-            Log($"[ServiceNotification] Dispatching notification (delivered regardless of active block): kind='{kind}', name='{name}', milestone='{milestone}', reason='{profileOrReason}'");
-
-            // Check notification settings
-            try
-            {
-                var settings = UiSettingsStore.Load();
-                if (!settings.AreNotificationsEnabled)
-                {
-                    Log("[ServiceNotification] Notifications disabled in UiSettings.");
-                    return false;
-                }
-                if (string.Equals(kind, "BrowserKill", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(kind, "BrowserGrace", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!settings.ShowBrowserAlerts)
-                    {
-                        Log("[ServiceNotification] Browser alerts disabled in UiSettings.");
-                        return false;
-                    }
-                }
-                else if (string.Equals(kind, "DnsTamper", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!settings.ShowDnsAlerts)
-                    {
-                        Log("[ServiceNotification] DNS alerts disabled in UiSettings.");
-                        return false;
-                    }
-                }
-                else if (string.Equals(kind, "App", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!settings.ShowAppAlerts)
-                    {
-                        Log("[ServiceNotification] App alerts disabled in UiSettings.");
-                        return false;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Log($"[ServiceNotification] UiSettings check warning: {ex.Message}");
-            }
-
-            string hostExe = ResolveNativeHostExe();
-            string safeKind = EscapeCliArg(kind);
-            string safeName = EscapeCliArg(name);
-            string safeReason = EscapeCliArg(profileOrReason);
-            string arguments = $"--notify \"{safeKind}\" \"{safeName}\" \"{safeReason}\"";
-
-            bool launched = false;
-            if (!string.IsNullOrEmpty(hostExe) && File.Exists(hostExe))
-            {
-                try
-                {
-                    ExtensionHelper.EnsureAumidRegistered(hostExe);
-                }
-                catch { }
-
-                launched = LaunchProcessInUserSession(hostExe, arguments);
-            }
-
-            if (!launched)
-            {
-                Log("[ServiceNotification] NativeHost launch was unsuccessful or not found. Falling back to PowerShell toast.");
-                try
-                {
-                    ExtensionHelper.EnsureAumidRegistered();
-                }
-                catch { }
-
-                launched = LaunchPowerShellToast(kind, name, profileOrReason);
-            }
-
-            return launched;
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Enqueued notification: kind='{kind}', name='{name}', tag='{t}', group='{g}'");
+            return true;
         }
         catch (Exception ex)
         {
-            Log($"[ServiceNotification] DispatchNotification error: {ex.Message}");
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] DispatchNotification enqueue error: {ex.Message}");
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Non-blocking retraction: enqueues a request to remove a toast from Windows Action Center.
+    /// </summary>
+    public static bool RetractNotification(string tag, string group)
+    {
+        try
+        {
+            string key = $"retract:{tag}:{group}".ToLowerInvariant();
+            var req = new NotificationRequest("Retract", tag, "", tag, group, 0, IsRetract: true);
+            _pendingRequests[key] = req;
+            _requestChannel.Writer.TryWrite(key);
+
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Enqueued retraction: tag='{tag}', group='{group}'");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] RetractNotification enqueue error: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static async Task ProcessQueueAsync()
+    {
+        var reader = _requestChannel.Reader;
+        while (await reader.WaitToReadAsync().ConfigureAwait(false))
+        {
+            while (reader.TryRead(out var key))
+            {
+                if (_pendingRequests.TryRemove(key, out var request))
+                {
+                    try
+                    {
+                        ExecuteNotification(request);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] ProcessQueueAsync execution error: {ex.Message}");
+                    }
+                }
+            }
+        }
+    }
+
+    private static void ExecuteNotification(NotificationRequest req)
+    {
+        if (req.IsRetract)
+        {
+            ExecuteRetract(req.Tag ?? "", req.Group ?? "");
+            return;
+        }
+
+        string kind = req.Kind;
+        string name = req.Name;
+        string profileOrReason = req.ProfileOrReason;
+        string tag = req.Tag ?? name;
+        string group = req.Group ?? ("Sankalpa." + kind);
+        int expSec = req.ExpirationSeconds;
+
+        // Milestone extraction: ensure countdown milestones (60s, 30s, 10s) for the same browser are not throttled
+        string? milestone = null;
+        if (string.Equals(kind, "BrowserGrace", StringComparison.OrdinalIgnoreCase))
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(profileOrReason, @"\b(\d+s)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                milestone = match.Groups[1].Value;
+            }
+            else if (!string.IsNullOrWhiteSpace(profileOrReason))
+            {
+                milestone = profileOrReason;
+            }
+        }
+
+        if (!_throttler.ShouldNotify(name, DateTime.UtcNow, kind, milestone))
+        {
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Notification throttled: kind='{kind}', name='{name}', milestone='{milestone}'");
+            return;
+        }
+
+        Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Dispatching notification: kind='{kind}', name='{name}', milestone='{milestone}', reason='{profileOrReason}', tag='{tag}', group='{group}'");
+
+        // Check notification settings
+        try
+        {
+            var settings = UiSettingsStore.Load();
+            if (!settings.AreNotificationsEnabled)
+            {
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Notifications disabled in UiSettings.");
+                return;
+            }
+            if (string.Equals(kind, "BrowserKill", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kind, "BrowserGrace", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!settings.ShowBrowserAlerts)
+                {
+                    Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Browser alerts disabled in UiSettings.");
+                    return;
+                }
+            }
+            else if (string.Equals(kind, "DnsTamper", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!settings.ShowDnsAlerts)
+                {
+                    Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] DNS alerts disabled in UiSettings.");
+                    return;
+                }
+            }
+            else if (string.Equals(kind, "App", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!settings.ShowAppAlerts)
+                {
+                    Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] App alerts disabled in UiSettings.");
+                    return;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] UiSettings check warning: {ex.Message}");
+        }
+
+        string hostExe = ResolveNativeHostExe();
+        string safeKind = EscapeCliArg(kind);
+        string safeName = EscapeCliArg(name);
+        string safeReason = EscapeCliArg(profileOrReason);
+        string safeTag = EscapeCliArg(tag);
+        string safeGroup = EscapeCliArg(group);
+        string arguments = $"--notify \"{safeKind}\" \"{safeName}\" \"{safeReason}\" \"{safeTag}\" \"{safeGroup}\" \"{expSec}\"";
+
+        bool launched = false;
+        if (!string.IsNullOrEmpty(hostExe) && File.Exists(hostExe))
+        {
+            try
+            {
+                ExtensionHelper.EnsureAumidRegistered(hostExe);
+            }
+            catch { }
+
+            launched = LaunchProcessInUserSession(hostExe, arguments);
+        }
+
+        if (!launched)
+        {
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] NativeHost launch was unsuccessful or not found. Falling back to PowerShell toast.");
+            try
+            {
+                ExtensionHelper.EnsureAumidRegistered();
+            }
+            catch { }
+
+            launched = LaunchPowerShellToast(kind, name, profileOrReason, tag, group);
+        }
+    }
+
+    private static void ExecuteRetract(string tag, string group)
+    {
+        Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Executing toast retraction for tag='{tag}', group='{group}'");
+
+        string hostExe = ResolveNativeHostExe();
+        string safeTag = EscapeCliArg(tag);
+        string safeGroup = EscapeCliArg(group);
+        string arguments = $"--retract \"{safeTag}\" \"{safeGroup}\"";
+
+        bool launched = false;
+        if (!string.IsNullOrEmpty(hostExe) && File.Exists(hostExe))
+        {
+            launched = LaunchProcessInUserSession(hostExe, arguments);
+        }
+
+        if (!launched)
+        {
+            LaunchPowerShellRetract(tag, group);
         }
     }
 
@@ -380,17 +513,17 @@ public static class ServiceNotificationDispatcher
                     UseShellExecute = false
                 };
                 using var proc = Process.Start(psi);
-                Log($"[ServiceNotification] Started in current interactive session: {exePath} (PID: {proc?.Id})");
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Started in current interactive session: {exePath} (PID: {proc?.Id})");
                 if (proc != null)
                 {
                     bool exited = proc.WaitForExit(3500);
                     if (exited && proc.HasExited)
                     {
-                        Log($"[ServiceNotification] Interactive process PID {proc.Id} exited with code: {proc.ExitCode}");
+                        Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Interactive process PID {proc.Id} exited with code: {proc.ExitCode}");
                     }
                     else
                     {
-                        Log($"[ServiceNotification] Interactive process PID {proc.Id} running asynchronously in user session.");
+                        Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Interactive process PID {proc.Id} running asynchronously in user session.");
                     }
                 }
                 return true;
@@ -409,7 +542,7 @@ public static class ServiceNotificationDispatcher
 
             if (activeSessionId == 0xFFFFFFFF || activeSessionId == 0)
             {
-                Log("[ServiceNotification] No active interactive user session found.");
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] No active interactive user session found.");
                 return false;
             }
 
@@ -418,7 +551,7 @@ public static class ServiceNotificationDispatcher
             if (!querySuccess || hUserToken == IntPtr.Zero)
             {
                 int wtsErr = Marshal.GetLastWin32Error();
-                Log($"[ServiceNotification] WTSQueryUserToken failed for session {activeSessionId} (error: {wtsErr}). Attempting explorer process token fallback.");
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] WTSQueryUserToken failed for session {activeSessionId} (error: {wtsErr}). Attempting explorer process token fallback.");
 
                 // Fallback: Query token from explorer.exe running in the target session
                 try
@@ -452,7 +585,7 @@ public static class ServiceNotificationDispatcher
                             if (OpenProcessToken(hExp, TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY, out hUserToken))
                             {
                                 activeSessionId = (uint)exp.SessionId;
-                                Log($"[ServiceNotification] Acquired user token via explorer.exe PID {exp.Id} in session {activeSessionId}");
+                                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Acquired user token via explorer.exe PID {exp.Id} in session {activeSessionId}");
                                 CloseHandle(hExp);
                                 break;
                             }
@@ -462,13 +595,13 @@ public static class ServiceNotificationDispatcher
                 }
                 catch (Exception ex)
                 {
-                    Log($"[ServiceNotification] Explorer token fallback exception: {ex.Message}");
+                    Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Explorer token fallback exception: {ex.Message}");
                 }
             }
 
             if (hUserToken == IntPtr.Zero)
             {
-                Log("[ServiceNotification] Failed to acquire user token for notifications.");
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Failed to acquire user token for notifications.");
                 return false;
             }
 
@@ -482,7 +615,7 @@ public static class ServiceNotificationDispatcher
 
                 if (!DuplicateTokenEx(hUserToken, MAXIMUM_ALLOWED, IntPtr.Zero, SecurityImpersonation, TokenPrimary, out hDuplicatedToken))
                 {
-                    Log($"[ServiceNotification] DuplicateTokenEx failed. Win32 error: {Marshal.GetLastWin32Error()}");
+                    Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] DuplicateTokenEx failed. Win32 error: {Marshal.GetLastWin32Error()}");
                     return false;
                 }
 
@@ -511,11 +644,11 @@ public static class ServiceNotificationDispatcher
                     ref si,
                     out PROCESS_INFORMATION pi))
                 {
-                    Log($"[ServiceNotification] Launched '{exePath}' (PID: {pi.dwProcessId}) in user session {activeSessionId}");
+                    Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Launched '{exePath}' (PID: {pi.dwProcessId}) in user session {activeSessionId}");
                     uint waitResult = WaitForSingleObject(pi.hProcess, 3500);
                     if (GetExitCodeProcess(pi.hProcess, out uint exitCode))
                     {
-                        Log($"[ServiceNotification] Process PID {pi.dwProcessId} exited with code: {exitCode} (waitResult: {waitResult})");
+                        Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Process PID {pi.dwProcessId} exited with code: {exitCode} (waitResult: {waitResult})");
                     }
                     CloseHandle(pi.hProcess);
                     CloseHandle(pi.hThread);
@@ -523,7 +656,7 @@ public static class ServiceNotificationDispatcher
                 }
                 else
                 {
-                    Log($"[ServiceNotification] CreateProcessAsUserW failed for '{exePath}'. Win32 error: {Marshal.GetLastWin32Error()}");
+                    Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] CreateProcessAsUserW failed for '{exePath}'. Win32 error: {Marshal.GetLastWin32Error()}");
                     return false;
                 }
             }
@@ -536,12 +669,12 @@ public static class ServiceNotificationDispatcher
         }
         catch (Exception ex)
         {
-            Log($"[ServiceNotification] LaunchProcessInUserSession error: {ex.Message}");
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] LaunchProcessInUserSession error: {ex.Message}");
             return false;
         }
     }
 
-    private static bool LaunchPowerShellToast(string kind, string name, string profileOrReason)
+    private static bool LaunchPowerShellToast(string kind, string name, string profileOrReason, string tag = "", string group = "")
     {
         try
         {
@@ -604,6 +737,8 @@ public static class ServiceNotificationDispatcher
                 "$doc = [Windows.Data.Xml.Dom.XmlDocument]::new(); " +
                 "$doc.LoadXml($rawXml); " +
                 "$t = [Windows.UI.Notifications.ToastNotification]::new($doc); " +
+                (string.IsNullOrEmpty(tag) ? "" : $"$t.Tag = '{tag.Replace("'", "''")}'; ") +
+                (string.IsNullOrEmpty(group) ? "" : $"$t.Group = '{group.Replace("'", "''")}'; ") +
                 "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Sankalpa').Show($t); " +
                 "Start-Sleep -Milliseconds 1200; " +
                 "} catch { }";
@@ -617,7 +752,31 @@ public static class ServiceNotificationDispatcher
         }
         catch (Exception ex)
         {
-            Log($"[ServiceNotification] LaunchPowerShellToast error: {ex.Message}");
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] LaunchPowerShellToast error: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static bool LaunchPowerShellRetract(string tag, string group)
+    {
+        try
+        {
+            string psScript =
+                "try { " +
+                "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; " +
+                $"[Windows.UI.Notifications.ToastNotificationManager]::History.Remove('{tag.Replace("'", "''")}', '{group.Replace("'", "''")}', 'Sankalpa'); " +
+                "} catch { }";
+
+            byte[] bytes = System.Text.Encoding.Unicode.GetBytes(psScript);
+            string b64 = Convert.ToBase64String(bytes);
+
+            string pwshExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+            string args = $"-WindowStyle Hidden -NoProfile -NonInteractive -EncodedCommand {b64}";
+            return LaunchProcessInUserSession(pwshExe, args);
+        }
+        catch (Exception ex)
+        {
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] LaunchPowerShellRetract error: {ex.Message}");
             return false;
         }
     }
