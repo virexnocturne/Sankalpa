@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Blocker.Core;
 
@@ -58,6 +61,123 @@ public static class NoteCardCollection
                 UpdatedAtUtc = DateTime.UtcNow
             }
         };
+    }
+
+    public static bool AreEquivalent(IList<NoteCard>? a, IList<NoteCard>? b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a == null || b == null) return false;
+        if (a.Count != b.Count) return false;
+
+        for (int i = 0; i < a.Count; i++)
+        {
+            if (!a[i].IsContentEquivalent(b[i]))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Synchronizes target collection with incoming cards with minimal churn.
+    /// Updates existing cards in place, removes obsolete cards, and inserts new cards.
+    /// Avoids Clear() + N Add() cascade.
+    /// </summary>
+    public static bool SyncCards(ObservableCollection<NoteCard> target, IList<NoteCard> incoming, Action<NoteCard>? onCardAdded = null)
+    {
+        if (AreEquivalent(target, incoming))
+        {
+            return false;
+        }
+
+        var incomingMap = incoming.ToDictionary(c => c.Id);
+
+        // 1. Remove cards no longer in incoming
+        for (int i = target.Count - 1; i >= 0; i--)
+        {
+            if (!incomingMap.ContainsKey(target[i].Id))
+            {
+                target.RemoveAt(i);
+            }
+        }
+
+        // 2. Update existing cards and add new ones in order
+        var targetMap = target.ToDictionary(c => c.Id);
+
+        for (int i = 0; i < incoming.Count; i++)
+        {
+            var inc = incoming[i];
+            if (targetMap.TryGetValue(inc.Id, out var existing))
+            {
+                if (!existing.IsContentEquivalent(inc))
+                {
+                    existing.Title = inc.Title;
+                    existing.MarkdownContent = inc.MarkdownContent;
+                    existing.UpdatedAtUtc = inc.UpdatedAtUtc;
+                    existing.CreatedAtUtc = inc.CreatedAtUtc;
+                    existing.RebuildParsedBlocks();
+                }
+
+                int currentIndex = target.IndexOf(existing);
+                if (currentIndex != i && currentIndex >= 0 && i < target.Count)
+                {
+                    target.Move(currentIndex, i);
+                }
+            }
+            else
+            {
+                var newCard = inc.Clone();
+                onCardAdded?.Invoke(newCard);
+                if (i <= target.Count)
+                {
+                    target.Insert(i, newCard);
+                }
+                else
+                {
+                    target.Add(newCard);
+                }
+                targetMap[newCard.Id] = newCard;
+            }
+        }
+
+        return true;
+    }
+
+    private static readonly Regex WikiMatchesRegex = new(@"!\[\[(.*?)\]\]", RegexOptions.Compiled);
+    private static readonly Regex MdMatchesRegex = new(@"!\[(.*?)\]\((.*?)\)", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Extracts markdown image references (![[img.png]] or ![alt](img.png)) using precompiled regexes.
+    /// </summary>
+    public static List<string> ExtractImageReferences(string? text)
+    {
+        var list = new List<string>();
+        if (string.IsNullOrWhiteSpace(text)) return list;
+
+        var wikiMatches = WikiMatchesRegex.Matches(text);
+        foreach (Match m in wikiMatches)
+        {
+            string refStr = m.Groups[1].Value.Trim();
+            if (refStr.Contains('|')) refStr = refStr.Split('|')[0].Trim();
+            if (!string.IsNullOrEmpty(refStr) && !list.Contains(refStr))
+            {
+                list.Add(refStr);
+            }
+        }
+
+        var mdMatches = MdMatchesRegex.Matches(text);
+        foreach (Match m in mdMatches)
+        {
+            string path = m.Groups[2].Value.Trim();
+            if (path.Contains(' ')) path = path.Split(' ')[0].Trim('"', '\'');
+            if (!string.IsNullOrEmpty(path) && !list.Contains(path))
+            {
+                list.Add(path);
+            }
+        }
+
+        return list;
     }
 
     /// <summary>

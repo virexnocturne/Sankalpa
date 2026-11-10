@@ -31,6 +31,7 @@ public partial class MeditationViewModel
     private string _composerTitle = string.Empty;
     private string _composerMarkdown = string.Empty;
     private ZenQuickNotesOverlay? _quickNotesOverlay;
+    private bool _isUpdatingFromOverlay;
 
     public ObservableCollection<NoteCard> NotesCollection { get; } = new();
 
@@ -103,14 +104,8 @@ public partial class MeditationViewModel
             if (SetProperty(ref _currentNote, value))
             {
                 var cards = NoteCardCollection.Deserialize(value);
-                if (!AreCardListsEquivalent(NotesCollection, cards))
+                if (NoteCardCollection.SyncCards(NotesCollection, cards, WireCard))
                 {
-                    NotesCollection.Clear();
-                    foreach (var card in cards)
-                    {
-                        WireCard(card);
-                        NotesCollection.Add(card);
-                    }
                     OnPropertyChanged(nameof(HasNoNotes));
                     OnPropertyChanged(nameof(HasNotes));
                     OnPropertyChanged(nameof(NotesCountText));
@@ -120,21 +115,6 @@ public partial class MeditationViewModel
                 _noteDebounceTimer.Start();
             }
         }
-    }
-
-    private static bool AreCardListsEquivalent(IList<NoteCard> a, IList<NoteCard> b)
-    {
-        if (a.Count != b.Count) return false;
-        for (int i = 0; i < a.Count; i++)
-        {
-            if (a[i].Id != b[i].Id ||
-                a[i].Title != b[i].Title ||
-                a[i].MarkdownContent != b[i].MarkdownContent)
-            {
-                return false;
-            }
-        }
-        return true;
     }
 
     public string AutoSaveStatus
@@ -291,8 +271,13 @@ public partial class MeditationViewModel
         }
         OnPropertyChanged(nameof(CurrentNote));
 
-        // If _quickNotesOverlay is open or exists, sync it immediately:
-        _quickNotesOverlay?.LoadNotes(_currentNote);
+        NotesVaultStore.QueueSave(NotesCollection);
+
+        // If _quickNotesOverlay is open or exists, sync it immediately (skip if overlay originated change):
+        if (!_isUpdatingFromOverlay)
+        {
+            _quickNotesOverlay?.LoadNotes(_currentNote);
+        }
 
         if (_activeZenShield != null)
         {
@@ -381,10 +366,18 @@ public partial class MeditationViewModel
             _quickNotesOverlay = new ZenQuickNotesOverlay();
             _quickNotesOverlay.OnNotesChanged = updatedNotes =>
             {
-                CurrentNote = updatedNotes;
-                if (_activeZenShield != null)
+                _isUpdatingFromOverlay = true;
+                try
                 {
-                    _activeZenShield.NotesText = updatedNotes;
+                    CurrentNote = updatedNotes;
+                    if (_activeZenShield != null)
+                    {
+                        _activeZenShield.NotesText = updatedNotes;
+                    }
+                }
+                finally
+                {
+                    _isUpdatingFromOverlay = false;
                 }
             };
             _quickNotesOverlay.Closed += (s, e) => _quickNotesOverlay = null;
