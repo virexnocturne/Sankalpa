@@ -427,52 +427,8 @@ public class Worker : BackgroundService
                     ? new HashSet<string>(fallbackPlan.UnauthorizedBrowserProcesses.Select(b => b.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? b : b + ".exe"), StringComparer.OrdinalIgnoreCase)
                     : null;
 
-                // Prune browsers that are no longer in grace period
-                _loggedGraceBrowsers.RemoveWhere(b => !fallbackPlan.GracePeriodBrowsers.Any(gb =>
-                    b.StartsWith(gb + ":", StringComparison.OrdinalIgnoreCase) ||
-                    b.StartsWith((gb.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? gb : gb + ".exe") + ":", StringComparison.OrdinalIgnoreCase) ||
-                    b.Equals(gb, StringComparison.OrdinalIgnoreCase)));
-
-                // Notify about browsers in grace period:
-                // - Alert immediately upon entering grace (initial warning, 60s)
-                // - Intermediate warning at 30s remaining
-                // - Final warning at <= 10s remaining
-                foreach (var gb in fallbackPlan.GracePeriodBrowsers)
-                {
-                    string gExe = gb.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? gb : gb + ".exe";
-                    int remSec = fallbackPlan.GracePeriodRemainingSeconds.TryGetValue(gExe, out int s) ? s : 60;
-
-                    string logKey;
-                    if (remSec <= 10)
-                    {
-                        logKey = $"{gExe}:final";
-                    }
-                    else if (remSec <= 30)
-                    {
-                        logKey = $"{gExe}:intermediate";
-                    }
-                    else
-                    {
-                        logKey = $"{gExe}:initial";
-                    }
-
-                    if (_loggedGraceBrowsers.Add(logKey))
-                    {
-                        string dispName = BrowserCatalog.GetDisplayName(gExe);
-                        string graceMsg = $"Extension required. {dispName} will close in {remSec}s unless Sankalpa extension is active and 'Allow in InPrivate' is enabled.";
-
-                        bool dispatched = ServiceNotificationDispatcher.DispatchNotification("BrowserGrace", gExe, graceMsg);
-
-                        _db.RecordBlockEvent(new BlockEvent
-                        {
-                            TimeUtc = DateTime.UtcNow,
-                            Kind = "BrowserGrace",
-                            Name = gExe,
-                            ProfileName = graceMsg,
-                            ServiceDispatched = dispatched
-                        });
-                    }
-                }
+                // Truthful grace notifications off the monitor loop with settle delay and USABLE window check
+                BrowserGraceNotifier.ProcessGraceNotifications(fallbackPlan, _db);
 
                 // Unified scanning & termination: blocked apps, anti-kill tools, and unauthorized browsers in one pass
                 ScanAndKillProcessesUnified(_processBuffer, unionApps, unauthorizedBrowsers, fallbackPlan.UnauthorizedReasons, fallbackPlan.FallbackReason, allProfiles, localNow);
@@ -1019,6 +975,16 @@ public class Worker : BackgroundService
                         {
                             continue;
                         }
+
+                        // Process identity verification: ensure process image matches before kill
+                        string? currentPath = GetProcessImagePath(processId);
+                        if (!string.IsNullOrEmpty(currentPath) &&
+                            !currentPath.EndsWith(exeName, StringComparison.OrdinalIgnoreCase) &&
+                            !currentPath.EndsWith(processName + ".exe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue; // PID was recycled by another process
+                        }
+
                         try
                         {
                             pObj.Kill(entireProcessTree: true);
@@ -1049,7 +1015,7 @@ public class Worker : BackgroundService
                             ? r
                             : (browserKillReason ?? "Sankalpa extension missing or 'Allow in InPrivate' is disabled");
 
-                        string msg = $"[{timestamp}] [KILLED] [EXTENSION REQUIRED] Process '{exeName}' terminated: {specificReason}";
+                        string msg = $"[ZenEnforce] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [KILLED] [EXTENSION REQUIRED] Process '{exeName}' terminated: {specificReason}";
                         Console.WriteLine(msg);
                         _logger.LogInformation("{Message}", msg);
 
@@ -1093,6 +1059,24 @@ public class Worker : BackgroundService
                             {
                                 continue;
                             }
+
+                            // Process identity verification: ensure executable path matches before kill
+                            string? currentPath = GetProcessImagePath(processId);
+                            if (!string.IsNullOrEmpty(imagePath) && !string.IsNullOrEmpty(currentPath))
+                            {
+                                try
+                                {
+                                    if (!string.Equals(Path.GetFullPath(currentPath), Path.GetFullPath(imagePath), StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        continue; // Identity mismatch: PID reuse!
+                                    }
+                                }
+                                catch
+                                {
+                                    continue;
+                                }
+                            }
+
                             try
                             {
                                 targetProc.Kill(entireProcessTree: true);
@@ -1141,7 +1125,7 @@ public class Worker : BackgroundService
                                     ? $"Process '{processName}' (OriginalFilename: '{originalFileName}', PID: {processId})"
                                     : $"Process '{processName}' (PID: {processId})";
                                 string killReason = isAntiKillTool ? " [TAMPER ATTEMPT BLOCKED]" : "";
-                                string killMsg = $"[{timestamp}] [KILLED]{killReason} {details} terminated.";
+                                string killMsg = $"[ZenEnforce] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [KILLED]{killReason} {details} terminated.";
                                 Console.WriteLine(killMsg);
                                 _logger.LogInformation("{Message}", killMsg);
                             }
@@ -1150,7 +1134,7 @@ public class Worker : BackgroundService
                         {
                             if (_loggedFailurePids.Add(processId))
                             {
-                                string failMsg = $"[{timestamp}] [FAILED] Failed to terminate process '{processName}' (PID: {processId}): {ex.Message}";
+                                string failMsg = $"[ZenEnforce] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [FAILED] Failed to terminate process '{processName}' (PID: {processId}): {ex.Message}";
                                 Console.WriteLine(failMsg);
                                 _logger.LogWarning("{Message}", failMsg);
                             }
@@ -1169,46 +1153,36 @@ public class Worker : BackgroundService
 
                     string? path = GetProcessImagePath(processId);
 
-                    bool isAppPermitted = IsAppAllowed(processName, exeName, allowedApps, path, _db.ActiveAllowedAppRoots);
+                    bool isAppPermitted = IsProcessAllowedPredicate(
+                        processName,
+                        exeName,
+                        path,
+                        allowedApps,
+                        _db.ActiveAllowedAppRoots,
+                        process.ParentId,
+                        _processByPid,
+                        GetProcessImagePath);
 
-                    // Child exemption:
-                    // If a process is NOT directly in allowedApps, check its ParentId:
-                    // If process.ParentId > 0 and the parent process is an allowed app (or parent PID is tracked as an allowed app):
-                    // Check if the child process executable/image path is inside that allowed app's installation directory!
+                    // Child exemption directory cache maintenance
                     if (!isAppPermitted && process.ParentId > 0)
                     {
-                        if (!allowedAppDirs.TryGetValue(process.ParentId, out string? parentInstallDir))
+                        if (allowedAppDirs.TryGetValue(process.ParentId, out string? parentInstallDir))
                         {
-                            if (_processByPid.TryGetValue(process.ParentId, out var parentEntry))
-                            {
-                                string? parentImagePath = GetProcessImagePath(parentEntry.Id);
-                                if (IsAppAllowed(parentEntry.ProcessName, parentEntry.ExeName, allowedApps, parentImagePath, _db.ActiveAllowedAppRoots))
-                                {
-                                    if (!string.IsNullOrEmpty(parentImagePath))
-                                    {
-                                        string? dir = Path.GetDirectoryName(parentImagePath);
-                                        if (!string.IsNullOrEmpty(dir) && !IsSystemOrRootDirectory(dir))
-                                        {
-                                            parentInstallDir = dir;
-                                            allowedAppDirs[parentEntry.Id] = dir;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!string.IsNullOrEmpty(parentInstallDir))
-                        {
-                            if (!string.IsNullOrEmpty(path) && ProtectedProcesses.IsPathInsideDirectory(path, parentInstallDir))
+                            if (!string.IsNullOrEmpty(parentInstallDir) && !string.IsNullOrEmpty(path) &&
+                                ProtectedProcesses.IsPathInsideDirectory(path, parentInstallDir))
                             {
                                 allowedAppDirs[processId] = parentInstallDir;
-                                continue; // Exempt from suspension!
+                                isAppPermitted = true;
                             }
                         }
                     }
 
-                    if (!isAppPermitted &&
-                        !ProtectedProcesses.IsProtected(processName, path) &&
+                    if (isAppPermitted)
+                    {
+                        continue;
+                    }
+
+                    if (!ProtectedProcesses.IsProtected(processName, path) &&
                         !ProtectedProcesses.IsProtected(exeName, path))
                     {
                         try
@@ -1235,13 +1209,14 @@ public class Worker : BackgroundService
                                     continue;
                                 }
 
+                                DateTime? creationTimeUtc = GetProcessCreationTimeUtc(processId);
                                 bool fromAllowedApp = IsDescendedFromAllowedApp(process.ParentId, allowedApps);
 
-                                if (ProcessSuspender.Default.SuspendProcess(processId, exeName, fromAllowedApp))
+                                if (ProcessSuspender.Default.SuspendProcess(processId, exeName, fromAllowedApp, creationTimeUtc, path))
                                 {
                                     if (_loggedMeditationPids.Add(processId))
                                     {
-                                        string msg = $"[{timestamp}] [MEDITATION SUSPEND] Process '{exeName}' (PID: {processId}) suspended (not in allowed meditation apps).";
+                                        string msg = $"[ZenEnforce] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [MEDITATION SUSPEND] Process '{exeName}' (PID: {processId}) suspended (not in allowed meditation apps).";
                                         Console.WriteLine(msg);
                                         _logger.LogInformation("{Message}", msg);
 
@@ -1447,6 +1422,35 @@ public class Worker : BackgroundService
 
     #region Meditation Mode Helpers
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessTimes(
+        IntPtr hProcess,
+        out long lpCreationTime,
+        out long lpExitTime,
+        out long lpKernelTime,
+        out long lpUserTime);
+
+    private static DateTime? GetProcessCreationTimeUtc(int processId)
+    {
+        if (processId <= 4 || !OperatingSystem.IsWindows()) return null;
+        IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+        if (hProcess == IntPtr.Zero) return null;
+        try
+        {
+            if (GetProcessTimes(hProcess, out long creationTime, out _, out _, out _) && creationTime > 0)
+            {
+                return DateTime.FromFileTimeUtc(creationTime);
+            }
+        }
+        catch { }
+        finally
+        {
+            CloseHandle(hProcess);
+        }
+        return null;
+    }
+
     public static bool IsAppAllowed(string processName, string exeName, List<string> allowedApps)
     {
         return IsAppAllowed(processName, exeName, allowedApps, null, null);
@@ -1459,10 +1463,32 @@ public class Worker : BackgroundService
         string? imagePath,
         IReadOnlyDictionary<string, string>? allowedAppRoots)
     {
+        return IsProcessAllowedPredicate(processName, exeName, imagePath, allowedApps, allowedAppRoots);
+    }
+
+    /// <summary>
+    /// Published Contract C-3 allowed-process predicate.
+    /// Determines whether a process is permitted during active meditation mode:
+    /// - Checks system clipping tools against canonical system folders.
+    /// - Matches process against allowedApps with install root directory pinning.
+    /// - For Edge: verifies msedge.exe against canonical Edge install roots (rejecting user-writable folder imposters).
+    /// - For Edge helpers: verifies helper name, canonical install root, and parent/launcher lineage when msedge is allowed.
+    /// - For child processes: verifies multi-hop ancestry and containment inside the allowed ancestor's install tree.
+    /// </summary>
+    public static bool IsProcessAllowedPredicate(
+        string processName,
+        string exeName,
+        string? imagePath,
+        List<string>? allowedApps,
+        IReadOnlyDictionary<string, string>? allowedAppRoots,
+        int parentId = 0,
+        IReadOnlyDictionary<int, FastProcessEntry>? processByPid = null,
+        Func<int, string?>? getImagePath = null)
+    {
         string normProc = ProcessMatcher.NormalizeProcessName(processName);
         string normExe = ProcessMatcher.NormalizeProcessName(exeName);
 
-        // Always allow Snipping Tool and Screen Clipping Host during meditation, verified against system folders if imagePath provided
+        // 1. Built-in system clipping tools
         if (string.Equals(normProc, "screenclippinghost", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(normExe, "screenclippinghost", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(normProc, "snippingtool", StringComparison.OrdinalIgnoreCase) ||
@@ -1480,9 +1506,17 @@ public class Worker : BackgroundService
             return false;
         }
 
+        bool isEdgeAllowed = false;
+
+        // 2. Direct allowed app match
         foreach (var allowed in allowedApps)
         {
             string normAllowed = ProcessMatcher.NormalizeProcessName(allowed);
+            if (string.Equals(normAllowed, "msedge", StringComparison.OrdinalIgnoreCase))
+            {
+                isEdgeAllowed = true;
+            }
+
             bool nameMatch = (!string.IsNullOrEmpty(normProc) && string.Equals(normProc, normAllowed, StringComparison.OrdinalIgnoreCase)) ||
                              (!string.IsNullOrEmpty(normExe) && string.Equals(normExe, normAllowed, StringComparison.OrdinalIgnoreCase));
 
@@ -1502,7 +1536,114 @@ public class Worker : BackgroundService
                         continue;
                     }
                 }
+                else if (string.Equals(normAllowed, "msedge", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Enforce that msedge.exe itself must be located in a canonical Edge installation directory
+                    if (!string.IsNullOrWhiteSpace(imagePath))
+                    {
+                        if (ProtectedProcesses.IsEdgeInstallRoot(imagePath))
+                        {
+                            return true;
+                        }
+                        // Renamed msedge in user-writable folder rejected
+                        continue;
+                    }
+                }
                 return true;
+            }
+        }
+
+        // 3. Legitimate Edge helper exemption (only active when msedge is allowed)
+        if (isEdgeAllowed && (ProtectedProcesses.IsLegitimateEdgeHelper(normExe, imagePath) || ProtectedProcesses.IsLegitimateEdgeHelper(normProc, imagePath)))
+        {
+            // If parent process is still active, verify ancestor chain
+            if (parentId > 0 && processByPid != null)
+            {
+                var visited = new HashSet<int>();
+                int cur = parentId;
+                int hops = 0;
+                bool parentChainValid = false;
+
+                while (cur > 0 && hops < 16)
+                {
+                    if (!visited.Add(cur)) break;
+                    if (!processByPid.TryGetValue(cur, out var anc))
+                    {
+                        // Parent exited; launcher or worker lifecycle
+                        parentChainValid = true;
+                        break;
+                    }
+
+                    string normAnc = ProcessMatcher.NormalizeProcessName(anc.ProcessName);
+                    string normAncExe = ProcessMatcher.NormalizeProcessName(anc.ExeName);
+
+                    if (string.Equals(normAnc, "msedge", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(normAncExe, "msedge", StringComparison.OrdinalIgnoreCase))
+                    {
+                        parentChainValid = true;
+                        break;
+                    }
+
+                    if (ProtectedProcesses.IsLegitimateEdgeHelper(normAncExe, getImagePath?.Invoke(anc.Id)) ||
+                        ProtectedProcesses.IsLegitimateEdgeHelper(normAnc, getImagePath?.Invoke(anc.Id)))
+                    {
+                        cur = anc.ParentId;
+                        hops++;
+                        continue;
+                    }
+
+                    // Launcher pipeline parent (explorer, services, svchost)
+                    if (string.Equals(normAnc, "explorer", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(normAnc, "services", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(normAnc, "svchost", StringComparison.OrdinalIgnoreCase))
+                    {
+                        parentChainValid = true;
+                    }
+                    break;
+                }
+
+                if (parentChainValid)
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                // Parent already exited or no parent PID: authentic Edge helper verified inside canonical root
+                return true;
+            }
+        }
+
+        // 4. General child process exemption (multi-hop ancestor containment)
+        if (parentId > 0 && processByPid != null && !string.IsNullOrWhiteSpace(imagePath))
+        {
+            var visited = new HashSet<int>();
+            int cur = parentId;
+            int hops = 0;
+
+            while (cur > 0 && hops < 16)
+            {
+                if (!visited.Add(cur)) break;
+                if (!processByPid.TryGetValue(cur, out var anc)) break;
+
+                string? ancPath = getImagePath?.Invoke(anc.Id);
+                if (IsAppAllowed(anc.ProcessName, anc.ExeName, allowedApps, ancPath, allowedAppRoots))
+                {
+                    if (!string.IsNullOrEmpty(ancPath))
+                    {
+                        string? ancDir = Path.GetDirectoryName(ancPath);
+                        if (!string.IsNullOrEmpty(ancDir) && !IsSystemOrRootDirectory(ancDir))
+                        {
+                            if (ProtectedProcesses.IsPathInsideDirectory(imagePath, ancDir))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                cur = anc.ParentId;
+                hops++;
             }
         }
 

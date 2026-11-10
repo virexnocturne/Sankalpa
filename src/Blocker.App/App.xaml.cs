@@ -392,13 +392,8 @@ public partial class App : Wpf.Application
         }
         else if (string.Equals(kind, "BrowserGrace", StringComparison.OrdinalIgnoreCase))
         {
-            if (!ShowBrowserAlerts) return;
-            string disp = BrowserCatalog.GetDisplayName(appName);
-            _notifyIcon?.ShowBalloonTip(
-                4000,
-                $"{disp} Closing Soon",
-                profileName,
-                Forms.ToolTipIcon.Warning);
+            // Suppress duplicate tray balloon tip: BrowserGrace countdown toasts are handled exclusively by the service toast pipeline
+            return;
         }
         else if (string.Equals(kind, "DnsTamper", StringComparison.OrdinalIgnoreCase))
         {

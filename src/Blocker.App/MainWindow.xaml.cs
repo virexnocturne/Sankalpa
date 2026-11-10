@@ -189,6 +189,12 @@ public partial class MainWindow : Window
             _viewModel.RequestOpenStartSessionDialog = p => _ = OpenStartSessionDialog(p);
             _viewModel.OnAppBlockedWithKind = (appName, profileName, kind) =>
             {
+                // Suppress duplicate balloon tip for BrowserGrace: countdown toasts are handled exclusively by the service toast pipeline
+                if (string.Equals(kind, "BrowserGrace", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
                 if (Application.Current is App app)
                 {
                     app.Dispatcher.Invoke(() => app.ShowBlockNotification(appName, profileName, kind));

@@ -456,6 +456,7 @@ public partial class ZenMiniHudWindow : Window
 
     private void ReturnButton_Click(object sender, RoutedEventArgs e)
     {
+        ClearStatus();
         OnReturnToZenRequested?.Invoke();
     }
 

@@ -12,7 +12,7 @@ namespace Blocker.Core;
 
 public class ProcessSuspender : IDisposable
 {
-    public record Entry(SafeProcessHandle Handle, string Name, DateTime StartUtc, bool FromAllowedApp);
+    public record Entry(SafeProcessHandle Handle, string Name, DateTime StartUtc, bool FromAllowedApp, string? ImagePath = null, bool IsLegitimate = false);
 
     private const int PROCESS_TERMINATE = 0x0001;
     private const int PROCESS_SUSPEND_RESUME = 0x0800;
@@ -70,7 +70,7 @@ public class ProcessSuspender : IDisposable
 
     internal void AddTestEntry(int pid, Entry entry) => _suspendedProcesses[pid] = entry;
 
-    public bool SuspendProcess(int pid, string name, bool fromAllowedApp = false)
+    public bool SuspendProcess(int pid, string name, bool fromAllowedApp = false, DateTime? expectedCreationTimeUtc = null, string? expectedImagePath = null, bool isLegitimate = false)
     {
         if (pid <= 4)
         {
@@ -143,6 +143,24 @@ public class ProcessSuspender : IDisposable
                 catch { }
             }
 
+            // Process identity check on image path: reject if PID was recycled by another process
+            if (!string.IsNullOrEmpty(expectedImagePath) && !string.IsNullOrEmpty(path))
+            {
+                try
+                {
+                    if (!string.Equals(Path.GetFullPath(path), Path.GetFullPath(expectedImagePath), StringComparison.OrdinalIgnoreCase))
+                    {
+                        handle.Dispose();
+                        return false;
+                    }
+                }
+                catch
+                {
+                    handle.Dispose();
+                    return false;
+                }
+            }
+
             // Defense-in-depth: run SystemHelperGuard.IsTrusted(path). If trusted, do NOT suspend and return false.
             if (!string.IsNullOrEmpty(path) && SystemHelperGuard.IsTrusted(path))
             {
@@ -163,10 +181,20 @@ public class ProcessSuspender : IDisposable
                 }
             }
 
+            // Process identity check on creation time: reject if PID was recycled
+            if (expectedCreationTimeUtc.HasValue)
+            {
+                if (Math.Abs((startUtc - expectedCreationTimeUtc.Value).TotalSeconds) > 2)
+                {
+                    handle.Dispose();
+                    return false;
+                }
+            }
+
             int status = NtSuspendProcess(handle.DangerousGetHandle());
             if (status == 0) // STATUS_SUCCESS
             {
-                var entry = new Entry(handle, name, startUtc, fromAllowedApp);
+                var entry = new Entry(handle, name, startUtc, fromAllowedApp, path, isLegitimate);
                 if (_suspendedProcesses.TryAdd(pid, entry))
                 {
                     return true;
@@ -201,7 +229,14 @@ public class ProcessSuspender : IDisposable
         return count;
     }
 
-    public static bool ShouldTerminate(Entry e, DateTime sessionStart) => e.FromAllowedApp && e.StartUtc >= sessionStart;
+    public static bool ShouldTerminate(Entry e, DateTime sessionStart)
+    {
+        if (e.IsLegitimate)
+        {
+            return false;
+        }
+        return e.FromAllowedApp && e.StartUtc >= sessionStart;
+    }
 
     public (int Resumed, int Terminated) FinishSession(DateTime sessionStartUtc)
     {
@@ -212,7 +247,8 @@ public class ProcessSuspender : IDisposable
             using (e.Handle)
             {
                 var h = e.Handle.DangerousGetHandle();
-                if (ShouldTerminate(e, sessionStartUtc) && TerminateProcess(h, 1))
+                bool isLegit = e.IsLegitimate || (!string.IsNullOrEmpty(e.ImagePath) && ProtectedProcesses.IsLegitimateEdgeHelper(e.Name, e.ImagePath));
+                if (!isLegit && ShouldTerminate(e, sessionStartUtc) && TerminateProcess(h, 1))
                 {
                     t++;
                 }
@@ -290,6 +326,20 @@ public class ProcessSuspender : IDisposable
                 if (handle.IsInvalid)
                 {
                     return true;
+                }
+
+                // Verify process identity if reopening handle to avoid resuming recycled PID
+                if (GetProcessTimes(handle, out long creationTime, out _, out _, out _) && creationTime > 0)
+                {
+                    try
+                    {
+                        var curStart = DateTime.FromFileTimeUtc(creationTime);
+                        if (Math.Abs((curStart - entry.StartUtc).TotalSeconds) > 2)
+                        {
+                            return false; // PID was reused
+                        }
+                    }
+                    catch { }
                 }
 
                 int resumeStatus = NtResumeProcess(handle.DangerousGetHandle());

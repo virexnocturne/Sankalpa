@@ -295,6 +295,108 @@ public static class ProtectedProcesses
         }
     }
 
+    private static readonly Lazy<List<string>> CanonicalEdgeRoots = new(() =>
+    {
+        var roots = new List<string>();
+        string[] baseFolders =
+        [
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+        ];
+
+        string[] edgeSubDirs =
+        [
+            Path.Combine("Microsoft", "Edge"),
+            Path.Combine("Microsoft", "EdgeCore"),
+            Path.Combine("Microsoft", "EdgeWebView"),
+            Path.Combine("Microsoft", "EdgeUpdate")
+        ];
+
+        foreach (var baseFolder in baseFolders)
+        {
+            if (string.IsNullOrWhiteSpace(baseFolder)) continue;
+            foreach (var sub in edgeSubDirs)
+            {
+                try
+                {
+                    string full = Path.GetFullPath(Path.Combine(baseFolder, sub));
+                    roots.Add(full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                }
+                catch { }
+            }
+        }
+
+        return roots.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    });
+
+    /// <summary>
+    /// Validates whether a file path resides inside a canonical Microsoft Edge installation or component directory.
+    /// Traversal attacks (..\) and user-writable temporary locations are rejected.
+    /// </summary>
+    public static bool IsEdgeInstallRoot(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return false;
+        string full;
+        try
+        {
+            full = Path.GetFullPath(filePath);
+        }
+        catch
+        {
+            return false;
+        }
+
+        foreach (var root in CanonicalEdgeRoots.Value)
+        {
+            if (full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                full.Equals(root, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static readonly HashSet<string> KnownEdgeHelpers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "identity_helper",
+        "msedge_proxy",
+        "notification_helper",
+        "notification_click_helper",
+        "msedgewebview2",
+        "MicrosoftEdgeUpdate",
+        "MicrosoftEdgeUpdateBroker",
+        "MicrosoftEdgeUpdateCore",
+        "msedge_pwa_launcher",
+        "elevation_service",
+        "pwahelper",
+        "cookie_exporter",
+        "platform_experiences_helper"
+    };
+
+    /// <summary>
+    /// Validates whether a process is a legitimate Edge helper executable residing within an authorized Edge install tree.
+    /// </summary>
+    public static bool IsLegitimateEdgeHelper(string? processOrExeName, string? imagePath)
+    {
+        string normalized = ProcessMatcher.NormalizeProcessName(processOrExeName);
+        if (string.IsNullOrEmpty(normalized)) return false;
+
+        if (!KnownEdgeHelpers.Contains(normalized))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(imagePath))
+        {
+            return false;
+        }
+
+        return IsEdgeInstallRoot(imagePath);
+    }
+
     private static string? GetCurrentProcessName()
     {
         try
