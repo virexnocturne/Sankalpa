@@ -322,6 +322,8 @@ public partial class ZenShieldWindow : Window
     private readonly List<ZenBackdropWindow> _secondaryBackdrops = new();
 
     private ZenMiniHudWindow? _miniHudWindow;
+    private AllowedAppForegroundTracker? _appTracker;
+    public event Action<int, IntPtr>? ForegroundAllowedAppChanged;
 
     private LowLevelKeyboardHook? _keyboardHook;
 
@@ -601,6 +603,33 @@ public partial class ZenShieldWindow : Window
             Interval = TimeSpan.FromMilliseconds(500)
         };
         _watchdogTimer.Tick += WatchdogTimer_Tick;
+
+        _appTracker = new AllowedAppForegroundTracker(
+            () => _allowedAppProcessNames,
+            () => _allowedAppRoots);
+        _appTracker.ForegroundAllowedAppChanged += (pid, hwnd) =>
+        {
+            _lastAllowedAppHwnd = hwnd;
+            ForegroundAllowedAppChanged?.Invoke(pid, hwnd);
+        };
+        _appTracker.HudVisibilityChanged += (visible) =>
+        {
+            if (visible)
+            {
+                if (_isAllowedAppMode && _lastAllowedAppHwnd != IntPtr.Zero)
+                {
+                    ShowMiniHud();
+                }
+            }
+            else
+            {
+                _miniHudWindow?.Hide();
+            }
+        };
+        _appTracker.ZenScreenRestoreRequested += () =>
+        {
+            RestoreZenScreen();
+        };
 
         UpdateTimerDisplay();
 
@@ -979,21 +1008,6 @@ public partial class ZenShieldWindow : Window
                 GetClassName(hWnd, sbClass, sbClass.Capacity);
                 string cls = sbClass.ToString();
 
-                if (cls.StartsWith("UAC_", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(cls, "UAC Input Indicator", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(cls, "Touch Tooltip Window", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(cls, "CicLoaderWndClass", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(cls, "CiceroUIWndFrame", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(cls, "MSCTFIME UI", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(cls, "Default IME", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(cls, "IME", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(cls, "Static", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(cls, "GDI+ Hook Window Class", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(cls, "QTrayIconMessageWindowClass", StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-
                 int w = 0, h = 0;
                 bool isIconic = IsIconic(hWnd);
                 if (isIconic)
@@ -1015,7 +1029,7 @@ public partial class ZenShieldWindow : Window
                 GetWindowText(hWnd, sbTitle, sbTitle.Capacity);
                 bool hasTitle = sbTitle.Length > 0;
 
-                if ((w >= 100 && h >= 100) || (isIconic && hasTitle))
+                if (ZenLaunchMatcher.IsRealAppWindow(cls, w, h, isIconic, hasTitle))
                 {
                     long area = (long)Math.Max(w, 100) * Math.Max(h, 100);
 
@@ -1068,12 +1082,11 @@ public partial class ZenShieldWindow : Window
 
         var cts = _switchCts = new CancellationTokenSource();
         _switchingTo = name;
-        _graceUntilUtc = DateTime.UtcNow.AddSeconds(4);
+        _graceUntilUtc = DateTime.UtcNow.AddMilliseconds(ZenLaunchConstants.LaunchGracePeriodMs);
         _isAllowedAppMode = true;
         _unauthorizedBreachCount = 0;
 
-        ShowMiniHud();
-        _miniHudWindow?.SetStatus($"Opening {app.DisplayName}…", false, null);
+        _appTracker?.StartColdLaunch(name, ZenLaunchConstants.LaunchGracePeriodMs);
 
         _ = RunSwitchAsync(app, name, cts);
     }
@@ -1108,7 +1121,9 @@ public partial class ZenShieldWindow : Window
                     var r = await Task.Run(() => TryLaunch(app), ct);
                     if (r.Error != null)
                     {
-                        _miniHudWindow?.SetStatus(r.Error + " — click to retry", true, () => SwitchToAllowedApp(app));
+                        _appTracker?.ResetToZen();
+                        _isAllowedAppMode = false;
+                        RestoreZenScreen();
                         return;
                     }
 
@@ -1126,13 +1141,18 @@ public partial class ZenShieldWindow : Window
 
             if (hwnd == IntPtr.Zero)
             {
-                _miniHudWindow?.SetStatus($"{app.DisplayName} is taking longer than usual — click to retry", true, () => SwitchToAllowedApp(app));
+                _appTracker?.ResetToZen();
+                _isAllowedAppMode = false;
+                RestoreZenScreen();
                 return;
             }
 
             // Discovered allowed app window (discoveredHwnd)
             _lastAllowedAppHwnd = hwnd;
+            GetWindowThreadProcessId(hwnd, out uint discoveredPid);
+            _appTracker?.SetTrackedWindow(hwnd, (int)discoveredPid, name);
             BringToFront(hwnd);
+            ShowMiniHud();
             _miniHudWindow?.ClearStatus();
         }
         catch (OperationCanceledException)
@@ -1224,8 +1244,15 @@ public partial class ZenShieldWindow : Window
         _miniHudWindow.UpdateAudioLabel(GetAudioHudLabel());
         _miniHudWindow.Topmost = true;
         _miniHudWindow.Show();
-        _miniHudWindow.PositionAtTopCenter();
-        _miniHudWindow.Activate();
+
+        if (!_miniHudWindow.HasBeenPositionedInitially)
+        {
+            _miniHudWindow.PositionAtTopCenter();
+        }
+        else
+        {
+            _miniHudWindow.ApplyClampingAndSnapping();
+        }
 
         // While an allowed application is active, the primary ZenShieldWindow yields topmost
         // so the allowed app floats comfortably without flickering or focus battles.
@@ -1301,6 +1328,7 @@ public partial class ZenShieldWindow : Window
     {
         _isAllowedAppMode = false;
         _unauthorizedBreachCount = 0;
+        _appTracker?.ResetToZen();
 
         if (_miniHudWindow != null)
         {
@@ -1331,6 +1359,8 @@ public partial class ZenShieldWindow : Window
                 SetWindowPos(secHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             }
         }
+
+        ForegroundAllowedAppChanged?.Invoke(0, IntPtr.Zero);
     }
 
     #endregion
@@ -1613,6 +1643,13 @@ public partial class ZenShieldWindow : Window
             if (fgPid == currentPid)
             {
                 _unauthorizedBreachCount = 0;
+                if (_isAllowedAppMode && _lastAllowedAppHwnd != IntPtr.Zero)
+                {
+                    if (!IsWindow(_lastAllowedAppHwnd) || !IsWindowVisible(_lastAllowedAppHwnd) || IsIconic(_lastAllowedAppHwnd))
+                    {
+                        _appTracker?.EvaluateNow();
+                    }
+                }
                 return; // Whitelisted self / dialogs / Mini-HUD
             }
 
@@ -1656,31 +1693,38 @@ public partial class ZenShieldWindow : Window
                     RestoreTopmostAfterSnipping();
                 }
 
-                bool isAllowedApp = _allowedAppProcessNames.Contains(procName) ||
-                                    _allowedAppProcessNames.Contains(procName + ".exe");
+                bool isAllowedApp = ZenLaunchMatcher.IsAppAllowed(procName, helperPath, _allowedAppProcessNames, _allowedAppRoots);
 
                 if (isAllowedApp)
                 {
-                    string normProc = ProcessMatcher.NormalizeProcessName(procName);
-                    if (_allowedAppRoots.TryGetValue(normProc, out var rootDir) && !string.IsNullOrWhiteSpace(rootDir))
+                    GetWindowRect(fgHwnd, out RECT r);
+                    int w = r.Right - r.Left;
+                    int h = r.Bottom - r.Top;
+                    bool isIconic = IsIconic(fgHwnd);
+                    var sbTitle = new System.Text.StringBuilder(256);
+                    GetWindowText(fgHwnd, sbTitle, sbTitle.Capacity);
+                    bool isRealApp = ZenLaunchMatcher.IsRealAppWindow(className, w, h, isIconic, sbTitle.Length > 0);
+
+                    if (isRealApp)
                     {
-                        if (!string.IsNullOrWhiteSpace(helperPath) && !ProtectedProcesses.IsPathInsideDirectory(helperPath, rootDir))
+                        _unauthorizedBreachCount = 0;
+                        if (_isAllowedAppMode)
                         {
-                            isAllowedApp = false;
+                            if (fgHwnd != _lastAllowedAppHwnd)
+                            {
+                                _lastAllowedAppHwnd = fgHwnd;
+                                _appTracker?.SetTrackedWindow(fgHwnd, (int)fgPid, procName ?? "");
+                            }
                         }
+                        // If !_isAllowedAppMode: do NOT flip mode! Mode only changes via explicit launch/switch
+                        return;
                     }
-                }
-
-                if (isAllowedApp)
-                {
-                    _lastAllowedAppHwnd = fgHwnd;
-                    _unauthorizedBreachCount = 0;
-                    if (!_isAllowedAppMode)
+                    else if (_isAllowedAppMode)
                     {
-                        _isAllowedAppMode = true;
-                        ShowMiniHud();
+                        // Helper / toast / tooltip window of allowed app during allowed app mode
+                        _unauthorizedBreachCount = 0;
+                        return;
                     }
-                    return;
                 }
 
                 // Whitelist OS text and frame host helpers (TextInputHost, ApplicationFrameHost, ctfmon, etc.) via SystemHelperGuard
@@ -1797,39 +1841,22 @@ public partial class ZenShieldWindow : Window
             return false;
         }
 
-        if (_lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
+        if (_lastAllowedAppHwnd != IntPtr.Zero &&
+            IsWindow(_lastAllowedAppHwnd) &&
+            IsWindowVisible(_lastAllowedAppHwnd) &&
+            !IsIconic(_lastAllowedAppHwnd))
         {
             try
             {
                 GetWindowThreadProcessId(_lastAllowedAppHwnd, out uint pid);
                 if (pid != 0)
                 {
-                    using var proc = Process.GetProcessById((int)pid);
-                    if (!proc.HasExited)
-                    {
-                        return true;
-                    }
+                    string? procName = GetProcessNameCached(pid);
+                    string? imgPath = GetProcessImagePath((int)pid);
+                    return ZenLaunchMatcher.IsAppAllowed(procName, imgPath, _allowedAppProcessNames, _allowedAppRoots);
                 }
             }
             catch { }
-        }
-
-        // Only run the fallback scan when no switch is in progress (_switchCts == null)
-        // and at most once every 2 seconds
-        if (_switchCts == null && DateTime.UtcNow - _lastFallbackScanUtc > TimeSpan.FromSeconds(2))
-        {
-            _lastFallbackScanUtc = DateTime.UtcNow;
-
-            // Fallback: check if any allowed app has an active top-level window
-            foreach (var allowedName in _allowedAppProcessNames)
-            {
-                IntPtr found = FindMainWindowForProcess(allowedName);
-                if (found != IntPtr.Zero)
-                {
-                    _lastAllowedAppHwnd = found;
-                    return true;
-                }
-            }
         }
 
         return false;
@@ -1858,6 +1885,8 @@ public partial class ZenShieldWindow : Window
         _sessionTimer.Stop();
         _autoSaveTimer.Stop();
         _watchdogTimer.Stop();
+        _appTracker?.Dispose();
+        _appTracker = null;
         _quickNotesOverlay?.Close();
         _miniHudWindow?.Close();
 
@@ -1898,6 +1927,8 @@ public partial class ZenShieldWindow : Window
         _sessionTimer.Stop();
         _autoSaveTimer.Stop();
         _watchdogTimer.Stop();
+        _appTracker?.Dispose();
+        _appTracker = null;
 
         if (_lastAllowedAppHwnd != IntPtr.Zero && IsWindow(_lastAllowedAppHwnd))
         {
