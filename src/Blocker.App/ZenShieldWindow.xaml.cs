@@ -612,6 +612,7 @@ public partial class ZenShieldWindow : Window
             _lastAllowedAppHwnd = hwnd;
             ForegroundAllowedAppChanged?.Invoke(pid, hwnd);
         };
+        ForegroundAllowedAppChanged += OnForegroundAllowedAppChangedForThrottling;
         _appTracker.HudVisibilityChanged += (visible) =>
         {
             if (visible)
