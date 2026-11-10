@@ -33,8 +33,20 @@ public static class Program
                 string kind = args.Length > 1 ? args[1] : "App";
                 string name = args.Length > 2 ? args[2] : "";
                 string profileOrReason = args.Length > 3 ? args[3] : "";
-                Log($"[NativeHost] CLI --notify received: kind='{kind}', name='{name}', reason='{profileOrReason}'");
-                ShowToastNotification(kind, name, profileOrReason);
+                string tag = args.Length > 4 ? args[4] : name;
+                string group = args.Length > 5 ? args[5] : ("Sankalpa." + kind);
+                int expirationSec = (args.Length > 6 && int.TryParse(args[6], out int exp)) ? exp : 0;
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] CLI --notify received: kind='{kind}', name='{name}', reason='{profileOrReason}', tag='{tag}', group='{group}', exp={expirationSec}s");
+                ShowToastNotification(kind, name, profileOrReason, tag, group, expirationSec);
+                return 0;
+            }
+
+            if (string.Equals(args[0], "--retract", StringComparison.OrdinalIgnoreCase))
+            {
+                string tag = args.Length > 1 ? args[1] : "";
+                string group = args.Length > 2 ? args[2] : "";
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] CLI --retract received: tag='{tag}', group='{group}'");
+                RetractToastNotification(tag, group);
                 return 0;
             }
 
@@ -423,11 +435,22 @@ public static class Program
         catch { }
     }
 
-    private static void ShowToastNotification(string kind, string name, string profileOrReason)
+    private static void ShowToastNotification(string kind, string name, string profileOrReason, string tag = "", string group = "", int expirationSec = 0)
     {
         try
         {
-            Log($"[NativeHost] ShowToastNotification invoked: kind='{kind}', name='{name}', profileOrReason='{profileOrReason}'");
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] ShowToastNotification invoked: kind='{kind}', name='{name}', profileOrReason='{profileOrReason}', tag='{tag}', group='{group}', exp={expirationSec}s");
+
+            // Pre-show USABLE window verification for browser notifications
+            if (string.Equals(kind, "BrowserGrace", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!WindowsNotificationHelper.HasUsableWindow(name))
+                {
+                    Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Pre-show check suppressed toast for '{name}': no USABLE window.");
+                    RetractToastNotification(tag, group);
+                    return;
+                }
+            }
 
             // 1. Ensure HKCU\Software\Classes\AppUserModelId\Sankalpa is verified and registered before calling ToastNotificationManager
             string appIconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
@@ -448,12 +471,12 @@ public static class Program
                         key.SetValue("IconUri", appIconPath, Microsoft.Win32.RegistryValueKind.String);
                     }
                     key.SetValue("IconBackgroundColor", "0", Microsoft.Win32.RegistryValueKind.String);
-                    Log("[NativeHost] Verified and registered HKCU\\Software\\Classes\\AppUserModelId\\Sankalpa in registry.");
+                    Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Verified and registered HKCU\\Software\\Classes\\AppUserModelId\\Sankalpa in registry.");
                 }
             }
             catch (Exception regEx)
             {
-                Log($"[NativeHost] Notice: Direct HKCU AUMID registration check: {regEx.Message}");
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Notice: Direct HKCU AUMID registration check: {regEx.Message}");
             }
 
             try
@@ -462,7 +485,7 @@ public static class Program
             }
             catch (Exception aumidEx)
             {
-                Log($"[NativeHost] Notice: ExtensionHelper.EnsureAumidRegistered: {aumidEx.Message}");
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Notice: ExtensionHelper.EnsureAumidRegistered: {aumidEx.Message}");
             }
 
             // 2. Build Toast XML with appropriate title, message, and icon
@@ -524,11 +547,17 @@ public static class Program
             sb.Append("</binding></visual><audio src=\"ms-winsoundevent:Notification.Default\" /></toast>");
 
             string toastXml = sb.ToString();
-            Log($"[NativeHost] Prepared Toast XML: {toastXml}");
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Prepared Toast XML: {toastXml}");
 
             var doc = new Windows.Data.Xml.Dom.XmlDocument();
             doc.LoadXml(toastXml);
             var toast = new Windows.UI.Notifications.ToastNotification(doc);
+            if (!string.IsNullOrEmpty(tag)) toast.Tag = tag;
+            if (!string.IsNullOrEmpty(group)) toast.Group = group;
+            if (expirationSec > 0)
+            {
+                toast.ExpirationTime = DateTimeOffset.UtcNow.AddSeconds(expirationSec);
+            }
 
             bool shown = false;
             try
@@ -537,31 +566,53 @@ public static class Program
                 var notifier = Windows.UI.Notifications.ToastNotificationManager.CreateToastNotifier("Sankalpa");
                 notifier.Show(toast);
                 shown = true;
-                Log($"[NativeHost] Successfully invoked WinRT ToastNotifier.Show() for '{title}'.");
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Successfully invoked WinRT ToastNotifier.Show() for '{title}' (Tag='{tag}', Group='{group}').");
 
                 // CRITICAL: WinRT ToastNotifier.Show() is an asynchronous COM RPC call.
                 // Wait 1200ms after Show() to ensure Windows Action Center finishes receiving and rendering the toast!
                 System.Threading.Thread.Sleep(1200);
-                Log("[NativeHost] WinRT toast display wait completed (1200ms).");
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] WinRT toast display wait completed (1200ms).");
             }
             catch (Exception ex)
             {
-                Log($"[NativeHost] WinRT ToastNotificationManager failed: {ex.Message}");
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] WinRT ToastNotificationManager failed: {ex.Message}");
             }
 
             if (!shown)
             {
-                Log("[NativeHost] Falling back to PowerShell notification toast.");
-                ShowFallbackNotification(title, line1, line2);
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Falling back to PowerShell notification toast.");
+                ShowFallbackNotification(title, line1, line2, tag, group);
             }
         }
         catch (Exception ex)
         {
-            Log($"[NativeHost] Failed to show toast notification: {ex}");
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Failed to show toast notification: {ex}");
         }
     }
 
-    private static void ShowFallbackNotification(string title, string line1, string? line2)
+    private static void RetractToastNotification(string tag, string group)
+    {
+        try
+        {
+            var history = Windows.UI.Notifications.ToastNotificationManager.History;
+            if (!string.IsNullOrEmpty(tag) && !string.IsNullOrEmpty(group))
+            {
+                history.Remove(tag, group, "Sankalpa");
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Successfully retracted toast for tag='{tag}', group='{group}'.");
+            }
+            else if (!string.IsNullOrEmpty(group))
+            {
+                history.RemoveGroup(group, "Sankalpa");
+                Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Successfully retracted toast group='{group}'.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[ZenNotify] [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] RetractToastNotification error: {ex.Message}");
+        }
+    }
+
+    private static void ShowFallbackNotification(string title, string line1, string? line2, string tag = "", string group = "")
     {
         try
         {
@@ -580,6 +631,8 @@ public static class Program
                 "$doc = [Windows.Data.Xml.Dom.XmlDocument]::new(); " +
                 "$doc.LoadXml($rawXml); " +
                 "$t = [Windows.UI.Notifications.ToastNotification]::new($doc); " +
+                (string.IsNullOrEmpty(tag) ? "" : $"$t.Tag = '{tag.Replace("'", "''")}'; ") +
+                (string.IsNullOrEmpty(group) ? "" : $"$t.Group = '{group.Replace("'", "''")}'; ") +
                 "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Sankalpa').Show($t); " +
                 "Start-Sleep -Milliseconds 1200; " +
                 "} catch { }";

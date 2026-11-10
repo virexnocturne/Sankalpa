@@ -427,52 +427,8 @@ public class Worker : BackgroundService
                     ? new HashSet<string>(fallbackPlan.UnauthorizedBrowserProcesses.Select(b => b.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? b : b + ".exe"), StringComparer.OrdinalIgnoreCase)
                     : null;
 
-                // Prune browsers that are no longer in grace period
-                _loggedGraceBrowsers.RemoveWhere(b => !fallbackPlan.GracePeriodBrowsers.Any(gb =>
-                    b.StartsWith(gb + ":", StringComparison.OrdinalIgnoreCase) ||
-                    b.StartsWith((gb.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? gb : gb + ".exe") + ":", StringComparison.OrdinalIgnoreCase) ||
-                    b.Equals(gb, StringComparison.OrdinalIgnoreCase)));
-
-                // Notify about browsers in grace period:
-                // - Alert immediately upon entering grace (initial warning, 60s)
-                // - Intermediate warning at 30s remaining
-                // - Final warning at <= 10s remaining
-                foreach (var gb in fallbackPlan.GracePeriodBrowsers)
-                {
-                    string gExe = gb.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? gb : gb + ".exe";
-                    int remSec = fallbackPlan.GracePeriodRemainingSeconds.TryGetValue(gExe, out int s) ? s : 60;
-
-                    string logKey;
-                    if (remSec <= 10)
-                    {
-                        logKey = $"{gExe}:final";
-                    }
-                    else if (remSec <= 30)
-                    {
-                        logKey = $"{gExe}:intermediate";
-                    }
-                    else
-                    {
-                        logKey = $"{gExe}:initial";
-                    }
-
-                    if (_loggedGraceBrowsers.Add(logKey))
-                    {
-                        string dispName = BrowserCatalog.GetDisplayName(gExe);
-                        string graceMsg = $"Extension required. {dispName} will close in {remSec}s unless Sankalpa extension is active and 'Allow in InPrivate' is enabled.";
-
-                        bool dispatched = ServiceNotificationDispatcher.DispatchNotification("BrowserGrace", gExe, graceMsg);
-
-                        _db.RecordBlockEvent(new BlockEvent
-                        {
-                            TimeUtc = DateTime.UtcNow,
-                            Kind = "BrowserGrace",
-                            Name = gExe,
-                            ProfileName = graceMsg,
-                            ServiceDispatched = dispatched
-                        });
-                    }
-                }
+                // Truthful grace notifications off the monitor loop with settle delay and USABLE window check
+                BrowserGraceNotifier.ProcessGraceNotifications(fallbackPlan, _db);
 
                 // Unified scanning & termination: blocked apps, anti-kill tools, and unauthorized browsers in one pass
                 ScanAndKillProcessesUnified(_processBuffer, unionApps, unauthorizedBrowsers, fallbackPlan.UnauthorizedReasons, fallbackPlan.FallbackReason, allProfiles, localNow);
