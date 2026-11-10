@@ -2063,58 +2063,6 @@ public class MainViewModel : ViewModelBase
             return;
         }
 
-        string? unlockPassword = null;
-        string? unlockText = null;
-
-        // Prompt for unlock credentials if locked with password or challenge
-        if (p.LockMode == LockMode.Password || p.HasPasswordLock)
-        {
-            var pwdDlg = new PasswordUnlockDialog(p.Name);
-            if (Application.Current?.MainWindow != null && Application.Current.MainWindow.IsLoaded)
-            {
-                pwdDlg.Owner = Application.Current.MainWindow;
-            }
-            if (pwdDlg.ShowDialog() != true)
-            {
-                return;
-            }
-            unlockPassword = pwdDlg.ResultPassword;
-        }
-        else if (p.LockMode == LockMode.TypingChallenge || p.HasTypingChallenge)
-        {
-            var chReq = new Request
-            {
-                Command = CommandNames.GetUnlockChallenge,
-                Args = new() { ["name"] = p.Name }
-            };
-            var chRes = await _pipeClient.SendRequestAsync(chReq);
-            if (!chRes.Connected || chRes.Response?.Ok != true || string.IsNullOrEmpty(chRes.Response.Data))
-            {
-                ErrorMessage = chRes.Response?.Error ?? "Failed to request unlock challenge.";
-                return;
-            }
-
-            var challengeDlg = new TypingChallengeDialog(chRes.Response.Data);
-            if (Application.Current?.MainWindow != null && Application.Current.MainWindow.IsLoaded)
-            {
-                challengeDlg.Owner = Application.Current.MainWindow;
-            }
-            if (challengeDlg.ShowDialog() != true)
-            {
-                return;
-            }
-            unlockText = challengeDlg.ResultText;
-        }
-        else if (p.LockMode == LockMode.Locked && (p.LockedNow || p.IsLockedFromToggling))
-        {
-            DarkDialogWindow.Show(
-                $"Block '{p.Name}' is locked.\n\nIt cannot be deleted while locked.",
-                "Block Locked",
-                isConfirmation: false,
-                primaryText: "OK");
-            return;
-        }
-
         bool confirm = DarkDialogWindow.Show(
             $"Are you sure you want to delete '{p.Name}'?\n\nThis will remove all associated app and website block rules.",
             "Delete Block",
@@ -2123,7 +2071,7 @@ public class MainViewModel : ViewModelBase
             secondaryText: "Cancel");
         if (!confirm) return;
 
-        await DeleteProfileAsync(p.Name, unlockPassword, unlockText);
+        await DeleteProfileAsync(p.Name);
     }
 
     public async Task DeleteProfileAsync(string name, string? unlockPassword = null, string? unlockText = null)

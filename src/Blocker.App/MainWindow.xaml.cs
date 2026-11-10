@@ -189,6 +189,12 @@ public partial class MainWindow : Window
             _viewModel.RequestOpenStartSessionDialog = p => _ = OpenStartSessionDialog(p);
             _viewModel.OnAppBlockedWithKind = (appName, profileName, kind) =>
             {
+                // Suppress duplicate balloon tip for BrowserGrace: countdown toasts are handled exclusively by the service toast pipeline
+                if (string.Equals(kind, "BrowserGrace", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
                 if (Application.Current is App app)
                 {
                     app.Dispatcher.Invoke(() => app.ShowBlockNotification(appName, profileName, kind));
@@ -443,7 +449,18 @@ public partial class MainWindow : Window
             {
                 if (dlg.Deleted && profile != null)
                 {
-                    await _viewModel.DeleteProfileAsync(profile.Name);
+                    if (profile.Enabled || profile.IsActive || profile.IsSessionRunning || profile.IsLockedFromToggling)
+                    {
+                        DarkDialogWindow.Show(
+                            $"Block '{profile.Name}' cannot be deleted while it is active or turned on.\n\nPlease turn off the block or stop the active session before deleting.",
+                            "Cannot Delete Block",
+                            isConfirmation: false,
+                            primaryText: "OK");
+                    }
+                    else
+                    {
+                        await _viewModel.DeleteProfileAsync(profile.Name);
+                    }
                 }
                 else if (dlg.Saved)
                 {

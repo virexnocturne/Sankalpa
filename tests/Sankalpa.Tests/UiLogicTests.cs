@@ -176,6 +176,55 @@ public class UiLogicTests
     }
 
     [Fact]
+    public void CanDeleteProfile_ActiveUnlockedSession_ReturnsFalse()
+    {
+        var prof = new Profile { Name = "Work", Enabled = false };
+        var status = new StatusData
+        {
+            Active = true,
+            Locked = false,
+            Profile = "Work"
+        };
+
+        bool canDelete = UiLogic.CanDeleteProfile(prof, status, out string? reason);
+        Assert.False(canDelete);
+        Assert.Contains("while an active session is running for it", reason);
+    }
+
+    [Fact]
+    public void CanDeleteProfile_EnabledProfile_ReturnsFalse()
+    {
+        var prof = new Profile { Name = "ActiveBlock", Enabled = true, LockMode = LockMode.Password };
+        bool canDelete = UiLogic.CanDeleteProfile(prof, null, out string? reason);
+        Assert.False(canDelete);
+        Assert.Contains("while it is turned On", reason);
+    }
+
+    [Fact]
+    public void CanDeleteProfile_DisabledProtectedProfiles_ReturnsTrue()
+    {
+        var pwdProf = new Profile { Name = "PwdBlock", Enabled = false, LockMode = LockMode.Password };
+        Assert.True(UiLogic.CanDeleteProfile(pwdProf, null, out string? r1));
+        Assert.Null(r1);
+
+        var delayProf = new Profile { Name = "DelayBlock", Enabled = false, LockMode = LockMode.DelayedUnlock, DelayedUnlockMinutes = 30 };
+        Assert.True(UiLogic.CanDeleteProfile(delayProf, null, out string? r2));
+        Assert.Null(r2);
+
+        var typingProf = new Profile { Name = "TypingBlock", Enabled = false, LockMode = LockMode.TypingChallenge };
+        Assert.True(UiLogic.CanDeleteProfile(typingProf, null, out string? r3));
+        Assert.Null(r3);
+    }
+
+    [Fact]
+    public void CanDeleteProfile_NullProfile_ReturnsFalse()
+    {
+        bool canDelete = UiLogic.CanDeleteProfile(null, null, out string? reason);
+        Assert.False(canDelete);
+        Assert.Equal("No profile selected.", reason);
+    }
+
+    [Fact]
     public void CanStartSession_ChecksValidation()
     {
         // When active session already exists

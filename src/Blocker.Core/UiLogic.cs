@@ -191,11 +191,22 @@ public static class UiLogic
             return false;
         }
 
-        if (activeStatus != null && activeStatus.Active && activeStatus.Locked)
+        if (profile.Enabled)
+        {
+            reason = $"Cannot delete profile '{profile.Name}' while it is turned On. Please turn it Off first.";
+            return false;
+        }
+
+        if (activeStatus != null && activeStatus.Active)
         {
             if (string.Equals(profile.Name, activeStatus.Profile, StringComparison.OrdinalIgnoreCase))
             {
-                reason = $"Profile '{profile.Name}' cannot be deleted while an active locked session is using it.";
+                if (activeStatus.Locked)
+                {
+                    reason = $"Profile '{profile.Name}' cannot be deleted while an active locked session is using it.";
+                    return false;
+                }
+                reason = $"Cannot delete profile '{profile.Name}' while an active session is running for it. Please stop the session first.";
                 return false;
             }
         }
