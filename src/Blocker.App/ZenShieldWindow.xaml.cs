@@ -1264,35 +1264,25 @@ public partial class ZenShieldWindow : Window
 
 
         if (_quickNotesOverlay != null && _quickNotesOverlay.IsVisible)
-
         {
-
+            NotesVaultStore.FlushSync();
             _quickNotesOverlay.Hide();
-
             return;
-
         }
 
-
-
         if (_quickNotesOverlay == null)
-
         {
-
             _quickNotesOverlay = new ZenQuickNotesOverlay();
-
             _quickNotesOverlay.OnNotesChanged = text =>
-
             {
-
                 NotesText = text;
-
                 OnNotesChanged?.Invoke(text);
-
             };
-
-            _quickNotesOverlay.Closed += (s, e) => _quickNotesOverlay = null;
-
+            _quickNotesOverlay.Closed += (s, e) =>
+            {
+                NotesVaultStore.FlushSync();
+                _quickNotesOverlay = null;
+            };
         }
 
 
