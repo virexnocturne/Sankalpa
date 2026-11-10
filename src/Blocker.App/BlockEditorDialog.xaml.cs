@@ -563,10 +563,12 @@ public partial class BlockEditorDialog : Window
             }
 
             DeleteButton.Visibility = Visibility.Visible;
-            if (isLockedInActiveSession || profile.LockedNow)
+            if (isLockedInActiveSession || profile.LockedNow || profile.Enabled || profile.IsActive || profile.IsSessionRunning)
             {
                 DeleteButton.IsEnabled = false;
-                DeleteButton.ToolTip = "Can't delete while the block is locked.";
+                DeleteButton.ToolTip = (profile.Enabled || profile.IsActive || profile.IsSessionRunning)
+                    ? "Can't delete while the block is active or turned on."
+                    : "Can't delete while the block is locked.";
             }
         }
         else
@@ -1452,9 +1454,24 @@ public partial class BlockEditorDialog : Window
 
     private void DeleteButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_originalProfile != null && (_originalProfile.Enabled || _originalProfile.IsActive || _originalProfile.IsSessionRunning || _originalProfile.IsLockedFromToggling))
+        {
+            var warnDlg = DarkDialogWindow.CreateDialogWindow(
+                $"Block '{_originalProfile.Name}' cannot be deleted while it is active or turned on.\n\nPlease turn off the block or stop the active session before deleting.",
+                "Cannot Delete Block",
+                isConfirmation: false,
+                primaryText: "OK");
+            if (IsLoaded && IsVisible)
+            {
+                try { warnDlg.Owner = this; } catch { }
+            }
+            warnDlg.ShowDialog();
+            return;
+        }
+
         var confirmDlg = DarkDialogWindow.CreateDialogWindow(
-            $"Are you sure you want to delete block '{_originalProfile?.Name}'?",
-            "Confirm Delete",
+            $"Are you sure you want to delete block '{_originalProfile?.Name}'?\n\nThis will remove all associated app and website block rules.",
+            "Delete Block",
             isConfirmation: true,
             primaryText: "Delete",
             secondaryText: "Cancel");

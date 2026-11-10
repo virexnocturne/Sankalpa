@@ -449,7 +449,18 @@ public partial class MainWindow : Window
             {
                 if (dlg.Deleted && profile != null)
                 {
-                    await _viewModel.DeleteProfileAsync(profile.Name);
+                    if (profile.Enabled || profile.IsActive || profile.IsSessionRunning || profile.IsLockedFromToggling)
+                    {
+                        DarkDialogWindow.Show(
+                            $"Block '{profile.Name}' cannot be deleted while it is active or turned on.\n\nPlease turn off the block or stop the active session before deleting.",
+                            "Cannot Delete Block",
+                            isConfirmation: false,
+                            primaryText: "OK");
+                    }
+                    else
+                    {
+                        await _viewModel.DeleteProfileAsync(profile.Name);
+                    }
                 }
                 else if (dlg.Saved)
                 {

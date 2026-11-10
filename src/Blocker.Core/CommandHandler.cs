@@ -568,14 +568,19 @@ public static class CommandHandler
             return Response.Fail($"Profile '{name}' not found.");
         }
 
-        var activeSession = store.GetActiveSession(profile.Id);
-        if (activeSession != null && activeSession.Locked && activeSession.ProfileId == profile.Id)
+        if (string.Equals(profile.Name, "Default", StringComparison.OrdinalIgnoreCase))
         {
-            return Response.Fail($"Cannot delete profile '{name}' while an active LOCKED session is using it.");
+            return Response.Fail("The 'Default' profile cannot be deleted.");
         }
 
-        if (activeSession != null && activeSession.ProfileId == profile.Id)
+        var runningSessions = store.GetActiveSessions();
+        var activeSession = runningSessions.FirstOrDefault(s => s.ProfileId == profile.Id) ?? store.GetActiveSession(profile.Id);
+        if (activeSession != null)
         {
+            if (activeSession.Locked)
+            {
+                return Response.Fail($"Cannot delete profile '{name}' while an active LOCKED session is using it.");
+            }
             return Response.Fail($"Cannot delete profile '{name}' while an active session is running for it. Please stop the session first.");
         }
 
@@ -592,57 +597,10 @@ public static class CommandHandler
             return Response.Fail($"Cannot delete profile '{name}' while it is turned On. Please turn it Off first.");
         }
 
-        // Deleting protected profile requires credentials/challenge even if inactive
-        if (profile.LockMode == LockMode.Password)
+        var unlockErr = VerifyUnlock(profile, request, activeSession, store);
+        if (unlockErr != null)
         {
-            if (PasswordSecurity.IsLockedOut(profile.Name, out int remSec))
-            {
-                return Response.Fail($"Refused: Too many failed password attempts. Profile '{profile.Name}' is locked out for {remSec} seconds.");
-            }
-
-            string? pwd = GetArg(request, "unlock_password") ?? GetArg(request, "unlockPassword") ?? GetArg(request, "password");
-            if (string.IsNullOrEmpty(pwd) || !PasswordSecurity.VerifyPassword(pwd, profile.PasswordSalt, profile.PasswordHash))
-            {
-                PasswordSecurity.RecordFailedAttempt(profile.Name);
-                return Response.Fail($"Refused: Password required to delete password-protected profile '{name}'.");
-            }
-            PasswordSecurity.RecordSuccessfulAttempt(profile.Name);
-        }
-        else if (profile.LockMode == LockMode.TypingChallenge)
-        {
-            string? text = GetArg(request, "unlock_text") ?? GetArg(request, "unlockText");
-            if (string.IsNullOrEmpty(text))
-            {
-                return Response.Fail($"Refused: Profile '{profile.Name}' requires completing a typing challenge to delete. Request a challenge first.");
-            }
-
-            if (!TypingChallengeManager.ValidateChallenge(profile.Name, text, out var err))
-            {
-                return Response.Fail($"Refused: {err ?? "Invalid challenge text."}");
-            }
-        }
-        else if (profile.LockMode == LockMode.DelayedUnlock)
-        {
-            string? token = GetArg(request, "delayed_unlock_token")
-                         ?? GetArg(request, "unlock_token")
-                         ?? GetArg(request, "token");
-            if (string.IsNullOrEmpty(token))
-            {
-                return Response.Fail($"Refused: Profile '{profile.Name}' requires waiting out an active delayed unlock timer to delete. Start the timer first.");
-            }
-
-            if (!DelayedUnlockManager.ValidateUnlock(profile.Name, token, out var err))
-            {
-                return Response.Fail($"Refused: {err ?? "Invalid or incomplete delayed unlock timer."}");
-            }
-        }
-        else
-        {
-            var unlockErr = VerifyUnlock(profile, request, activeSession, store);
-            if (unlockErr != null)
-            {
-                return unlockErr;
-            }
+            return unlockErr;
         }
 
         bool deleted = store.DeleteProfileByName(name);
