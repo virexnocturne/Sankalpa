@@ -37,7 +37,7 @@ public partial class NotesDrawerControl : System.Windows.Controls.UserControl
     public bool IsDrawerOpen
     {
         get => (bool)GetValue(IsDrawerOpenProperty);
-        set => SetValue(IsDrawerOpenProperty, value);
+        set => SetCurrentValue(IsDrawerOpenProperty, value);
     }
 
     public Action? OnSnipRequested { get; set; }
@@ -296,12 +296,12 @@ public partial class NotesDrawerControl : System.Windows.Controls.UserControl
 
     private void DrawerTabButton_Click(object sender, RoutedEventArgs e)
     {
-        IsDrawerOpen = !IsDrawerOpen;
+        SetCurrentValue(IsDrawerOpenProperty, !IsDrawerOpen);
     }
 
     private void CloseDrawerButton_Click(object sender, RoutedEventArgs e)
     {
-        IsDrawerOpen = false;
+        SetCurrentValue(IsDrawerOpenProperty, false);
     }
 
     private void ApplyDrawerState(bool open)
@@ -319,6 +319,19 @@ public partial class NotesDrawerControl : System.Windows.Controls.UserControl
         {
             DrawerContainer.Visibility = Visibility.Visible;
         }
+        else
+        {
+            // Close note composer and release keyboard focus if trapped inside closing drawer
+            if (DataContext is MeditationViewModel vm && vm.IsComposerOpen)
+            {
+                vm.IsComposerOpen = false;
+            }
+
+            if (DrawerContainer.IsKeyboardFocusWithin)
+            {
+                DrawerTabButton?.Focus();
+            }
+        }
 
         var anim = new DoubleAnimation
         {
@@ -328,17 +341,19 @@ public partial class NotesDrawerControl : System.Windows.Controls.UserControl
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
         };
 
-        if (!open)
+        anim.Completed += (s, e) =>
         {
-            anim.Completed += (s, e) =>
+            DrawerContainer.BeginAnimation(WidthProperty, null);
+            if (!IsDrawerOpen)
             {
-                if (!IsDrawerOpen)
-                {
-                    DrawerContainer.Visibility = Visibility.Collapsed;
-                    DrawerContainer.Width = 0;
-                }
-            };
-        }
+                DrawerContainer.Visibility = Visibility.Collapsed;
+                DrawerContainer.Width = 0;
+            }
+            else
+            {
+                DrawerContainer.Width = 340;
+            }
+        };
 
         DrawerContainer.BeginAnimation(WidthProperty, anim);
     }
