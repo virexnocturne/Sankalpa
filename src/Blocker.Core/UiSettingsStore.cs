@@ -328,7 +328,7 @@ public static class UiSettingsStore
             }
 
             string json = ToJson(settings);
-            string tempFile = filePath + ".tmp";
+            string tempFile = filePath + ".tmp." + Guid.NewGuid().ToString("N");
             File.WriteAllText(tempFile, json);
             File.Move(tempFile, filePath, overwrite: true);
         }

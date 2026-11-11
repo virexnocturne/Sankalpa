@@ -356,4 +356,47 @@ public static class WindowsNotificationHelper
             return false;
         }
     }
+
+    /// <summary>
+    /// Explicitly enables Windows notifications for Sankalpa in the current user registry.
+    /// Sets Enabled = 1 and ShowInActionCenter = 1 under Notifications\Settings\Sankalpa,
+    /// and ensures global push notifications ToastEnabled is not 0.
+    /// </summary>
+    public static bool EnableNotificationInWindows()
+    {
+        try
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return false;
+            }
+
+            using (var appKey = Registry.CurrentUser.CreateSubKey(SankalpaNotificationRegPath, writable: true))
+            {
+                if (appKey != null)
+                {
+                    appKey.SetValue("Enabled", 1, RegistryValueKind.DWord);
+                    appKey.SetValue("ShowInActionCenter", 1, RegistryValueKind.DWord);
+                }
+            }
+
+            using (var pushKey = Registry.CurrentUser.CreateSubKey(GlobalNotificationRegPath, writable: true))
+            {
+                if (pushKey != null)
+                {
+                    var val = pushKey.GetValue("ToastEnabled");
+                    if (val is int intVal && intVal == 0)
+                    {
+                        pushKey.SetValue("ToastEnabled", 1, RegistryValueKind.DWord);
+                    }
+                }
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }

@@ -276,6 +276,11 @@ public class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _areNotificationsEnabled, value))
             {
+                if (value)
+                {
+                    WindowsNotificationHelper.EnableNotificationInWindows();
+                    CheckWindowsNotificationStatus();
+                }
                 _uiSettings.AreNotificationsEnabled = value;
                 UiSettingsStore.Save(_uiSettings);
                 SyncToAppTray();
@@ -326,6 +331,7 @@ public class MainViewModel : ViewModelBase
     }
 
     public ICommand OpenWindowsNotificationSettingsCommand { get; private set; } = null!;
+    public ICommand EnableWindowsNotificationsCommand { get; private set; } = null!;
 
     public void CheckWindowsNotificationStatus()
     {
@@ -888,7 +894,16 @@ public class MainViewModel : ViewModelBase
         _showBrowserAlerts = _uiSettings.ShowBrowserAlerts;
         _showAppAlerts = _uiSettings.ShowAppAlerts;
         _showDnsAlerts = _uiSettings.ShowDnsAlerts;
-        OpenWindowsNotificationSettingsCommand = new RelayCommand(() => WindowsNotificationHelper.OpenWindowsNotificationSettings());
+        OpenWindowsNotificationSettingsCommand = new RelayCommand(() =>
+        {
+            WindowsNotificationHelper.OpenWindowsNotificationSettings();
+            CheckWindowsNotificationStatus();
+        });
+        EnableWindowsNotificationsCommand = new RelayCommand(() =>
+        {
+            WindowsNotificationHelper.EnableNotificationInWindows();
+            CheckWindowsNotificationStatus();
+        });
         CheckWindowsNotificationStatus();
 
         // Commands

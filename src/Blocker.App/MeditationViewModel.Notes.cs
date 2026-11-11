@@ -135,10 +135,21 @@ public partial class MeditationViewModel
 
         ExportNotesCommand = new RelayCommand(ExportCurrentNotes);
         ToggleQuickNotesCommand = new RelayCommand(ToggleQuickNotes);
-        ToggleNotesDrawerCommand = new RelayCommand(() => IsNotesDrawerOpen = !IsNotesDrawerOpen);
+        ToggleNotesDrawerCommand = new RelayCommand(() =>
+        {
+            IsNotesDrawerOpen = !IsNotesDrawerOpen;
+            if (IsNotesDrawerOpen && IsSoundscapeMenuOpen)
+            {
+                IsSoundscapeMenuOpen = false;
+            }
+        });
 
         NewNoteCommand = new RelayCommand(() =>
         {
+            if (IsSoundscapeMenuOpen)
+            {
+                IsSoundscapeMenuOpen = false;
+            }
             EditingNoteId = null;
             ComposerTitle = string.Empty;
             ComposerMarkdown = string.Empty;

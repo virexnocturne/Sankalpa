@@ -530,7 +530,8 @@ public partial class MeditationViewModel : ViewModelBase, IDisposable
             ScheduleDays,
             SelectedSoundscape,
             passwordHash: PasswordHash,
-            blockedApps: blockedApps)
+            blockedApps: blockedApps,
+            soundscapeId: SelectedSoundscapeId)
         {
             Owner = Application.Current?.MainWindow
         };
@@ -553,6 +554,7 @@ public partial class MeditationViewModel : ViewModelBase, IDisposable
             IsScheduleEnabled = dlg.ScheduleEnabled;
             ScheduleTime = dlg.ScheduleTime;
             ScheduleDays = dlg.ScheduleDays;
+            SelectedSoundscapeId = dlg.SelectedSoundscapeId;
             SelectedSoundscape = dlg.SelectedSoundscape;
 
             // Persist settings to UiSettingsStore (Bug 10)
@@ -561,7 +563,7 @@ public partial class MeditationViewModel : ViewModelBase, IDisposable
                 var uiSettings = UiSettingsStore.Load();
                 uiSettings.MeditationDurationMinutes = dlg.DurationMinutes;
                 uiSettings.MeditationLockMode = dlg.LockProtection.ToString();
-                uiSettings.MeditationSoundscape = dlg.SelectedSoundscape.ToString();
+                uiSettings.MeditationSoundscape = dlg.SelectedSoundscapeId;
                 if (dlg.LockProtection == LockMode.Password && !string.IsNullOrEmpty(dlg.PasswordHash))
                 {
                     uiSettings.MeditationPasswordHash = dlg.PasswordHash;
@@ -603,6 +605,8 @@ public partial class MeditationViewModel : ViewModelBase, IDisposable
                 });
             }
         }
+
+        RefreshSoundscapeCatalog();
     }
 
     public void OpenUniversalNotes()
@@ -833,6 +837,7 @@ public partial class MeditationViewModel : ViewModelBase, IDisposable
         _sessionTimer.Stop();
         _noteDebounceTimer.Stop();
         _transientSaveTimer.Stop();
+        DisposeAudio();
         _soundEngine.Dispose();
     }
 }

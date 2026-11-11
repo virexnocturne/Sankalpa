@@ -21,6 +21,16 @@ public static class SoundscapeCatalog
 
     public const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
 
+    /// <summary>
+    /// Event fired whenever the soundscape catalog changes (tracks imported, renamed, or deleted).
+    /// </summary>
+    public static event Action? CatalogChanged;
+
+    public static void NotifyCatalogChanged()
+    {
+        CatalogChanged?.Invoke();
+    }
+
     public static readonly string[] AllowedExtensions =
     {
         ".mp3",
@@ -114,9 +124,10 @@ public static class SoundscapeCatalog
                 // Path traversal defense: ensure FileName has no directory separators
                 string safeFileName = Path.GetFileName(meta.FileName);
                 string resolvedPath = Path.Combine(dir, safeFileName);
+                string canonicalId = NormalizeId(meta.Id);
 
                 tracks.Add(new SoundscapeItem(
-                    id: meta.Id,
+                    id: canonicalId,
                     displayName: string.IsNullOrWhiteSpace(meta.DisplayName) ? "Custom Track" : meta.DisplayName,
                     iconGlyph: "music",
                     isBuiltIn: false,
@@ -140,7 +151,7 @@ public static class SoundscapeCatalog
         string normalized = NormalizeId(soundscapeId);
         var allTracks = GetAllTracks(settings, customAudioDir);
 
-        var match = allTracks.FirstOrDefault(t => string.Equals(t.Id, normalized, StringComparison.OrdinalIgnoreCase));
+        var match = allTracks.FirstOrDefault(t => string.Equals(NormalizeId(t.Id), normalized, StringComparison.OrdinalIgnoreCase));
         if (match != null)
         {
             // If it's a custom track and the file is missing on disk, fallback gracefully to Rain
@@ -306,5 +317,48 @@ public static class SoundscapeCatalog
             string.Equals(t.Sha256Hash, sha256, StringComparison.OrdinalIgnoreCase));
 
         return existing != null;
+    }
+
+    public class PlaylistParseResult
+    {
+        public List<string> ValidFilePaths { get; } = new();
+        public List<string> RejectedPaths { get; } = new();
+        public string? ErrorMessage { get; set; }
+    }
+
+    /// <summary>
+    /// Convenience wrapper for parsing local .m3u / .m3u8 playlist files safely.
+    /// </summary>
+    public static PlaylistParseResult ParsePlaylist(string playlistPath, string? allowedBaseDirectory = null)
+    {
+        var result = new PlaylistParseResult();
+        if (AudioImportService.TryParsePlaylist(playlistPath, out var validFiles, out var warnings, out var err))
+        {
+            foreach (var f in validFiles)
+            {
+                if (allowedBaseDirectory != null)
+                {
+                    string baseFull = Path.GetFullPath(allowedBaseDirectory);
+                    if (!baseFull.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
+                    {
+                        baseFull += Path.DirectorySeparatorChar;
+                    }
+
+                    if (!f.StartsWith(baseFull, StringComparison.OrdinalIgnoreCase))
+                    {
+                        result.RejectedPaths.Add(f);
+                        continue;
+                    }
+                }
+                result.ValidFilePaths.Add(f);
+            }
+            result.RejectedPaths.AddRange(warnings);
+        }
+        else
+        {
+            result.ErrorMessage = err;
+            result.RejectedPaths.AddRange(warnings);
+        }
+        return result;
     }
 }

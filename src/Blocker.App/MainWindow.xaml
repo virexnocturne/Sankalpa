@@ -855,11 +855,19 @@
                                         <TextBlock Text="Windows is currently blocking all notifications for Sankalpa. You will not receive alerts for blocked apps, browsers, or DNS security until allowed in Windows."
                                                    FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
                                     </StackPanel>
-                                    <Button Grid.Column="2" Content="Open Windows Settings"
-                                            Command="{Binding OpenWindowsNotificationSettingsCommand}"
-                                            Style="{StaticResource SecondaryButton}"
-                                            VerticalAlignment="Center" Margin="14,0,0,0" Padding="12,6"
-                                            FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                                        <Button Content="Enable in Windows"
+                                                Command="{Binding EnableWindowsNotificationsCommand}"
+                                                Style="{StaticResource PrimaryButton}"
+                                                VerticalAlignment="Center" Margin="0,0,8,0" Padding="12,6"
+                                                FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold"
+                                                ToolTip="Enable Sankalpa notifications directly in Windows Settings" />
+                                        <Button Content="Open Windows Settings"
+                                                Command="{Binding OpenWindowsNotificationSettingsCommand}"
+                                                Style="{StaticResource SecondaryButton}"
+                                                VerticalAlignment="Center" Padding="12,6"
+                                                FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
+                                    </StackPanel>
                                 </Grid>
                             </Border>
 

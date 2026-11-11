@@ -31,6 +31,35 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FIX-2026-11-10-02] Audio UX Improvements, Playlist Import, Catalog Synchronization & HUD Z-Order/Watchdog Regression Fixes
+- **Timestamp**: 2026-11-10 17:45 IST
+- **Component**: Audio UX & Management (`AudioImportService.cs`, `SoundscapeCatalog.cs`, `UiSettingsStore.cs`, `SoundscapePillControl.xaml`, `SoundscapePillControl.xaml.cs`, `MeditationEditDialog.xaml`, `MeditationEditDialog.xaml.cs`, `MeditationViewModel.Audio.cs`, `MeditationViewModel.cs`), Window Tracking & Watchdog (`ZenMiniHudWindow.xaml.cs`, `ZenShieldWindow.xaml.cs`), Tests (`CustomSongsAndSoundscapeTests.cs`, `HudLifecycleTests.cs`)
+- **Status**: **VERIFIED IN TEST SUITES (1,099/1,099 PASSING)**
+- **Problems Identified & Solved**:
+  1. **Soundscape Settings Layout Clutter**: Redesigned Section 5 of `MeditationEditDialog.xaml` with grouped built-in presets (Rain, Library, Forest, Singing Bowls, Mute), a distinct raised card for custom tracks with a count badge, top toolbar (`[+ Import Audio]`, `[+ Import Playlist]`, `[Open Folder]`), dynamic track items with radio-button selection, inline rename/delete controls, and empty-state messaging.
+  2. **Left-Side Soundscape Pill Audio Management Flyout**: Expanded `SoundscapePillControl.xaml` flyout width to 280px, providing quick-action buttons for multi-file audio import and M3U/M3U8 playlist import, track count badge, scrollable list with text trimming and delete buttons, compact empty state card, volume dock, and Escape key dismissal.
+  3. **Custom Audio Catalog Synchronization**:
+     - Introduced `SoundscapeCatalog.CatalogChanged` event bus to synchronize track collections across the UI without restarting.
+     - Fixed `MeditationViewModel.OpenEditDialog` to pass current `SelectedSoundscapeId` and update `SelectedSoundscapeId` upon dialog close.
+     - Fixed enum clobbering bug where dialog saved string literal `"Custom"` instead of canonical track ID (`custom:<guid>`).
+     - Added atomic unique temp file persistence in `UiSettingsStore.SaveToFile` (`.tmp.<guid>`) to prevent multi-threaded file contention.
+     - Fixed memory leaks by unhooking event subscriptions in `MeditationViewModel.DisposeAudio()`.
+  4. **Secure Multi-File and Playlist (.m3u / .m3u8) Import**:
+     - Implemented `AudioImportService.TryParsePlaylist` supporting local `.m3u` and `.m3u8` playlists (with UTF-8 BOM).
+     - Hardened against Anti-SMB relay attacks (rejecting UNC paths starting with `\\` or `//`), rejecting remote URLs (`://`), blocking nested playlists, and canonicalizing relative paths against directory traversal.
+     - Enforced 50 MB file size limit, zero-byte file rejection, non-blocking decodability probe (`ProbeAudioAsync`) with rollback to eliminate orphaned files, SHA-256 duplicate detection, and active meditation session lockdown.
+  5. **Mini-HUD Fullscreen Z-Order**:
+     - Removed `HWND_TOPMOST` promotion of allowed application in `ZenShieldWindow.BringToFront` (standard apps remain `HWND_NOTOPMOST` and float above Zen Shield naturally).
+     - Added `ZenMiniHudWindow.EnsureTopmost()` using `SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW` to guarantee Mini-HUD floats above fullscreen/borderless allowed apps without stealing keyboard/focus input.
+  6. **Notepad Minimization Watchdog Non-Restoration**:
+     - Updated fallback window scan `FindMainWindowForProcess` with `allowIconic: false` parameter in `IsAllowedAppValid()`.
+     - When an allowed application is minimized, the watchdog does not force restore with `SW_RESTORE`; instead, it delegates to `_appTracker?.EvaluateNow()` respecting the 750ms debounce before restoring Zen Shield fail-closed.
+- **Verification**:
+  - 1,099 passed, 0 failed, 0 skipped (123 in `Sankalpa.Security.Tests`, 976 in `Sankalpa.Tests`).
+  - Added 14 new tests in `CustomSongsAndSoundscapeTests.cs` and 6 new tests in `HudLifecycleTests.cs`.
+
+---
+
 ### [FIX-2026-11-10-01] Mini-HUD Lifecycle (Bug 15), Notes Lag Optimization (Bug 16), Background App Throttling & Custom Soundtracks
 - **Timestamp**: 2026-11-10 16:00 IST
 - **Component**: Mini-HUD Lifecycle & Window Tracking (ZenMiniHudWindow.xaml.cs, ZenShieldWindow.xaml.cs, ZenShieldWindow.Throttling.cs, AllowedAppForegroundTracker.cs, HudVisibilityLogic.cs, ZenLaunchConstants.cs, ZenLaunchMatcher.cs), Notes Optimization & Vault (ZenQuickNotesOverlay.xaml.cs, NotesDrawerControl.xaml.cs, NotesAttachmentManager.cs, NoteMarkdownRenderer.cs, NotesVaultStore.cs, NotesAttachmentCache.cs, NoteCard.cs, NoteCardCollection.cs, MeditationViewModel.Notes.cs), Background App Throttling & Hot-Path (BackgroundAppThrottler.cs, MeditationAllowedCache.cs, ProcessIdentityHelper.cs, AudioSessionDetector.cs, Worker.cs), Custom Audio Engine & Soundscape Catalog (AmbientSoundEngine.cs, SoundscapeCatalog.cs, SoundscapeItem.cs, CustomSoundtrackMetadata.cs, MeditationViewModel.Audio.cs, MeditationEditDialog.xaml.cs, SoundscapePillControl.xaml, UiSettingsStore.cs)

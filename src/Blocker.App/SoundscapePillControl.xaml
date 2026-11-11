@@ -39,14 +39,38 @@
             </Setter>
         </Style>
 
-        <Style x:Key="TrackItemButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="Padding" Value="10,6" />
-            <Setter Property="Margin" Value="0,0,0,4" />
-            <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
+        <Style x:Key="MiniPillActionButton" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="{DynamicResource Surface}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize11}" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource SurfaceRaised}" />
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource Bg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </UserControl.Resources>
 
@@ -85,7 +109,7 @@
         <Border Margin="0,38,0,0"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Top"
-                Width="240"
+                Width="280"
                 Background="{DynamicResource SurfaceRaised}"
                 BorderBrush="{DynamicResource BorderStrong}"
                 BorderThickness="1"
@@ -94,52 +118,195 @@
                 Visibility="{Binding IsSoundscapeMenuOpen, Converter={StaticResource BoolToVis}}"
                 Panel.ZIndex="100">
             <StackPanel>
-                <!-- Flyout Header -->
+                <!-- Flyout Header with Audio Actions -->
                 <Grid Margin="0,0,0,10">
-                    <TextBlock Text="AMBIENT SOUNDSCAPE"
+                    <TextBlock Text="SOUNDSCAPES"
                                FontFamily="{DynamicResource FontTitle}"
                                FontSize="{DynamicResource FontSize12}"
                                FontWeight="Bold"
                                Foreground="{DynamicResource TextDisabled}"
                                VerticalAlignment="Center" />
 
-                    <Button Command="{Binding ToggleSoundscapeMenuCommand}"
-                            Style="{StaticResource IconButton}"
-                            Width="20" Height="20"
-                            Padding="2"
-                            HorizontalAlignment="Right"
-                            ToolTip="Close Menu">
-                        <Path Style="{StaticResource Icon}" Data="{StaticResource IconX}" Width="10" Height="10"
-                              Stroke="{DynamicResource TextSecondary}" />
-                    </Button>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <!-- Open Audio Folder -->
+                        <Button Command="{Binding OpenAudioFolderCommand}"
+                                Style="{StaticResource IconButton}"
+                                Width="22" Height="22"
+                                Padding="3"
+                                Margin="0,0,4,0"
+                                ToolTip="Open custom audio folder">
+                            <Path Style="{StaticResource Icon}" Data="{StaticResource IconFolderOpen}" Width="12" Height="12"
+                                  Stroke="{DynamicResource TextSecondary}" />
+                        </Button>
+
+                        <!-- Close Flyout -->
+                        <Button Command="{Binding ToggleSoundscapeMenuCommand}"
+                                Style="{StaticResource IconButton}"
+                                Width="22" Height="22"
+                                Padding="3"
+                                ToolTip="Close menu">
+                            <Path Style="{StaticResource Icon}" Data="{StaticResource IconX}" Width="10" Height="10"
+                                  Stroke="{DynamicResource TextSecondary}" />
+                        </Button>
+                    </StackPanel>
                 </Grid>
 
-                <!-- Dynamic Soundscape Tracks List -->
-                <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,6">
-                    <ItemsControl ItemsSource="{Binding SoundscapeTracks}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Button Content="{Binding DisplayName}"
-                                        Command="{Binding DataContext.SelectSoundscapeCommand, RelativeSource={RelativeSource AncestorType=local:SoundscapePillControl}}"
-                                        CommandParameter="{Binding Id}"
-                                        Padding="10,6" Margin="0,0,0,3" FontSize="{DynamicResource FontSize12}">
-                                    <Button.Style>
-                                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
-                                            <Setter Property="HorizontalContentAlignment" Value="Left" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                    <Setter Property="Background" Value="{DynamicResource Accent}" />
-                                                    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
-                                                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <!-- Section 1: Built-in Presets -->
+                <TextBlock Text="BUILT-IN PRESETS"
+                           FontFamily="{DynamicResource FontBody}"
+                           FontSize="{DynamicResource FontSize11}"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextDisabled}"
+                           Margin="0,0,0,6" />
+
+                <ItemsControl ItemsSource="{Binding BuiltInTracks}" Margin="0,0,0,10">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Content="{Binding DisplayName}"
+                                    Command="{Binding DataContext.SelectSoundscapeCommand, RelativeSource={RelativeSource AncestorType=local:SoundscapePillControl}}"
+                                    CommandParameter="{Binding Id}"
+                                    Padding="8,4" Margin="0,0,5,5" FontSize="{DynamicResource FontSize11}">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+                                        <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource Accent}" />
+                                                <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Separator Background="{DynamicResource Border}" Margin="0,0,0,10" />
+
+                <!-- Section 2: Custom Soundtracks Header & Management Actions -->
+                <Grid Margin="0,0,0,6">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="CUSTOM AUDIO"
+                                   FontFamily="{DynamicResource FontBody}"
+                                   FontSize="{DynamicResource FontSize11}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextDisabled}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding CustomTracksCount, StringFormat=' ({0})'}"
+                                   FontFamily="{DynamicResource FontMono}"
+                                   FontSize="{DynamicResource FontSize11}"
+                                   Foreground="{DynamicResource TextDisabled}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <!-- Import Audio Files -->
+                        <Button Command="{Binding ImportAudioCommand}"
+                                Style="{StaticResource MiniPillActionButton}"
+                                Margin="0,0,4,0"
+                                ToolTip="Import audio files (MP3, WAV, FLAC, M4A, etc.)">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource Icon}" Data="{StaticResource IconPlus}" Width="8" Height="8"
+                                      Stroke="{DynamicResource TextSecondary}" Margin="0,0,4,0" VerticalAlignment="Center" />
+                                <TextBlock Text="Audio" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Import Playlist -->
+                        <Button Command="{Binding ImportPlaylistCommand}"
+                                Style="{StaticResource MiniPillActionButton}"
+                                ToolTip="Import playlist (.m3u, .m3u8)">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource Icon}" Data="{StaticResource IconFileText}" Width="8" Height="8"
+                                      Stroke="{DynamicResource TextSecondary}" Margin="0,0,4,0" VerticalAlignment="Center" />
+                                <TextBlock Text="M3U" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Custom Soundtracks List -->
+                <Grid Margin="0,0,0,8">
+                    <!-- List when tracks exist -->
+                    <ScrollViewer MaxHeight="140"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Visibility="{Binding HasCustomTracks, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl ItemsSource="{Binding CustomTracks}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,3">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Track Selection Button -->
+                                        <Button Grid.Column="0"
+                                                Command="{Binding DataContext.SelectSoundscapeCommand, RelativeSource={RelativeSource AncestorType=local:SoundscapePillControl}}"
+                                                CommandParameter="{Binding Id}"
+                                                Padding="8,5"
+                                                FontSize="{DynamicResource FontSize11}"
+                                                HorizontalContentAlignment="Left">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+                                                    <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                            <Setter Property="Background" Value="{DynamicResource Accent}" />
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                            <TextBlock Text="{Binding DisplayName}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxWidth="200"
+                                                       VerticalAlignment="Center" />
+                                        </Button>
+
+                                        <!-- Track Delete Button -->
+                                        <Button Grid.Column="1"
+                                                Command="{Binding DataContext.DeleteTrackCommand, RelativeSource={RelativeSource AncestorType=local:SoundscapePillControl}}"
+                                                CommandParameter="{Binding Id}"
+                                                Style="{StaticResource IconButton}"
+                                                Width="22" Height="22"
+                                                Padding="4"
+                                                Margin="4,0,0,0"
+                                                ToolTip="Remove custom track">
+                                            <Path Style="{StaticResource Icon}" Data="{StaticResource IconTrash}" Width="10" Height="10"
+                                                  Stroke="{DynamicResource TextDisabled}" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!-- Empty State when no custom tracks exist -->
+                    <Border Visibility="{Binding HasCustomTracks, Converter={StaticResource InvBoolToVis}}"
+                            Background="{DynamicResource Surface}"
+                            BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8,10"
+                            Margin="0,2,0,2">
+                        <TextBlock Text="No custom audio tracks. Click [+ Audio] or [+ M3U] above to import."
+                                   FontFamily="{DynamicResource FontBody}"
+                                   FontSize="{DynamicResource FontSize11}"
+                                   Foreground="{DynamicResource TextDisabled}"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center" />
+                    </Border>
+                </Grid>
 
                 <Separator Background="{DynamicResource Border}" Margin="0,2,0,10" />
 
