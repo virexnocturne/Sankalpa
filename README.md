@@ -267,14 +267,11 @@ All themes support 6 vibrant accent palettes (Emerald, Indigo, Violet, Amber, Ro
 
 ## 💻 Command Line Interface (CLI)
 
-Sankalpa includes `sankalpa-cli.exe` in the application directory for scripting and advanced users:
+Sankalpa includes `sankalpa-cli.exe` in the application directory for automation, scripting, and headless control:
 
 ```powershell
 # Check current protection status and active blocks
 sankalpa-cli status
-
-# List all configured profiles and lock modes
-sankalpa-cli list
 
 # Start a profile manually for 45 minutes
 sankalpa-cli start --profile "Deep Work" --duration 45m
@@ -282,7 +279,32 @@ sankalpa-cli start --profile "Deep Work" --duration 45m
 # Stop an active session (if unlocked)
 sankalpa-cli stop --profile "Deep Work"
 
-# Verify whether uninstallation is safe or blocked by active rules
+# 🧘 Meditation & Lockdown Mode
+sankalpa-cli meditation status
+sankalpa-cli meditation start --duration 20m --apps "spotify.exe,notion.exe" --sound rain
+sankalpa-cli meditation stop --notes "Great focus session"
+sankalpa-cli meditation note --text "Quick thought captured"
+sankalpa-cli meditation history --limit 5
+sankalpa-cli meditation schedule list
+sankalpa-cli meditation schedule add --time 15:00 --days Mon,Tue,Wed,Thu,Fri --duration 20m
+
+# ⌛ Delayed Unlock Management
+sankalpa-cli delayed-unlock request --name "Deep Work"
+sankalpa-cli delayed-unlock cancel --name "Deep Work" --token <token>
+
+# 🛡️ DNS Protection & Challenge
+sankalpa-cli dns
+sankalpa-cli dns challenge
+sankalpa-cli lock-dns --mode Timer --duration 86400
+sankalpa-cli unlock-dns --challenge-text <text>
+
+# 📁 Profiles & Web Rules
+sankalpa-cli profile list
+sankalpa-cli profile rename --name "Old Profile" --new-name "New Profile"
+sankalpa-cli webrules
+
+# 🔒 Security Audit & Uninstallation Check
+sankalpa-cli events --limit 10
 sankalpa-cli check-uninstall
 ```
 
