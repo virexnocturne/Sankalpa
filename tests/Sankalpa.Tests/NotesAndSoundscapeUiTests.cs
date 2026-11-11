@@ -564,15 +564,24 @@ Contemplating silent awareness.";
     {
         string root = GetRepoRoot();
         string vmPath = Path.Combine(root, "src", "Blocker.App", "MeditationViewModel.cs");
+        string helperPath = Path.Combine(root, "src", "Blocker.App", "MeditationUnlockDialogHelper.cs");
+        string dialogPath = Path.Combine(root, "src", "Blocker.App", "PasswordUnlockDialog.xaml.cs");
         Assert.True(File.Exists(vmPath));
+        Assert.True(File.Exists(helperPath));
+        Assert.True(File.Exists(dialogPath));
 
         string vmCode = File.ReadAllText(vmPath);
+        string helperCode = File.ReadAllText(helperPath);
+        string dialogCode = File.ReadAllText(dialogPath);
 
-        // Verification must hook Closing and use inline SetError rather than spawning DarkDialogWindow
+        // Verification must use the shared helper + inline SetError rather than spawning DarkDialogWindow
         Assert.DoesNotContain("DarkDialogWindow.Show(\"Incorrect password. Access denied.\"", vmCode);
-        Assert.Contains("dlg.Closing += (s, ev) =>", vmCode);
-        Assert.Contains("dlg.SetError(\"Incorrect password. Access denied.\");", vmCode);
-        Assert.Contains("ev.Cancel = true;", vmCode);
+        Assert.DoesNotContain("DarkDialogWindow.Show(\"Incorrect password. Access denied.\"", helperCode);
+        Assert.Contains("MeditationUnlockDialogHelper.RequestUnlock", vmCode);
+        Assert.Contains("dialogResult == true && dlg.IsVerified", helperCode);
+        Assert.Contains("Closing += PasswordUnlockDialog_Closing;", dialogCode);
+        Assert.Contains("SetError(\"Incorrect password. Access denied.\");", dialogCode);
+        Assert.Contains("e.Cancel = true;", dialogCode);
     }
 
     [Fact]

@@ -356,7 +356,7 @@ public partial class ZenShieldWindow : Window
     private bool _isModalUnlockDialogOpen;
     public event Action<int, IntPtr>? ForegroundAllowedAppChanged;
 
-    private void SetModalUnlockDialogOpen(bool isOpen)
+    internal void SetModalUnlockDialogOpen(bool isOpen)
     {
         _isModalUnlockDialogOpen = isOpen;
         if (_appTracker != null)
@@ -1619,7 +1619,22 @@ public partial class ZenShieldWindow : Window
         // If custom verification callback provided
         if (OnVerifyUnlockRequested != null)
         {
-            if (OnVerifyUnlockRequested())
+            bool unlocked;
+            SetModalUnlockDialogOpen(true);
+            try
+            {
+                unlocked = OnVerifyUnlockRequested();
+            }
+            catch
+            {
+                unlocked = false;
+            }
+            finally
+            {
+                SetModalUnlockDialogOpen(false);
+            }
+
+            if (unlocked)
             {
                 EndSession();
             }
@@ -1629,34 +1644,14 @@ public partial class ZenShieldWindow : Window
         // Verification based on LockType
         if (string.Equals(_lockType, "Password", StringComparison.OrdinalIgnoreCase))
         {
-            var pwdDlg = new PasswordUnlockDialog(_profileName)
+            if (MeditationUnlockDialogHelper.RequestUnlock(
+                    LockMode.Password,
+                    this,
+                    VerifyPassword,
+                    activeShield: this,
+                    promptTargetName: _profileName))
             {
-                Owner = this,
-                ValidatePassword = VerifyPassword
-            };
-
-            pwdDlg.Closing += (s, ev) =>
-            {
-                if (pwdDlg.DialogResult == true)
-                {
-                    if (!VerifyPassword(pwdDlg.ResultPassword))
-                    {
-                        ev.Cancel = true;
-                        pwdDlg.SetError("Incorrect password. Access denied.");
-                    }
-                }
-            };
-
-            if (pwdDlg.ShowDialog() == true)
-            {
-                if (VerifyPassword(pwdDlg.ResultPassword))
-                {
-                    EndSession();
-                }
-                else
-                {
-                    pwdDlg.SetError("Incorrect password. Access denied.");
-                }
+                EndSession();
             }
             return;
         }
@@ -1664,16 +1659,16 @@ public partial class ZenShieldWindow : Window
         if (string.Equals(_lockType, "TypingChallenge", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(_lockType, "Challenge", StringComparison.OrdinalIgnoreCase))
         {
-            string challenge = !string.IsNullOrWhiteSpace(ChallengeText)
-                ? ChallengeText
-                : TypingChallengeManager.GenerateChallenge(_profileName, 48);
-
-            var challengeDlg = new TypingChallengeDialog(challenge, "Exit Zen Focus Session")
-            {
-                Owner = this
-            };
-
-            if (challengeDlg.ShowDialog() == true)
+            if (MeditationUnlockDialogHelper.RequestUnlock(
+                    LockMode.TypingChallenge,
+                    this,
+                    _ => false,
+                    getChallengeText: () => !string.IsNullOrWhiteSpace(ChallengeText)
+                        ? ChallengeText
+                        : TypingChallengeManager.GenerateChallenge(_profileName, 48),
+                    activeShield: this,
+                    promptTargetName: _profileName,
+                    challengeTitle: "Exit Zen Focus Session"))
             {
                 EndSession();
             }
