@@ -4,6 +4,28 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FIX-2026-11-11-01] Zen Mode / Allowed-App UI Lag & Modal Password Unlock Latency (`fix/zen-ui-lag`)
+- **Timestamp**: 2026-11-11 09:25 IST
+- **Component**: Allowed-App Foreground Tracking (`AllowedAppForegroundTracker.cs`, `AllowedWinEventCoalescer.cs`), Mini-HUD Idempotency & Async Restore (`ZenShieldWindow.xaml.cs`, `MiniHudPresentationCoordinator.cs`), Background Throttler Worker (`BackgroundAppThrottler.cs`, `ThrottlerBackgroundWorker.cs`, `ZenShieldWindow.Throttling.cs`, `App.xaml.cs`), Async Single-Verify Password Unlock (`PasswordVerificationCoordinator.cs`, `PasswordUnlockDialog.xaml.cs`, `MeditationUnlockDialogHelper.cs`, `MeditationViewModel.cs`), Tests (`ZenUiLagFixTests.cs`, `NotesAndSoundscapeUiTests.cs`)
+- **Status**: **IMPLEMENTED & VERIFIED IN TEST SUITES + LIVE VLC PROBE**
+- **Root-Cause Verification (Measured Before Editing)**:
+  - **Confirmed A (Over-broad WinEvent range hooks)**: `AllowedAppForegroundTracker` hooked `0x0003-0x0017` and `0x8001-0x8003`, receiving up to `48-66` callbacks/sec (`CAPTURESTART`/`CAPTUREEND`/`OBJECT_SHOW`/`MINIMIZESTART`) and invoking `EvaluateNow()` synchronously on the UI thread (`1.5-5.4 ms`, spiking to `192.2-198.6 ms` during HUD toggle).
+  - **Confirmed B (Non-idempotent `ShowMiniHud`)**: Client clicks triggered up to `4 ShowMiniHud()` calls in `83 ms`, each re-running `SetWindowPos(..., HWND_TOPMOST)` + `SetForegroundWindow` on VLC mid-click (`0.22-1.15 ms` UI work + z-order/focus churn).
+  - **Refuted C (Cross-process `GetWindowText`)**: Measured at `0.000-0.014 ms` on live VLC, `0.047-0.178 ms` across 28-42 windows, `0.95 ms` on a hung WPF window, and `0.521 ms` on an unpumped raw Win32 window (whereas `SendMessageTimeout(..., 50ms)` blocked `50.00-61.69 ms` and timed out). Intentionally left `GetWindowText` unchanged.
+  - **Confirmed D (UI-thread throttling & COM audio enumeration)**: `BackgroundAppThrottler.UpdateForegroundApp` blocked the UI thread for `19.5-53.3 ms` on app switch (contributing to `+318.8-568.8 ms` input-priority lag and `[UI-STALL] tick gap 1324 ms`), `20-33 ms` across 2-3x `UpdateForegroundApp(0)` calls on restore, and up to `17.9-22.2 ms` on 25s working-set trim ticks.
+  - **Confirmed E (3x synchronous PBKDF2 & duplicated unlock flows)**: `VerifyPassword` (100k-iteration PBKDF2) ran up to 3x synchronously on the UI thread per correct unlock attempt (`~11 ms` each in `UnlockButton_Click`, `Closing`, and post-`ShowDialog` caller; `27.2-48.3 ms` click stall), duplicated across 3 flows in `MeditationViewModel.cs`.
+  - **Confirmed F (Synchronous cross-process `ShowWindow(SW_MINIMIZE)`)**: Blocked `4,693-5,932 ms` on unpumped/hung windows (`ShowWindowAsync`: `0.03-0.36 ms`).
+- **Fixes Applied**:
+  1. **Discrete 5-Event Hooks & Trailing-Edge Coalescing**: Registered one `SetWinEventHook` per required event (`0x0003`, `0x0016`, `0x0017`, `0x8001`, `0x8003`) validated first via `AllowedWinEventFilter`, routed through a lock-free `TrailingEdgeCoalescer` posting asynchronous evaluations (keeping GC-rooted delegates and the 500 ms watchdog unchanged).
+  2. **Idempotent Mini-HUD & Non-Blocking Allowed-App Minimize**: `MiniHudPresentationCoordinator` restricts allowed-app focus/z-order calls strictly to hidden-to-shown transitions, HWND retargets, or explicit switches (`0/50` repeated activations); topmost re-assertion is rate-limited (2s cooldown) and paused while modal unlock dialogs are open. `MinimizeAllowedWindowAsync` uses `SetWindowPos(..., SWP_ASYNCWINDOWPOS)` + `ShowWindowAsync(..., SW_MINIMIZE)` for the allowed app only (watchdog unauthorized suppression untouched).
+  3. **Dedicated MTA Background Throttler Worker**: `ThrottlerBackgroundWorker` runs `StartSession`, `UpdateForegroundApp`, `Tick`, `EndSession`, `RestoreAll`, COM `AudioSessionDetector`, 25s working-set trims, and crash-journal I/O off the UI thread (`EnqueueForegroundUpdate`: `0.35-1.06 ms`, `EnqueueTick`: `0.13-0.18 ms`), keeping synchronous lock-free `FastRestoreForegroundTarget` before window activation and bounded `FlushOnExit(3000)` on app exit/emergency unlock.
+  4. **Deduplicated Async Single-Verify Unlock**: Extracted `MeditationUnlockDialogHelper.RequestUnlock` and `PasswordVerificationCoordinator` to run PBKDF2 (100k iterations, constant-time compare, legacy SHA-256 preserved) once per attempt off the UI thread with disabled button / `"Verifying..."` state, fail-closed `IsVerified` verification, and modal tracker suppression.
+- **Verification**:
+  - Live post-fix VLC probe: `0` events passing the 5-event filter out of `262` VLC control events, `0/50` repeated HUD activations, `0` UI-thread lag events >40 ms across 12.6s of VLC playback/control driving, `0.294 ms` `ShowWindowAsync` on hung Win32, `1` validator call per password attempt (`0.84 ms` right-password async click dispatch), and `bgPing` priority restored from `BelowNormal` back to `Normal`.
+  - Automated tests: `123/123` passing in `Sankalpa.Security.Tests` and `956/956` passing in `Sankalpa.Tests` (`1,079` total, including 7 new tests in `ZenUiLagFixTests.cs`).
+
+---
+
 ### [FEAT-2026-11-10-02] Comprehensive CLI Support for Meditation Mode, Delayed Unlock, Web Rules & Security Events
 - **Timestamp**: 2026-11-10 19:55 IST
 - **Component**: CLI Application (`Program.cs`, `Blocker.Cli.csproj`), Integration & End-to-End Tests (`CliTests.cs`)

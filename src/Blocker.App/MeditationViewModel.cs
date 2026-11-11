@@ -263,38 +263,11 @@ public partial class MeditationViewModel : ViewModelBase, IDisposable
             };
 
             _activeZenShield.OnVerifyUnlockRequested = () =>
-            {
-                if (LockMode == LockMode.Password)
-                {
-                    var dlg = new PasswordUnlockDialog("Meditation Session")
-                    {
-                        Owner = _activeZenShield,
-                        ValidatePassword = VerifyPassword
-                    };
-                    dlg.Closing += (s, ev) =>
-                    {
-                        if (dlg.DialogResult == true)
-                        {
-                            if (!VerifyPassword(dlg.ResultPassword))
-                            {
-                                ev.Cancel = true;
-                                dlg.SetError("Incorrect password. Access denied.");
-                            }
-                        }
-                    };
-                    return dlg.ShowDialog() == true && VerifyPassword(dlg.ResultPassword);
-                }
-                else if (LockMode == LockMode.TypingChallenge)
-                {
-                    var challenge = "I choose to return to my desktop with intention and focus.";
-                    var dlg = new TypingChallengeDialog(challenge)
-                    {
-                        Owner = _activeZenShield
-                    };
-                    return dlg.ShowDialog() == true;
-                }
-                return true;
-            };
+                MeditationUnlockDialogHelper.RequestUnlock(
+                    LockMode,
+                    _activeZenShield,
+                    VerifyPassword,
+                    activeShield: _activeZenShield);
 
             _activeZenShield.Show();
         }
@@ -386,40 +359,13 @@ public partial class MeditationViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        if (LockMode == LockMode.TypingChallenge)
+        if (!MeditationUnlockDialogHelper.RequestUnlock(
+                LockMode,
+                Application.Current?.MainWindow,
+                VerifyPassword,
+                activeShield: _activeZenShield))
         {
-            var challenge = "I choose to return to my desktop with intention and focus.";
-            var dlg = new TypingChallengeDialog(challenge)
-            {
-                Owner = Application.Current?.MainWindow
-            };
-            if (dlg.ShowDialog() != true)
-            {
-                return;
-            }
-        }
-        else if (LockMode == LockMode.Password)
-        {
-            var dlg = new PasswordUnlockDialog("Meditation Session")
-            {
-                Owner = Application.Current?.MainWindow,
-                ValidatePassword = VerifyPassword
-            };
-            dlg.Closing += (s, ev) =>
-            {
-                if (dlg.DialogResult == true)
-                {
-                    if (!VerifyPassword(dlg.ResultPassword))
-                    {
-                        ev.Cancel = true;
-                        dlg.SetError("Incorrect password. Access denied.");
-                    }
-                }
-            };
-            if (dlg.ShowDialog() != true || !VerifyPassword(dlg.ResultPassword))
-            {
-                return;
-            }
+            return;
         }
 
         StopMeditationInternal();
@@ -787,38 +733,11 @@ public partial class MeditationViewModel : ViewModelBase, IDisposable
             _activeZenShield.OnNotesChanged = text => CurrentNote = text;
             _activeZenShield.OnSessionEnded = () => StopMeditationInternal();
             _activeZenShield.OnVerifyUnlockRequested = () =>
-            {
-                if (LockMode == LockMode.Password)
-                {
-                    var dlg = new PasswordUnlockDialog("Meditation Session")
-                    {
-                        Owner = _activeZenShield,
-                        ValidatePassword = VerifyPassword
-                    };
-                    dlg.Closing += (s, ev) =>
-                    {
-                        if (dlg.DialogResult == true)
-                        {
-                            if (!VerifyPassword(dlg.ResultPassword))
-                            {
-                                ev.Cancel = true;
-                                dlg.SetError("Incorrect password. Access denied.");
-                            }
-                        }
-                    };
-                    return dlg.ShowDialog() == true && VerifyPassword(dlg.ResultPassword);
-                }
-                else if (LockMode == LockMode.TypingChallenge)
-                {
-                    var challenge = "I choose to return to my desktop with intention and focus.";
-                    var dlg = new TypingChallengeDialog(challenge)
-                    {
-                        Owner = _activeZenShield
-                    };
-                    return dlg.ShowDialog() == true;
-                }
-                return true;
-            };
+                MeditationUnlockDialogHelper.RequestUnlock(
+                    LockMode,
+                    _activeZenShield,
+                    VerifyPassword,
+                    activeShield: _activeZenShield);
 
             _activeZenShield.Show();
         }

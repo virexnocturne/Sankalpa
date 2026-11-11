@@ -490,6 +490,12 @@ public partial class App : Wpf.Application
 
     protected override void OnExit(Wpf.ExitEventArgs e)
     {
+        try
+        {
+            Blocker.Core.ThrottlerBackgroundWorker.DefaultIfCreated?.FlushOnExit(boundedWaitMs: 3000);
+        }
+        catch { }
+
         if (_notifyIcon != null)
         {
             _notifyIcon.Visible = false;
