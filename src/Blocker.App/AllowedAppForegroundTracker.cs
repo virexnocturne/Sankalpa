@@ -106,15 +106,22 @@ public sealed class AllowedAppForegroundTracker : IDisposable
     }
 
     private readonly WinEventDelegate _winEventProc;
-    private IntPtr _foregroundHook = IntPtr.Zero;
-    private IntPtr _objectHook = IntPtr.Zero;
+    private readonly List<IntPtr> _hookHandles = new(5);
 
+    private readonly Dispatcher _dispatcher;
+    private readonly TrailingEdgeCoalescer _coalescer;
     private readonly HudSessionState _state = new();
     private readonly DispatcherTimer _debounceTimer;
 
     private readonly Func<IReadOnlyCollection<string>> _getAllowedApps;
     private readonly Func<IReadOnlyDictionary<string, string>?> _getAllowedRoots;
     private readonly int _ownPid;
+
+    /// <summary>
+    /// When true, skips tracker WinEvent scheduling and evaluations while a modal unlock dialog is open.
+    /// Watchdog security enforcement continues to run normally.
+    /// </summary>
+    public bool IsModalUnlockDialogOpen { get; set; }
 
     /// <summary>
     /// Raised whenever the active, foreground allowed application window changes or goes away.
@@ -144,6 +151,10 @@ public sealed class AllowedAppForegroundTracker : IDisposable
 
         // Keep delegate rooted in a field so it is never garbage-collected
         _winEventProc = new WinEventDelegate(OnWinEvent);
+        _dispatcher = Dispatcher.CurrentDispatcher;
+        _coalescer = new TrailingEdgeCoalescer(
+            EvaluateCore,
+            action => _dispatcher.BeginInvoke(DispatcherPriority.Normal, action));
 
         _debounceTimer = new DispatcherTimer(DispatcherPriority.Normal)
         {
@@ -164,25 +175,21 @@ public sealed class AllowedAppForegroundTracker : IDisposable
 
         try
         {
-            // Hook 1: Foreground and Minimize events (0x0003 - 0x0017)
-            _foregroundHook = SetWinEventHook(
-                EVENT_SYSTEM_FOREGROUND,
-                EVENT_SYSTEM_MINIMIZEEND,
-                IntPtr.Zero,
-                _winEventProc,
-                0,
-                0,
-                WINEVENT_OUTOFCONTEXT);
-
-            // Hook 2: Object Destroy and Hide events (0x8001 - 0x8003)
-            _objectHook = SetWinEventHook(
-                EVENT_OBJECT_DESTROY,
-                EVENT_OBJECT_HIDE,
-                IntPtr.Zero,
-                _winEventProc,
-                0,
-                0,
-                WINEVENT_OUTOFCONTEXT);
+            foreach (uint eventType in AllowedWinEventFilter.HookedEventTypes)
+            {
+                IntPtr hook = SetWinEventHook(
+                    eventType,
+                    eventType,
+                    IntPtr.Zero,
+                    _winEventProc,
+                    0,
+                    0,
+                    WINEVENT_OUTOFCONTEXT);
+                if (hook != IntPtr.Zero)
+                {
+                    _hookHandles.Add(hook);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -199,23 +206,18 @@ public sealed class AllowedAppForegroundTracker : IDisposable
         uint dwEventThread,
         uint dwmsEventTime)
     {
-        if (idObject != OBJID_WINDOW && eventType != EVENT_SYSTEM_FOREGROUND)
+        // Check event type first and ignore everything outside the 5 intended event IDs.
+        if (!AllowedWinEventFilter.ShouldProcess(eventType, idObject, hwnd, _state.TrackedHwnd))
         {
             return;
         }
 
-        if (hwnd == IntPtr.Zero)
+        if (!_state.IsAllowedAppMode || IsModalUnlockDialogOpen)
         {
             return;
         }
 
-        // If an object was destroyed or hidden, only evaluate if it might be our tracked window
-        if ((eventType == EVENT_OBJECT_DESTROY || eventType == EVENT_OBJECT_HIDE) && hwnd != _state.TrackedHwnd)
-        {
-            return;
-        }
-
-        EvaluateNow();
+        _coalescer.Request();
     }
 
     /// <summary>
@@ -223,6 +225,7 @@ public sealed class AllowedAppForegroundTracker : IDisposable
     /// </summary>
     public void SetTrackedWindow(IntPtr hwnd, int pid, string processName)
     {
+        _coalescer.CancelPending();
         _state.IsAllowedAppMode = true;
         _state.IsLaunching = false;
         _state.TrackedHwnd = hwnd;
@@ -240,6 +243,7 @@ public sealed class AllowedAppForegroundTracker : IDisposable
     /// </summary>
     public void StartColdLaunch(string processName, int graceMs = ZenLaunchConstants.LaunchGracePeriodMs)
     {
+        _coalescer.CancelPending();
         _state.IsAllowedAppMode = true;
         _state.IsLaunching = true;
         _state.LaunchGraceUntilUtc = DateTime.UtcNow.AddMilliseconds(graceMs);
@@ -258,6 +262,7 @@ public sealed class AllowedAppForegroundTracker : IDisposable
     /// </summary>
     public void ResetToZen()
     {
+        _coalescer.CancelPending();
         _state.ResetToZen();
         _debounceTimer.Stop();
 
@@ -270,6 +275,21 @@ public sealed class AllowedAppForegroundTracker : IDisposable
     /// </summary>
     public void EvaluateNow()
     {
+        if (IsModalUnlockDialogOpen)
+        {
+            return;
+        }
+
+        _coalescer.RunDirect();
+    }
+
+    private void EvaluateCore()
+    {
+        if (IsModalUnlockDialogOpen)
+        {
+            return;
+        }
+
         IntPtr fgHwnd = GetForegroundWindow();
         WindowSnapshot? fgSnapshot = fgHwnd != IntPtr.Zero ? CreateSnapshot(fgHwnd) : null;
         WindowSnapshot? trackedSnapshot = _state.TrackedHwnd != IntPtr.Zero ? CreateSnapshot(_state.TrackedHwnd) : null;
@@ -372,17 +392,15 @@ public sealed class AllowedAppForegroundTracker : IDisposable
     public void Dispose()
     {
         _debounceTimer.Stop();
+        _coalescer.Dispose();
 
-        if (_foregroundHook != IntPtr.Zero)
+        foreach (IntPtr hook in _hookHandles)
         {
-            UnhookWinEvent(_foregroundHook);
-            _foregroundHook = IntPtr.Zero;
+            if (hook != IntPtr.Zero)
+            {
+                UnhookWinEvent(hook);
+            }
         }
-
-        if (_objectHook != IntPtr.Zero)
-        {
-            UnhookWinEvent(_objectHook);
-            _objectHook = IntPtr.Zero;
-        }
+        _hookHandles.Clear();
     }
 }
