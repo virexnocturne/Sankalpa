@@ -104,7 +104,8 @@ public class BlockerDatabase : IBlockStore
                 WebRulesJson TEXT NOT NULL DEFAULT '[]',
                 BlockAllWebsites INTEGER NOT NULL DEFAULT 0,
                 SystemWide INTEGER NOT NULL DEFAULT 0,
-                DelayedUnlockMinutes INTEGER NOT NULL DEFAULT 15
+                DelayedUnlockMinutes INTEGER NOT NULL DEFAULT 15,
+                ScheduleBypassedUntilUtc TEXT NULL
             );
 
             CREATE TABLE IF NOT EXISTS BlockSessions (
@@ -201,7 +202,8 @@ public class BlockerDatabase : IBlockStore
             ["BlockAllWebsites"] = "INTEGER NOT NULL DEFAULT 0",
             ["SystemWide"] = "INTEGER NOT NULL DEFAULT 0",
             ["AllowanceJson"] = "TEXT NOT NULL DEFAULT '{}'",
-            ["DelayedUnlockMinutes"] = "INTEGER NOT NULL DEFAULT 15"
+            ["DelayedUnlockMinutes"] = "INTEGER NOT NULL DEFAULT 15",
+            ["ScheduleBypassedUntilUtc"] = "TEXT NULL"
         };
 
         foreach (var (colName, colDef) in requiredCols)
@@ -478,7 +480,11 @@ public class BlockerDatabase : IBlockStore
                 : new AllowanceConfig(),
             DelayedUnlockMinutes = reader.FieldCount > 13 && !reader.IsDBNull(13)
                 ? reader.GetInt32(13)
-                : 15
+                : 15,
+            ScheduleBypassedUntilUtc = reader.FieldCount > 14 && !reader.IsDBNull(14) &&
+                DateTime.TryParse(reader.GetString(14), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime parsedBypass)
+                    ? parsedBypass
+                    : null
         };
     }
 
@@ -519,7 +525,7 @@ public class BlockerDatabase : IBlockStore
         connection.Open();
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, BlockedProcessesJson, BlockedDomainsJson, Enabled, ScheduleJson, LockMode, PasswordSalt, PasswordHash, WebRulesJson, BlockAllWebsites, SystemWide, AllowanceJson, DelayedUnlockMinutes FROM Profiles ORDER BY Id ASC;";
+        cmd.CommandText = "SELECT Id, Name, BlockedProcessesJson, BlockedDomainsJson, Enabled, ScheduleJson, LockMode, PasswordSalt, PasswordHash, WebRulesJson, BlockAllWebsites, SystemWide, AllowanceJson, DelayedUnlockMinutes, ScheduleBypassedUntilUtc FROM Profiles ORDER BY Id ASC;";
 
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -546,8 +552,8 @@ public class BlockerDatabase : IBlockStore
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-        INSERT INTO Profiles (Name, BlockedProcessesJson, BlockedDomainsJson, Enabled, ScheduleJson, LockMode, PasswordSalt, PasswordHash, WebRulesJson, BlockAllWebsites, SystemWide, AllowanceJson, DelayedUnlockMinutes)
-        VALUES (@name, @procJson, @domJson, @enabled, @schedJson, @lockMode, @salt, @hash, @rulesJson, @blockAll, @systemWide, @allowanceJson, @delayedUnlockMinutes)
+        INSERT INTO Profiles (Name, BlockedProcessesJson, BlockedDomainsJson, Enabled, ScheduleJson, LockMode, PasswordSalt, PasswordHash, WebRulesJson, BlockAllWebsites, SystemWide, AllowanceJson, DelayedUnlockMinutes, ScheduleBypassedUntilUtc)
+        VALUES (@name, @procJson, @domJson, @enabled, @schedJson, @lockMode, @salt, @hash, @rulesJson, @blockAll, @systemWide, @allowanceJson, @delayedUnlockMinutes, @scheduleBypassedUntilUtc)
         ON CONFLICT(Name) DO UPDATE SET 
             BlockedProcessesJson = excluded.BlockedProcessesJson,
             BlockedDomainsJson = excluded.BlockedDomainsJson,
@@ -560,7 +566,8 @@ public class BlockerDatabase : IBlockStore
             BlockAllWebsites = excluded.BlockAllWebsites,
             SystemWide = excluded.SystemWide,
             AllowanceJson = excluded.AllowanceJson,
-            DelayedUnlockMinutes = excluded.DelayedUnlockMinutes;
+            DelayedUnlockMinutes = excluded.DelayedUnlockMinutes,
+            ScheduleBypassedUntilUtc = excluded.ScheduleBypassedUntilUtc;
         """;
         cmd.Parameters.AddWithValue("@name", profile.Name);
         cmd.Parameters.AddWithValue("@procJson", procJson);
@@ -575,6 +582,13 @@ public class BlockerDatabase : IBlockStore
         cmd.Parameters.AddWithValue("@systemWide", profile.SystemWide ? 1 : 0);
         cmd.Parameters.AddWithValue("@allowanceJson", allowanceJson);
         cmd.Parameters.AddWithValue("@delayedUnlockMinutes", profile.DelayedUnlockMinutes > 0 ? profile.DelayedUnlockMinutes : 15);
+        string? bypassStr = profile.ScheduleBypassedUntilUtc.HasValue
+            ? (profile.ScheduleBypassedUntilUtc.Value.Kind == DateTimeKind.Utc
+                ? profile.ScheduleBypassedUntilUtc.Value
+                : DateTime.SpecifyKind(profile.ScheduleBypassedUntilUtc.Value, DateTimeKind.Local).ToUniversalTime())
+                .ToString("o", CultureInfo.InvariantCulture)
+            : null;
+        cmd.Parameters.AddWithValue("@scheduleBypassedUntilUtc", (object?)bypassStr ?? DBNull.Value);
         cmd.ExecuteNonQuery();
 
         lock (_cacheLock)
@@ -625,6 +639,44 @@ public class BlockerDatabase : IBlockStore
         using var cmd = connection.CreateCommand();
         cmd.CommandText = "UPDATE Profiles SET Enabled = 0;";
         cmd.ExecuteNonQuery();
+
+        lock (_cacheLock)
+        {
+            _cachedProfiles = null;
+        }
+    }
+
+    public void BypassActiveSchedules(DateTime localNow)
+    {
+        var profiles = ListProfiles();
+        var updates = new List<(int Id, string UntilUtc)>();
+        foreach (var p in profiles)
+        {
+            DateTime? untilUtc = ProfileStateLogic.ComputeScheduleBypassUntilUtc(p.Schedule, localNow);
+            if (untilUtc.HasValue && (!p.ScheduleBypassedUntilUtc.HasValue || untilUtc.Value > p.ScheduleBypassedUntilUtc.Value))
+            {
+                updates.Add((p.Id, untilUtc.Value.ToString("o", CultureInfo.InvariantCulture)));
+            }
+        }
+
+        if (updates.Count == 0)
+        {
+            return;
+        }
+
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        using var tx = connection.BeginTransaction();
+        foreach (var (id, untilUtc) in updates)
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = "UPDATE Profiles SET ScheduleBypassedUntilUtc = @until WHERE Id = @id;";
+            cmd.Parameters.AddWithValue("@until", untilUtc);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.ExecuteNonQuery();
+        }
+        tx.Commit();
 
         lock (_cacheLock)
         {

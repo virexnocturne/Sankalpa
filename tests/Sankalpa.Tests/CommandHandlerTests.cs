@@ -49,6 +49,7 @@ public class CommandHandlerTests
                 existing.PasswordSalt = profile.PasswordSalt;
                 existing.PasswordHash = profile.PasswordHash;
                 existing.Allowance = profile.Allowance;
+                existing.ScheduleBypassedUntilUtc = profile.ScheduleBypassedUntilUtc;
                 return existing;
             }
 
@@ -65,7 +66,8 @@ public class CommandHandlerTests
                 LockMode = profile.LockMode,
                 PasswordSalt = profile.PasswordSalt,
                 PasswordHash = profile.PasswordHash,
-                Allowance = profile.Allowance
+                Allowance = profile.Allowance,
+                ScheduleBypassedUntilUtc = profile.ScheduleBypassedUntilUtc
             };
             Profiles.Add(newProfile);
             return newProfile;
@@ -76,6 +78,18 @@ public class CommandHandlerTests
             foreach (var p in Profiles)
             {
                 p.Enabled = false;
+            }
+        }
+
+        public void BypassActiveSchedules(DateTime localNow)
+        {
+            foreach (var p in Profiles)
+            {
+                var until = ProfileStateLogic.ComputeScheduleBypassUntilUtc(p.Schedule, localNow);
+                if (until.HasValue && (!p.ScheduleBypassedUntilUtc.HasValue || until.Value > p.ScheduleBypassedUntilUtc.Value))
+                {
+                    p.ScheduleBypassedUntilUtc = until.Value;
+                }
             }
         }
 

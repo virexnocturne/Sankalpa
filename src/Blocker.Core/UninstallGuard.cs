@@ -98,13 +98,35 @@ public static class UninstallGuard
                 var tableExists = cmd.ExecuteScalar();
                 if (tableExists != null)
                 {
-                    cmd.CommandText = "SELECT Name, Enabled, ScheduleJson FROM Profiles WHERE Enabled = 1;";
+                    bool hasBypassCol = false;
+                    cmd.CommandText = "PRAGMA table_info(Profiles);";
+                    using (var colReader = cmd.ExecuteReader())
+                    {
+                        while (colReader.Read())
+                        {
+                            if (string.Equals(colReader.GetString(1), "ScheduleBypassedUntilUtc", StringComparison.OrdinalIgnoreCase))
+                            {
+                                hasBypassCol = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    cmd.CommandText = hasBypassCol
+                        ? "SELECT Name, Enabled, ScheduleJson, ScheduleBypassedUntilUtc FROM Profiles WHERE Enabled = 1;"
+                        : "SELECT Name, Enabled, ScheduleJson FROM Profiles WHERE Enabled = 1;";
                     using var reader = cmd.ExecuteReader();
                     while (reader.Read())
                     {
                         string name = reader.GetString(0);
                         int enabled = reader.GetInt32(1);
                         string? schedJson = reader.IsDBNull(2) ? null : reader.GetString(2);
+                        bool isBypassed = false;
+                        if (hasBypassCol && !reader.IsDBNull(3) &&
+                            DateTime.TryParse(reader.GetString(3), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out DateTime bypassUntilUtc))
+                        {
+                            isBypassed = utcNow < (bypassUntilUtc.Kind == DateTimeKind.Utc ? bypassUntilUtc : bypassUntilUtc.ToUniversalTime());
+                        }
 
                         if (enabled == 1)
                         {
@@ -125,7 +147,7 @@ public static class UninstallGuard
                                 return true;
                             }
 
-                            if (ScheduleLogic.IsActive(rules, localNow))
+                            if (!isBypassed && ScheduleLogic.IsActive(rules, localNow))
                             {
                                 reason = $"Profile '{name}' has a schedule actively blocking right now.";
                                 return true;

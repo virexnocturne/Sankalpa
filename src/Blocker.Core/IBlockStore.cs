@@ -10,6 +10,7 @@ public interface IBlockStore
     bool DeleteProfileByName(string name);
     bool DeleteProfile(int id);
     void DisableAllProfiles();
+    void BypassActiveSchedules(DateTime localNow);
 
     BlockSession? GetActiveSession();
     List<BlockSession> GetActiveSessions()
