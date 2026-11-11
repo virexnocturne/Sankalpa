@@ -115,6 +115,21 @@ public class ParallelPipeStressTests
             }
         }
 
+        public void BypassActiveSchedules(DateTime localNow)
+        {
+            lock (_lock)
+            {
+                foreach (var p in _profiles.Values)
+                {
+                    var until = ProfileStateLogic.ComputeScheduleBypassUntilUtc(p.Schedule, localNow);
+                    if (until.HasValue && (!p.ScheduleBypassedUntilUtc.HasValue || until.Value > p.ScheduleBypassedUntilUtc.Value))
+                    {
+                        p.ScheduleBypassedUntilUtc = until.Value;
+                    }
+                }
+            }
+        }
+
         public BlockSession? GetActiveSession()
         {
             lock (_lock)
@@ -238,7 +253,8 @@ public class ParallelPipeStressTests
             Schedule = p.Schedule != null ? new List<ScheduleRule>(p.Schedule) : new(),
             LockMode = p.LockMode,
             PasswordSalt = p.PasswordSalt,
-            PasswordHash = p.PasswordHash
+            PasswordHash = p.PasswordHash,
+            ScheduleBypassedUntilUtc = p.ScheduleBypassedUntilUtc
         };
 
         private static BlockSession CloneSession(BlockSession s) => new()

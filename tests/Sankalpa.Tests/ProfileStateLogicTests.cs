@@ -35,6 +35,7 @@ public class ProfileStateLogicTests
                 existing.LockMode = profile.LockMode;
                 existing.PasswordSalt = profile.PasswordSalt;
                 existing.PasswordHash = profile.PasswordHash;
+                existing.ScheduleBypassedUntilUtc = profile.ScheduleBypassedUntilUtc;
                 return existing;
             }
 
@@ -59,6 +60,18 @@ public class ProfileStateLogicTests
         public void DisableAllProfiles()
         {
             foreach (var p in Profiles) p.Enabled = false;
+        }
+
+        public void BypassActiveSchedules(DateTime localNow)
+        {
+            foreach (var p in Profiles)
+            {
+                var until = ProfileStateLogic.ComputeScheduleBypassUntilUtc(p.Schedule, localNow);
+                if (until.HasValue && (!p.ScheduleBypassedUntilUtc.HasValue || until.Value > p.ScheduleBypassedUntilUtc.Value))
+                {
+                    p.ScheduleBypassedUntilUtc = until.Value;
+                }
+            }
         }
 
         public bool RenameProfile(int id, string newName)

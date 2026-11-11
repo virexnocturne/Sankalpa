@@ -738,6 +738,7 @@ public class ZenFixSecurityTests
         public bool DeleteProfileByName(string name) => true;
         public bool DeleteProfile(int id) => true;
         public void DisableAllProfiles() { }
+        public void BypassActiveSchedules(DateTime localNow) { }
 
         public BlockSession? GetActiveSession() => null;
         public BlockSession? GetSessionById(int id) => null;

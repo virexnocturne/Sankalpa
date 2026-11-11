@@ -6,6 +6,78 @@ namespace Blocker.Core;
 
 public static class ProfileStateLogic
 {
+    private static DateTime ToUtcTimestamp(DateTime dt)
+    {
+        return dt.Kind switch
+        {
+            DateTimeKind.Utc => dt,
+            DateTimeKind.Local => dt.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dt, DateTimeKind.Local).ToUniversalTime()
+        };
+    }
+
+    public static bool IsScheduleBypassed(Profile profile, DateTime localNow)
+    {
+        if (profile.ScheduleBypassedUntilUtc == null)
+        {
+            return false;
+        }
+
+        DateTime nowUtc = ToUtcTimestamp(localNow);
+        DateTime bypassUtc = ToUtcTimestamp(profile.ScheduleBypassedUntilUtc.Value);
+        return nowUtc < bypassUtc;
+    }
+
+    public static bool IsScheduleActive(Profile profile, DateTime localNow)
+    {
+        if (profile.Schedule == null || profile.Schedule.Count == 0)
+        {
+            return false;
+        }
+
+        if (IsScheduleBypassed(profile, localNow))
+        {
+            return false;
+        }
+
+        return ScheduleLogic.IsActive(profile.Schedule, localNow);
+    }
+
+    public static DateTime? ComputeScheduleBypassUntilUtc(List<ScheduleRule>? schedule, DateTime localNow)
+    {
+        if (schedule == null || schedule.Count == 0 || !ScheduleLogic.IsActive(schedule, localNow))
+        {
+            return null;
+        }
+
+        DateTime nowUtc = ToUtcTimestamp(localNow);
+        DateTime? nextChange = ScheduleLogic.NextChange(schedule, localNow);
+        if (nextChange.HasValue)
+        {
+            DateTime untilUtc = ToUtcTimestamp(nextChange.Value);
+            return untilUtc > nowUtc ? untilUtc : nowUtc.AddMinutes(1);
+        }
+
+        // Unbounded (e.g., 24/7) schedule has no inactive transition: bypass for 24h while preserving rules.
+        return nowUtc.AddHours(24);
+    }
+
+    public static DateTime? GetEffectiveNextChange(Profile profile, DateTime localNow)
+    {
+        if (profile.Schedule == null || profile.Schedule.Count == 0)
+        {
+            return null;
+        }
+
+        if (!IsScheduleBypassed(profile, localNow))
+        {
+            return ScheduleLogic.NextChange(profile.Schedule, localNow);
+        }
+
+        DateTime bypassLocal = ToUtcTimestamp(profile.ScheduleBypassedUntilUtc!.Value).ToLocalTime();
+        return ScheduleLogic.NextChange(profile.Schedule, bypassLocal) ?? bypassLocal;
+    }
+
     public static bool IsProfileActive(Profile profile, BlockSession? activeSession, DateTime localNow, out string activeReason)
     {
         if (activeSession != null && activeSession.ProfileId == profile.Id)
@@ -14,7 +86,7 @@ public static class ProfileStateLogic
             return true;
         }
 
-        if (profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, localNow))
+        if (IsScheduleActive(profile, localNow))
         {
             activeReason = "Schedule";
             return true;
@@ -48,7 +120,7 @@ public static class ProfileStateLogic
             return true;
         }
 
-        if (profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, localNow))
+        if (IsScheduleActive(profile, localNow))
         {
             return true;
         }
@@ -69,7 +141,7 @@ public static class ProfileStateLogic
             return true;
         }
 
-        if (profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, localNow))
+        if (IsScheduleActive(profile, localNow))
         {
             return true;
         }

@@ -408,7 +408,10 @@ public static class CommandHandler
             LockMode = targetLockMode,
             PasswordSalt = finalSalt,
             PasswordHash = finalHash,
-            DelayedUnlockMinutes = targetDelayedMinutes
+            DelayedUnlockMinutes = targetDelayedMinutes,
+            ScheduleBypassedUntilUtc = (existing != null && (schedStr == null || ScheduleLogic.AreSchedulesEquivalent(existing.Schedule, targetSchedule)))
+                ? existing.ScheduleBypassedUntilUtc
+                : null
         };
 
         var saved = store.SaveProfile(profile);
@@ -971,13 +974,7 @@ public static class CommandHandler
         bool emergency = store.IsEmergencyUnlockPresent();
         if (emergency)
         {
-            var sessions = store.GetActiveSessions();
-            foreach (var s in sessions)
-            {
-                store.EndSession(s.Id);
-            }
-            store.DisableAllProfiles();
-            store.CleanHosts();
+            ExecuteEmergencyUnlockReset(store);
             store.ConsumeEmergencyUnlock();
             return Response.Success("Emergency unlock processed: active session stopped and all profiles disabled.");
         }
@@ -1062,7 +1059,7 @@ public static class CommandHandler
         {
             bool isActive = ProfileStateLogic.IsProfileActiveWithSessions(p, sessions, localNow, out string reason);
             bool isLockedNow = ProfileStateLogic.IsProfileLockedNowWithSessions(p, sessions, localNow);
-            DateTime? nextChange = ScheduleLogic.NextChange(p.Schedule, localNow);
+            DateTime? nextChange = ProfileStateLogic.GetEffectiveNextChange(p, localNow);
             string schedSummary = ScheduleLogic.FormatSummary(p.Schedule);
 
             if (isActive)
@@ -1182,12 +1179,7 @@ public static class CommandHandler
         if (emergency)
         {
             store.ConsumeEmergencyUnlock();
-            if (session != null)
-            {
-                store.EndSession(session.Id);
-            }
-            store.DisableAllProfiles();
-            bool cleaned = store.CleanHosts();
+            bool cleaned = ExecuteEmergencyUnlockReset(store, cleanHosts: true);
             return cleaned
                 ? Response.Success("Hosts file cleaned successfully via emergency unlock.")
                 : Response.Fail("Failed to clean hosts file.");
@@ -1254,7 +1246,7 @@ public static class CommandHandler
             return Response.Fail($"Refused: Profile '{profile.Name}' has an active locked session ({UiLogic.FormatCountdown(remaining)} remaining).");
         }
 
-        if (profile.Enabled && profile.Schedule != null && profile.Schedule.Count > 0 && ScheduleLogic.IsActive(profile.Schedule, DateTime.Now))
+        if (profile.Enabled && ProfileStateLogic.IsScheduleActive(profile, DateTime.Now))
         {
             var nextChange = ScheduleLogic.NextChange(profile.Schedule, DateTime.Now);
             string timeStr = nextChange.HasValue ? nextChange.Value.ToString("HH:mm") : "the window ends";
@@ -1277,7 +1269,7 @@ public static class CommandHandler
                 {
                     return null;
                 }
-                if (profile.Schedule == null || profile.Schedule.Count == 0 || ScheduleLogic.IsActive(profile.Schedule, DateTime.Now))
+                if (profile.Schedule == null || profile.Schedule.Count == 0 || ProfileStateLogic.IsScheduleActive(profile, DateTime.Now))
                 {
                     return Response.Fail($"Refused: Profile '{profile.Name}' is hard-locked and cannot be modified or unlocked without emergency recovery.");
                 }
@@ -1465,6 +1457,76 @@ public static class CommandHandler
         return HandleGetActiveWebRules(store);
     }
 
+    /// <summary>
+    /// Applies emergency unlock state reset consistently across IPC command and marker-file recovery paths:
+    /// unlocks DACLs, ends active block/meditation sessions, disables the meditation schedule, disables all
+    /// profiles, bypasses any currently active schedule windows without erasing rules, cleans hosts, and
+    /// resets DNS locks.
+    /// </summary>
+    public static bool ExecuteEmergencyUnlockReset(
+        IBlockStore store,
+        DateTime? localNow = null,
+        bool cleanHosts = true,
+        bool resetDns = true,
+        bool forceOsDnsReset = false)
+    {
+        DateTime effectiveLocalNow = localNow ?? DateTime.Now;
+
+        SecurityHardener.UnlockCurrentProcess(out _);
+        SecurityHardener.UnlockService(out _);
+
+        foreach (var s in store.GetActiveSessions())
+        {
+            store.EndSession(s.Id);
+        }
+        store.EndActiveSession();
+
+        var activeMed = store.GetActiveMeditationSession();
+        if (activeMed != null)
+        {
+            store.EndMeditationSession(activeMed.Id, completed: false);
+        }
+
+        var medSchedule = store.GetMeditationSchedule();
+        if (medSchedule != null && medSchedule.Enabled)
+        {
+            medSchedule.Enabled = false;
+            store.SaveMeditationSchedule(medSchedule);
+        }
+
+        store.DisableAllProfiles();
+        store.BypassActiveSchedules(effectiveLocalNow);
+
+        bool hostsCleaned = true;
+        if (cleanHosts)
+        {
+            hostsCleaned = store.CleanHosts();
+        }
+
+        if (resetDns)
+        {
+            try
+            {
+                var dns = store.GetDnsConfig();
+                if (dns != null)
+                {
+                    bool wasDnsActive = dns.Locked || dns.Enabled;
+                    dns.Locked = false;
+                    dns.Enabled = false;
+                    dns.LockedUntilUtc = null;
+                    store.SaveDnsConfig(dns);
+                    if (wasDnsActive || forceOsDnsReset)
+                    {
+                        DnsManager.ResetDns(out _);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        return hostsCleaned;
+    }
+
     private static Response HandleEmergencyUnlock(IBlockStore store, IClientIdentity clientIdentity)
     {
         bool isElevated = clientIdentity.IsAdministrator || clientIdentity.IsLocalSystem;
@@ -1476,22 +1538,8 @@ public static class CommandHandler
             }
         }
 
-        SecurityHardener.UnlockCurrentProcess(out _);
-        SecurityHardener.UnlockService(out _);
-        store.EndActiveSession();
-        store.DisableAllProfiles();
-        store.CleanHosts();
+        ExecuteEmergencyUnlockReset(store, cleanHosts: true, resetDns: true, forceOsDnsReset: true);
         store.ConsumeEmergencyUnlock();
-
-        try
-        {
-            var dns = store.GetDnsConfig();
-            dns.Locked = false;
-            dns.Enabled = false;
-            store.SaveDnsConfig(dns);
-            DnsManager.ResetDns(out _);
-        }
-        catch { }
 
         string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         string emg1 = Path.Combine(localAppData, "Blocker", "EMERGENCY_UNLOCK");

@@ -29,6 +29,12 @@ public class Profile
     public LockMode LockMode { get; set; } = LockMode.None;
     public int DelayedUnlockMinutes { get; set; } = 15;
 
+    /// <summary>
+    /// UTC timestamp until which the currently active schedule window is bypassed
+    /// (for example after an emergency unlock), preserving recurring schedule rules.
+    /// </summary>
+    public DateTime? ScheduleBypassedUntilUtc { get; set; }
+
     // Password credentials are never serialized across the client protocol
     [JsonIgnore]
     public string? PasswordSalt { get; set; }

@@ -147,6 +147,10 @@ public class Worker : BackgroundService
             var allProfiles = _db.ListProfiles();
             bool anySessionLocked = _trackedSessions.Values.Any(t => t.Session.Locked && t.Session.IsActive(DateTime.UtcNow));
             bool anyScheduleLocked = allProfiles.Any(p => p.Schedule != null && p.Schedule.Count > 0 && ScheduleLogic.IsActive(p.Schedule, localNow));
+            if (anyScheduleLocked)
+            {
+                anyScheduleLocked = allProfiles.Any(p => ProfileStateLogic.IsScheduleActive(p, localNow));
+            }
             bool emergencyPresent = _db.IsEmergencyUnlockPresent();
 
             // Meditation mode is a focus mode, not a kernel lockdown. It never blocks service teardown or DACL restoration.
@@ -292,6 +296,10 @@ public class Worker : BackgroundService
             var allProfiles = _db.ListProfiles();
             bool anySessionLocked = _trackedSessions.Values.Any(t => t.Session.Locked);
             bool anyScheduleLocked = allProfiles.Any(p => p.Schedule != null && p.Schedule.Count > 0 && ScheduleLogic.IsActive(p.Schedule, localNow));
+            if (anyScheduleLocked)
+            {
+                anyScheduleLocked = allProfiles.Any(p => ProfileStateLogic.IsScheduleActive(p, localNow));
+            }
             bool anyHardLocked = anySessionLocked || anyScheduleLocked;
             // Meditation Mode does not trigger kernel process/service DACL lockdown.
 
@@ -537,20 +545,10 @@ public class Worker : BackgroundService
         {
             try
             {
-                SecurityHardener.UnlockCurrentProcess(out _);
-                SecurityHardener.UnlockService(out _);
-
-                _db.EndActiveSession();
-                var activeMed = _db.GetActiveMeditationSession();
-                if (activeMed != null)
-                {
-                    _db.EndMeditationSession(activeMed.Id, completed: false);
-                    _activeMeditationSession = null;
-                }
                 ProcessSuspender.Default.ResumeAll();
                 BackgroundAppThrottler.Default.RestoreAll();
-                _db.DisableAllProfiles();
-                _db.CleanHosts();
+                CommandHandler.ExecuteEmergencyUnlockReset(_db, DateTime.Now, cleanHosts: true, resetDns: true, forceOsDnsReset: true);
+                _activeMeditationSession = null;
                 _db.ConsumeEmergencyUnlock();
                 foreach (var f in emergencyFiles)
                 {
@@ -794,6 +792,10 @@ public class Worker : BackgroundService
         var allProfiles = cachedProfiles ?? _db.ListProfiles();
         bool anySessionLocked = _trackedSessions.Values.Any(t => t.Session.Locked);
         bool anyScheduleLocked = allProfiles.Any(p => p.Schedule != null && p.Schedule.Count > 0 && ScheduleLogic.IsActive(p.Schedule, localNow));
+        if (anyScheduleLocked)
+        {
+            anyScheduleLocked = allProfiles.Any(p => ProfileStateLogic.IsScheduleActive(p, localNow));
+        }
         bool anyHardLocked = anySessionLocked || anyScheduleLocked;
         // Meditation Mode is cooperative focus; it never locks process or service DACLs.
 
