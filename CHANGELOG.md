@@ -4,6 +4,33 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
+### [FEAT-2026-11-10-02] Comprehensive CLI Support for Meditation Mode, Delayed Unlock, Web Rules & Security Events
+- **Timestamp**: 2026-11-10 19:55 IST
+- **Component**: CLI Application (`Program.cs`, `Blocker.Cli.csproj`), Integration & End-to-End Tests (`CliTests.cs`)
+- **Status**: **MERGED & VERIFIED IN AUTOMATED TEST SUITE (17 NEW TESTS)**
+- **Features Implemented**:
+  1. **Meditation & System Lockdown Subcommands**:
+     - `sankalpa-cli meditation status`: Query active meditation countdown, session ID, lock mode, soundscape, notes, and whitelisted applications.
+     - `sankalpa-cli meditation start`: Initiate lockdown sessions with duration parsing (`20m`, `1h`, `900s`), app whitelisting (`--apps`), lock modes (`none`, `locked`, `typing`, `password`), and ambient soundscapes (`--sound`).
+     - `sankalpa-cli meditation stop`: Stop unlocked sessions or safely reject early exit on Complete Lock / HardLocked modes.
+     - `sankalpa-cli meditation note`: Capture reflection notes during or after sessions.
+     - `sankalpa-cli meditation history`: Review past meditation sessions, durations, completion statuses, and notes.
+     - `sankalpa-cli meditation schedule`: Complete CRUD for recurring meditation sessions (`list`, `add`, `snooze`, `delete`).
+  2. **Delayed Unlock Control**:
+     - `sankalpa-cli delayed-unlock request --name <profile>`: Trigger delayed unlock countdowns and retrieve the unlock token.
+     - `sankalpa-cli delayed-unlock cancel --name <profile> --token <token>`: Cancel pending delayed unlock timers.
+  3. **DNS Protection Challenge & Management**:
+     - `sankalpa-cli dns challenge` and `sankalpa-cli unlock-challenge --dns`: Display numeric typing verification challenges required for unlocking DNS protection.
+  4. **Security & Block Events Audit Trail**:
+     - `sankalpa-cli events [--limit N] [--since ID]`: Inspect audit logs for blocked processes, domain intercepts, and protection events.
+  5. **Active Web Rules & Profile Renaming**:
+     - `sankalpa-cli webrules`: View active website blocking rules and profile mappings.
+     - `sankalpa-cli profile rename --name <old> --new-name <new>`: Rename profiles from the CLI.
+  6. **Automated End-to-End Test Suite**:
+     - Added `CliTests.cs` covering all 17 CLI scenarios with simulated IPC pipelines and SQLite database validation.
+
+---
+
 ### [FIX-2026-11-10-02] Audio UX Improvements, Playlist Import, Catalog Synchronization & HUD Z-Order/Watchdog Regression Fixes
 - **Timestamp**: 2026-11-10 17:45 IST
 - **Component**: Audio UX & Management (`AudioImportService.cs`, `SoundscapeCatalog.cs`, `UiSettingsStore.cs`, `SoundscapePillControl.xaml`, `SoundscapePillControl.xaml.cs`, `MeditationEditDialog.xaml`, `MeditationEditDialog.xaml.cs`, `MeditationViewModel.Audio.cs`, `MeditationViewModel.cs`), Window Tracking & Watchdog (`ZenMiniHudWindow.xaml.cs`, `ZenShieldWindow.xaml.cs`), Tests (`CustomSongsAndSoundscapeTests.cs`, `HudLifecycleTests.cs`)
