@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text.Json;
+using System.Threading;
 
 namespace Blocker.Core;
 
@@ -24,6 +25,7 @@ public sealed class ThrottledProcessJournalEntry
 public sealed class ThrottledProcessInfo
 {
     public int ProcessId { get; set; }
+    public int RootPid { get; set; }
     public long CreationTime { get; set; }
     public string ImagePath { get; set; } = string.Empty;
     public string ProcessName { get; set; } = string.Empty;
@@ -79,7 +81,8 @@ public sealed class BackgroundAppThrottler : IDisposable
     private readonly HashSet<int> _protectedPids = new();
 
     private int _foregroundPid = 0;
-    private bool _isSessionActive = false;
+    private volatile bool _isSessionActive = false;
+    private int _journalDirty = 0;
 
     public bool IsSessionActive => _isSessionActive;
     public int ForegroundPid => _foregroundPid;
@@ -186,6 +189,54 @@ public sealed class BackgroundAppThrottler : IDisposable
     }
 
     /// <summary>
+    /// Synchronously and cheaply restores any already-throttled processes belonging to the
+    /// target foreground process (or its tracked root/executable) without enumerating all processes,
+    /// calling Core Audio COM, or waiting on background worker locks.
+    /// Safe to call directly on the UI thread immediately prior to window activation.
+    /// </summary>
+    public void FastRestoreForegroundTarget(int foregroundPid)
+    {
+        if (!_isSessionActive || foregroundPid <= 0 || _throttledProcesses.IsEmpty)
+        {
+            return;
+        }
+
+        int targetRootPid = 0;
+        if (_throttledProcesses.TryGetValue(foregroundPid, out var directEntry))
+        {
+            targetRootPid = directEntry.RootPid > 0 ? directEntry.RootPid : foregroundPid;
+        }
+
+        string? fgImagePath = null;
+        if (ProcessIdentityHelper.GetProcessIdentity(foregroundPid, out _, out string? resolvedPath) &&
+            !string.IsNullOrEmpty(resolvedPath))
+        {
+            fgImagePath = resolvedPath;
+        }
+
+        foreach (var kvp in _throttledProcesses)
+        {
+            var info = kvp.Value;
+            bool match =
+                info.ProcessId == foregroundPid ||
+                (targetRootPid > 0 && (info.RootPid == targetRootPid || info.ProcessId == targetRootPid)) ||
+                (!string.IsNullOrEmpty(fgImagePath) &&
+                 !string.IsNullOrEmpty(info.ImagePath) &&
+                 string.Equals(info.ImagePath, fgImagePath, StringComparison.OrdinalIgnoreCase));
+
+            if (match && _throttledProcesses.TryRemove(kvp.Key, out var removed))
+            {
+                Interlocked.Exchange(ref _journalDirty, 1);
+                try
+                {
+                    RestoreProcessInternal(removed);
+                }
+                catch { }
+            }
+        }
+    }
+
+    /// <summary>
     /// Handles foreground window / application changes.
     /// Restores any throttled processes belonging to the new foreground app INSTANTLY before window switch,
     /// and throttles any non-foreground allowed applications.
@@ -252,10 +303,17 @@ public sealed class BackgroundAppThrottler : IDisposable
                 }
             }
 
-            var backgroundAllowedTree = new HashSet<int>(allowedRootPids);
+            var backgroundAllowedTree = new HashSet<int>();
+            var rootByPid = new Dictionary<int, int>();
             foreach (int rootPid in allowedRootPids)
             {
-                AddDescendants(rootPid, running, backgroundAllowedTree);
+                var tree = new HashSet<int> { rootPid };
+                AddDescendants(rootPid, running, tree);
+                foreach (int pid in tree)
+                {
+                    backgroundAllowedTree.Add(pid);
+                    rootByPid.TryAdd(pid, rootPid);
+                }
             }
 
             // Remove any foreground tree members or audio session players
@@ -274,12 +332,13 @@ public sealed class BackgroundAppThrottler : IDisposable
 
                 if (ThrottleProcessInternal(pEntry, nowUtc, out var newThrottled))
                 {
+                    newThrottled.RootPid = rootByPid.TryGetValue(pid, out int rp) ? rp : pid;
                     _throttledProcesses[pid] = newThrottled;
                     journalChanged = true;
                 }
             }
 
-            if (journalChanged)
+            if (journalChanged || Interlocked.Exchange(ref _journalDirty, 0) != 0)
             {
                 PersistJournalInternal();
             }
@@ -358,6 +417,7 @@ public sealed class BackgroundAppThrottler : IDisposable
 
                         if (ThrottleProcessInternal(childEntry, nowUtc, out var newThrottled))
                         {
+                            newThrottled.RootPid = throttledRoot.RootPid > 0 ? throttledRoot.RootPid : throttledRoot.ProcessId;
                             _throttledProcesses[childPid] = newThrottled;
                             journalChanged = true;
                         }
@@ -365,7 +425,7 @@ public sealed class BackgroundAppThrottler : IDisposable
                 }
             }
 
-            if (journalChanged)
+            if (journalChanged || Interlocked.Exchange(ref _journalDirty, 0) != 0)
             {
                 PersistJournalInternal();
             }

@@ -765,6 +765,8 @@ public partial class ZenShieldWindow : Window
     public void CloseSessionAndUnlock()
     {
         _completeLock = false;
+        _requireSyncRestoreOnClose = true;
+        CompleteThrottlingOnClose(waitForCompletion: true);
         EndSession();
     }
 
