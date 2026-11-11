@@ -610,6 +610,9 @@ public static class ExtensionHelper
                     }
                 }
 
+                // Ensure notifications for AUMID 'Sankalpa' are allowed in Windows Settings
+                WindowsNotificationHelper.EnableNotificationInWindows();
+
                 try
                 {
                     using var hklmKey = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"Software\Classes\AppUserModelId\Sankalpa");

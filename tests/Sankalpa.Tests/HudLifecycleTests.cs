@@ -472,4 +472,278 @@ public class HudLifecycleTests
         // Verify decision logic executes under 10 microseconds per call on any system
         Assert.True(usPerCall < 10.0, $"Expected < 10us per call, got {usPerCall:F3}us");
     }
+
+    [Fact]
+    public void FullscreenAllowedApp_HudRemainsVisibleAndTopmost()
+    {
+        var state = new HudSessionState
+        {
+            IsAllowedAppMode = true,
+            TrackedHwnd = (IntPtr)0x5000,
+            TrackedPid = 6000,
+            TrackedProcessName = "vlc"
+        };
+
+        // Fullscreen allowed window matching 1080p display
+        var fullscreenWindow = new WindowSnapshot(
+            Hwnd: (IntPtr)0x5000,
+            Pid: 6000,
+            ProcessName: "vlc",
+            ImagePath: @"C:\Program Files\VideoLAN\VLC\vlc.exe",
+            ClassName: "Qt5QWindowIcon",
+            Width: 1920,
+            Height: 1080,
+            IsWindow: true,
+            IsVisible: true,
+            IsIconic: false,
+            HasTitle: true);
+
+        var result = HudVisibilityLogic.Evaluate(
+            state,
+            foreground: fullscreenWindow,
+            tracked: fullscreenWindow,
+            nowUtc: DateTime.UtcNow,
+            allowedProcessNames: AllowedApps,
+            allowedRoots: AllowedRoots,
+            ownPid: OwnPid);
+
+        Assert.True(result.ShouldShowHud, "Mini-HUD must remain visible above fullscreen allowed app");
+        Assert.False(result.ShouldRestoreZenScreen);
+        Assert.False(result.ShouldRetarget);
+    }
+
+    [Fact]
+    public void BorderlessFullscreenAllowedApp_HudRemainsVisible()
+    {
+        var state = new HudSessionState
+        {
+            IsAllowedAppMode = true,
+            TrackedHwnd = (IntPtr)0x5500,
+            TrackedPid = 6100,
+            TrackedProcessName = "obsidian"
+        };
+
+        // Borderless fullscreen window (WS_POPUP style, no title bar, full screen size)
+        var borderlessWindow = new WindowSnapshot(
+            Hwnd: (IntPtr)0x5500,
+            Pid: 6100,
+            ProcessName: "obsidian",
+            ImagePath: @"C:\Users\User\AppData\Local\Obsidian\Obsidian.exe",
+            ClassName: "Chrome_WidgetWin_1",
+            Width: 1920,
+            Height: 1080,
+            IsWindow: true,
+            IsVisible: true,
+            IsIconic: false,
+            HasTitle: false);
+
+        var result = HudVisibilityLogic.Evaluate(
+            state,
+            foreground: borderlessWindow,
+            tracked: borderlessWindow,
+            nowUtc: DateTime.UtcNow,
+            allowedProcessNames: AllowedApps,
+            allowedRoots: AllowedRoots,
+            ownPid: OwnPid);
+
+        Assert.True(result.ShouldShowHud, "Mini-HUD must remain visible above borderless fullscreen window");
+    }
+
+    [Fact]
+    public void MinimizeAllowedApp_WatchdogDoesNotRestoreItAutomatically()
+    {
+        IntPtr notepadHwnd = (IntPtr)0x3000;
+        var state = new HudSessionState
+        {
+            IsAllowedAppMode = true,
+            TrackedHwnd = notepadHwnd,
+            TrackedPid = 4000,
+            TrackedProcessName = "notepad"
+        };
+
+        DateTime t0 = DateTime.UtcNow;
+
+        // Notepad becomes iconic (minimized)
+        var minimizedNotepad = new WindowSnapshot(
+            Hwnd: notepadHwnd,
+            Pid: 4000,
+            ProcessName: "notepad",
+            ImagePath: @"C:\Windows\System32\notepad.exe",
+            ClassName: "Notepad",
+            Width: 0,
+            Height: 0,
+            IsWindow: true,
+            IsVisible: true,
+            IsIconic: true,
+            HasTitle: true);
+
+        // Desktop shell (explorer) becomes foreground
+        var desktopForeground = new WindowSnapshot(
+            Hwnd: (IntPtr)0x10010,
+            Pid: 1000,
+            ProcessName: "explorer",
+            ImagePath: @"C:\Windows\explorer.exe",
+            ClassName: "Progman",
+            Width: 1920,
+            Height: 1080,
+            IsWindow: true,
+            IsVisible: true,
+            IsIconic: false,
+            HasTitle: false);
+
+        // Watchdog evaluation tick (at t = 200ms < 750ms debounce)
+        var eval = HudVisibilityLogic.Evaluate(
+            state,
+            foreground: desktopForeground,
+            tracked: minimizedNotepad,
+            nowUtc: t0.AddMilliseconds(200),
+            allowedProcessNames: AllowedApps,
+            allowedRoots: AllowedRoots,
+            ownPid: OwnPid);
+
+        // CRITICAL REGRESSION ASSERTIONS:
+        // 1. HUD must be hidden immediately
+        Assert.False(eval.ShouldShowHud);
+        // 2. Zen Screen must not yet restore within debounce
+        Assert.False(eval.ShouldRestoreZenScreen);
+        // 3. Must not retarget or promote desktop
+        Assert.False(eval.ShouldRetarget);
+        // 4. Tracked HWND must remain untouched, awaiting debounce expiry or explicit dock restore
+        Assert.Equal(notepadHwnd, state.TrackedHwnd);
+    }
+
+    [Fact]
+    public void Debounce_RestoredWithinDebounce_HudRestoresWithoutZenShieldInterruption()
+    {
+        IntPtr hwnd = (IntPtr)0x3000;
+        var state = new HudSessionState
+        {
+            IsAllowedAppMode = true,
+            TrackedHwnd = hwnd,
+            TrackedPid = 4000,
+            TrackedProcessName = "notepad",
+            WindowLostSinceUtc = DateTime.UtcNow.AddMilliseconds(-300) // Lost 300ms ago
+        };
+
+        // User switches back to Notepad at t = 350ms (< 750ms debounce)
+        var restoredWindow = new WindowSnapshot(
+            Hwnd: hwnd,
+            Pid: 4000,
+            ProcessName: "notepad",
+            ImagePath: @"C:\Windows\System32\notepad.exe",
+            ClassName: "Notepad",
+            Width: 800,
+            Height: 600,
+            IsWindow: true,
+            IsVisible: true,
+            IsIconic: false,
+            HasTitle: true);
+
+        var result = HudVisibilityLogic.Evaluate(
+            state,
+            foreground: restoredWindow,
+            tracked: restoredWindow,
+            nowUtc: DateTime.UtcNow,
+            allowedProcessNames: AllowedApps,
+            allowedRoots: AllowedRoots,
+            ownPid: OwnPid);
+
+        Assert.True(result.ShouldShowHud, "HUD must restore immediately when app un-minimized within debounce");
+        Assert.False(result.ShouldRestoreZenScreen);
+        Assert.Null(state.WindowLostSinceUtc); // Debounce cancelled!
+    }
+
+    [Fact]
+    public void Debounce_UnauthorizedAppBreachDuringDebounce_ImmediatelySuppressed()
+    {
+        IntPtr notepadHwnd = (IntPtr)0x3000;
+        var state = new HudSessionState
+        {
+            IsAllowedAppMode = true,
+            TrackedHwnd = notepadHwnd,
+            TrackedPid = 4000,
+            TrackedProcessName = "notepad",
+            WindowLostSinceUtc = DateTime.UtcNow.AddMilliseconds(-200) // Within debounce
+        };
+
+        // Unauthorized game/browser window pops to foreground during debounce
+        var rogueWindow = new WindowSnapshot(
+            Hwnd: (IntPtr)0x6666,
+            Pid: 7777,
+            ProcessName: "chrome",
+            ImagePath: @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            ClassName: "Chrome_WidgetWin_1",
+            Width: 1024,
+            Height: 768,
+            IsWindow: true,
+            IsVisible: true,
+            IsIconic: false,
+            HasTitle: true);
+
+        var minimizedNotepad = new WindowSnapshot(
+            Hwnd: notepadHwnd,
+            Pid: 4000,
+            ProcessName: "notepad",
+            ImagePath: @"C:\Windows\System32\notepad.exe",
+            ClassName: "Notepad",
+            Width: 0,
+            Height: 0,
+            IsWindow: true,
+            IsVisible: true,
+            IsIconic: true,
+            HasTitle: true);
+
+        var result = HudVisibilityLogic.Evaluate(
+            state,
+            foreground: rogueWindow,
+            tracked: minimizedNotepad,
+            nowUtc: DateTime.UtcNow,
+            allowedProcessNames: AllowedApps,
+            allowedRoots: AllowedRoots,
+            ownPid: OwnPid);
+
+        Assert.False(result.ShouldShowHud);
+        Assert.False(result.ShouldRetarget);
+    }
+
+    [Fact]
+    public void StaleOrDestroyedHwnd_FailsSafelyWithoutException()
+    {
+        IntPtr deadHwnd = (IntPtr)0xDEAD;
+        var state = new HudSessionState
+        {
+            IsAllowedAppMode = true,
+            TrackedHwnd = deadHwnd,
+            TrackedPid = 4000,
+            TrackedProcessName = "notepad",
+            WindowLostSinceUtc = DateTime.UtcNow.AddMilliseconds(-1000) // Expired beyond 750ms
+        };
+
+        var destroyedWindow = new WindowSnapshot(
+            Hwnd: deadHwnd,
+            Pid: 0,
+            ProcessName: null,
+            ImagePath: null,
+            ClassName: null,
+            Width: 0,
+            Height: 0,
+            IsWindow: false,
+            IsVisible: false,
+            IsIconic: false,
+            HasTitle: false);
+
+        var result = HudVisibilityLogic.Evaluate(
+            state,
+            foreground: null,
+            tracked: destroyedWindow,
+            nowUtc: DateTime.UtcNow,
+            allowedProcessNames: AllowedApps,
+            allowedRoots: AllowedRoots,
+            ownPid: OwnPid);
+
+        Assert.False(result.ShouldShowHud);
+        Assert.True(result.ShouldRestoreZenScreen);
+        Assert.False(state.IsAllowedAppMode);
+        Assert.Equal(IntPtr.Zero, state.TrackedHwnd);
+    }
 }

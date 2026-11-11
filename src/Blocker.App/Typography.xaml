@@ -12,6 +12,7 @@
     <!-- ========================================== -->
     <!-- FONT SIZE TOKENS (No font size below 12)   -->
     <!-- ========================================== -->
+    <sys:Double x:Key="FontSize11">11</sys:Double>
     <sys:Double x:Key="FontSize12">12</sys:Double>
     <sys:Double x:Key="FontSize13">13</sys:Double>
     <sys:Double x:Key="FontSize14">14</sys:Double>
