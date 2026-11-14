@@ -548,7 +548,9 @@ public partial class BlockEditorDialog : Window
                         break;
                     case LockMode.Password:
                         rbPassword.IsChecked = true;
-                        CurrentPasswordPanel.Visibility = Visibility.Visible;
+                        CurrentPasswordPanel.Visibility = (profile.Enabled || _isLockedMode)
+                            ? Visibility.Visible
+                            : Visibility.Collapsed;
                         break;
                     case LockMode.DelayedUnlock:
                         if (rbDelayedUnlock != null) rbDelayedUnlock.IsChecked = true;

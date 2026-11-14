@@ -1750,7 +1750,8 @@ public class MainViewModel : ViewModelBase
         bool systemWide = false,
         AllowanceConfig? allowance = null,
         bool additiveOnly = false,
-        int delayedUnlockMinutes = 15)
+        int delayedUnlockMinutes = 15,
+        bool enabled = true)
     {
         try
         {
@@ -1795,7 +1796,7 @@ public class MainViewModel : ViewModelBase
                 ["lock_mode"] = lockMode.ToString(),
                 ["block_all"] = blockAllWebsites ? "true" : "false",
                 ["system_wide"] = systemWide ? "true" : "false",
-                ["enabled"] = "true"
+                ["enabled"] = enabled ? "true" : "false"
             };
 
             if (additiveOnly)
@@ -2044,6 +2045,11 @@ public class MainViewModel : ViewModelBase
                 if (res.Connected && res.Response?.Ok == true)
                 {
                     profile.Enabled = false;
+                    profile.IsActive = false;
+                    if (!profile.IsSessionRunning)
+                    {
+                        profile.LockedNow = false;
+                    }
                     StatusMessage = $"Block '{profile.Name}' turned OFF.";
                     ErrorMessage = null;
                     await PollStatusAsync();

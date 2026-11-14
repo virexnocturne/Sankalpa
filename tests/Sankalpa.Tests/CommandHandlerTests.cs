@@ -813,36 +813,188 @@ public class CommandHandlerTests
     {
         var store = new FakeBlockStore();
         PasswordSecurity.HashPassword("secret123", out string salt, out string hash);
-        var p = store.SaveProfile(new Profile
+        store.SaveProfile(new Profile
         {
-            Name = "InactivePwd",
-            Enabled = false,
+            Name = "ActivePwd",
+            Enabled = true,
             LockMode = LockMode.Password,
             PasswordSalt = salt,
             PasswordHash = hash
         });
 
-        // Attempt to switch to None without password
+        // Attempt to switch to None without password while enabled
         var req1 = new Request
         {
             Command = CommandNames.SaveProfile,
-            Args = new() { ["name"] = "InactivePwd", ["lock_mode"] = "None" }
+            Args = new() { ["name"] = "ActivePwd", ["lock_mode"] = "None" }
         };
         var resp1 = Handle(req1, store);
         Assert.False(resp1.Ok);
         Assert.Contains("Current password required to change lock mode from Password", resp1.Error);
 
-        // With correct password
+        // With correct current_password (without duplicating unlock_password)
         var reqOk = new Request
         {
             Command = CommandNames.SaveProfile,
-            Args = new() { ["name"] = "InactivePwd", ["lock_mode"] = "None", ["current_password"] = "secret123" }
+            Args = new() { ["name"] = "ActivePwd", ["lock_mode"] = "None", ["current_password"] = "secret123" }
         };
         var respOk = Handle(reqOk, store);
-        Assert.True(respOk.Ok);
-        var updated = store.GetProfileByName("InactivePwd");
+        Assert.True(respOk.Ok, respOk.Error);
+        var updated = store.GetProfileByName("ActivePwd");
         Assert.Equal(LockMode.None, updated!.LockMode);
+        Assert.Null(updated.PasswordSalt);
         Assert.Null(updated.PasswordHash);
+    }
+
+    [Fact]
+    public void SaveProfile_UnlockedPasswordProfile_SwitchToNoneWithoutPassword_Succeeds()
+    {
+        var store = new FakeBlockStore();
+        PasswordSecurity.HashPassword("secret123", out string salt, out string hash);
+        store.SaveProfile(new Profile
+        {
+            Name = "UnlockablePwd",
+            Enabled = true,
+            LockMode = LockMode.Password,
+            PasswordSalt = salt,
+            PasswordHash = hash,
+            BlockedDomains = new() { "reddit.com" }
+        });
+
+        var unlockResp = Handle(new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new() { ["name"] = "UnlockablePwd", ["unlock_password"] = "secret123" }
+        }, store);
+        Assert.True(unlockResp.Ok, unlockResp.Error);
+        Assert.False(store.GetProfileByName("UnlockablePwd")!.Enabled);
+
+        // Once unlocked (turned off), switching back to None must not require the password again
+        var saveResp = Handle(new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "UnlockablePwd",
+                ["domains"] = "reddit.com",
+                ["lock_mode"] = "None",
+                ["enabled"] = "false"
+            }
+        }, store);
+        Assert.True(saveResp.Ok, saveResp.Error);
+        var updated = store.GetProfileByName("UnlockablePwd");
+        Assert.Equal(LockMode.None, updated!.LockMode);
+        Assert.Null(updated.PasswordSalt);
+        Assert.Null(updated.PasswordHash);
+        Assert.False(updated.Enabled);
+    }
+
+    [Fact]
+    public void SaveProfile_UnlockedTypingChallengeProfile_SwitchToNone_Succeeds()
+    {
+        var store = new FakeBlockStore();
+        store.SaveProfile(new Profile
+        {
+            Name = "UnlockableTyping",
+            Enabled = true,
+            LockMode = LockMode.TypingChallenge,
+            BlockedDomains = new() { "youtube.com" }
+        });
+
+        var chResp = Handle(new Request
+        {
+            Command = CommandNames.GetUnlockChallenge,
+            Args = new() { ["name"] = "UnlockableTyping" }
+        }, store);
+        Assert.True(chResp.Ok, chResp.Error);
+
+        var unlockResp = Handle(new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new() { ["name"] = "UnlockableTyping", ["unlock_text"] = chResp.Data! }
+        }, store);
+        Assert.True(unlockResp.Ok, unlockResp.Error);
+        Assert.False(store.GetProfileByName("UnlockableTyping")!.Enabled);
+
+        var saveResp = Handle(new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "UnlockableTyping",
+                ["domains"] = "youtube.com",
+                ["lock_mode"] = "None",
+                ["enabled"] = "false"
+            }
+        }, store);
+        Assert.True(saveResp.Ok, saveResp.Error);
+        var updated = store.GetProfileByName("UnlockableTyping");
+        Assert.Equal(LockMode.None, updated!.LockMode);
+        Assert.False(updated.Enabled);
+    }
+
+    [Fact]
+    public void SaveProfile_UnlockedDelayedUnlockProfile_SwitchToNone_Succeeds()
+    {
+        var store = new FakeBlockStore();
+        store.SaveProfile(new Profile
+        {
+            Name = "UnlockableDelayed",
+            Enabled = true,
+            LockMode = LockMode.DelayedUnlock,
+            DelayedUnlockMinutes = 15,
+            BlockedDomains = new() { "twitch.tv" }
+        });
+
+        string token = DelayedUnlockManager.StartDelayedUnlock("UnlockableDelayed", 1);
+        System.Threading.Thread.Sleep(1150);
+        var unlockResp = Handle(new Request
+        {
+            Command = CommandNames.DisableProfile,
+            Args = new() { ["name"] = "UnlockableDelayed", ["delayed_unlock_token"] = token }
+        }, store);
+        Assert.True(unlockResp.Ok, unlockResp.Error);
+        Assert.False(store.GetProfileByName("UnlockableDelayed")!.Enabled);
+
+        var saveResp = Handle(new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new()
+            {
+                ["name"] = "UnlockableDelayed",
+                ["domains"] = "twitch.tv",
+                ["lock_mode"] = "None",
+                ["enabled"] = "false"
+            }
+        }, store);
+        Assert.True(saveResp.Ok, saveResp.Error);
+        var updated = store.GetProfileByName("UnlockableDelayed");
+        Assert.Equal(LockMode.None, updated!.LockMode);
+        Assert.False(updated.Enabled);
+    }
+
+    [Fact]
+    public void SaveProfile_UnlockedPasswordProfile_WithLockedSession_RefusesSwitchWithoutUnlock()
+    {
+        var store = new FakeBlockStore();
+        PasswordSecurity.HashPassword("secret123", out string salt, out string hash);
+        var p = store.SaveProfile(new Profile
+        {
+            Name = "SessionLockedPwd",
+            Enabled = false,
+            LockMode = LockMode.Password,
+            PasswordSalt = salt,
+            PasswordHash = hash
+        });
+        store.StartSession(p.Id, 3600, locked: true);
+
+        var saveResp = Handle(new Request
+        {
+            Command = CommandNames.SaveProfile,
+            Args = new() { ["name"] = "SessionLockedPwd", ["lock_mode"] = "None" }
+        }, store);
+        Assert.False(saveResp.Ok);
+        Assert.Equal(LockMode.Password, store.GetProfileByName("SessionLockedPwd")!.LockMode);
     }
 
     [Fact]

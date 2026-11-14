@@ -483,7 +483,8 @@ public partial class MainWindow : Window
                         systemWide: dlg.ResultSystemWide,
                         allowance: dlg.ResultAllowance,
                         additiveOnly: dlg.IsLockedMode,
-                        delayedUnlockMinutes: dlg.ResultDelayedUnlockMinutes);
+                        delayedUnlockMinutes: dlg.ResultDelayedUnlockMinutes,
+                        enabled: dlg.StartTimedLockMinutes > 0 ? true : (profile?.Enabled ?? true));
 
                     if (dlg.StartTimedLockMinutes > 0 && string.IsNullOrEmpty(_viewModel.ErrorMessage))
                     {

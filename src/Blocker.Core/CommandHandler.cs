@@ -185,20 +185,24 @@ public static class CommandHandler
             var activeSessions = store.GetActiveSessions();
             bool isLockedNow = ProfileStateLogic.IsProfileLockedNowWithSessions(existing, activeSessions, DateTime.Now);
 
-            // Switching away from Password mode counts as protected operation
+            // Switching away from Password mode requires current password only while enabled or actively locked
             if (existing.LockMode == LockMode.Password && targetLockMode != LockMode.Password)
             {
-                if (PasswordSecurity.IsLockedOut(existing.Name, out int remSec))
+                if (existing.Enabled || isLockedNow)
                 {
-                    return Response.Fail($"Refused: Too many failed password attempts. Profile '{existing.Name}' is locked out for {remSec} seconds.");
+                    if (PasswordSecurity.IsLockedOut(existing.Name, out int remSec))
+                    {
+                        return Response.Fail($"Refused: Too many failed password attempts. Profile '{existing.Name}' is locked out for {remSec} seconds.");
+                    }
+
+                    if (string.IsNullOrEmpty(currentPassword) || !PasswordSecurity.VerifyPassword(currentPassword, existing.PasswordSalt, existing.PasswordHash))
+                    {
+                        PasswordSecurity.RecordFailedAttempt(existing.Name);
+                        return Response.Fail("Refused: Current password required to change lock mode from Password.");
+                    }
+                    PasswordSecurity.RecordSuccessfulAttempt(existing.Name);
                 }
 
-                if (string.IsNullOrEmpty(currentPassword) || !PasswordSecurity.VerifyPassword(currentPassword, existing.PasswordSalt, existing.PasswordHash))
-                {
-                    PasswordSecurity.RecordFailedAttempt(existing.Name);
-                    return Response.Fail("Refused: Current password required to change lock mode from Password.");
-                }
-                PasswordSecurity.RecordSuccessfulAttempt(existing.Name);
                 finalSalt = null;
                 finalHash = null;
             }
@@ -1298,7 +1302,11 @@ public static class CommandHandler
                     return Response.Fail($"Refused: Too many failed password attempts. Profile '{profile.Name}' is locked out for {remSec} seconds.");
                 }
 
-                string? pwd = GetArg(request, "unlock_password") ?? GetArg(request, "unlockPassword") ?? GetArg(request, "password");
+                string? pwd = GetArg(request, "unlock_password")
+                           ?? GetArg(request, "unlockPassword")
+                           ?? GetArg(request, "current_password")
+                           ?? GetArg(request, "currentPassword")
+                           ?? GetArg(request, "password");
                 if (string.IsNullOrEmpty(pwd))
                 {
                     return Response.Fail($"Refused: Profile '{profile.Name}' requires an unlock password.");
