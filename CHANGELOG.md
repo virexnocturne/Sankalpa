@@ -4,7 +4,7 @@ This document tracks all identified issues, root cause analyses, applied fixes, 
 
 ---
 
-### [FIX-2026-11-11-01] Zen Mode / Allowed-App UI Lag & Modal Password Unlock Latency (`fix/zen-ui-lag`)
+### [FIX-2026-11-11-01] Zen Mode / Allowed-App UI Lag & Modal Password Unlock Latency (v1.3.6) (`fix/zen-ui-lag`)
 - **Timestamp**: 2026-11-11 09:25 IST
 - **Component**: Allowed-App Foreground Tracking (`AllowedAppForegroundTracker.cs`, `AllowedWinEventCoalescer.cs`), Mini-HUD Idempotency & Async Restore (`ZenShieldWindow.xaml.cs`, `MiniHudPresentationCoordinator.cs`), Background Throttler Worker (`BackgroundAppThrottler.cs`, `ThrottlerBackgroundWorker.cs`, `ZenShieldWindow.Throttling.cs`, `App.xaml.cs`), Async Single-Verify Password Unlock (`PasswordVerificationCoordinator.cs`, `PasswordUnlockDialog.xaml.cs`, `MeditationUnlockDialogHelper.cs`, `MeditationViewModel.cs`), Tests (`ZenUiLagFixTests.cs`, `NotesAndSoundscapeUiTests.cs`)
 - **Status**: **IMPLEMENTED & VERIFIED IN TEST SUITES + LIVE VLC PROBE**

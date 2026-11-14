@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en" data-accent="emerald">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sankalpa Blocker | Tamper-Resistant Focus &amp; App Blocker for Windows</title>
+  <meta name="description" content="Tamper-resistant focus, website, and application blocker for Windows. 100% offline enforcement with LocalSystem service hardening, unbreakable lock modes, and Zen lockdown mode.">
+  <meta name="color-scheme" content="light dark">
+  <script>
+    (function () {
+      try {
+        var scheme = localStorage.getItem("color-scheme");
+        if (scheme === "light" || scheme === "dark") {
+          document.querySelector('meta[name="color-scheme"]').content = scheme;
+        }
+        var accent = localStorage.getItem("sankalpa-accent");
+        if (accent && /^(emerald|indigo|violet|amber|rose|slate)$/.test(accent)) {
+          document.documentElement.dataset.accent = accent;
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="icon" type="image/png" href="assets/logo-32.png">
+  <link rel="preload" href="assets/fonts/FamiljenGrotesk-SemiBold.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a href="#main-heading" class="skip-link visually-hidden">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="#top" class="brand">
+        <img src="assets/logo-32.png" alt="" width="32" height="32" class="brand-logo">
+        <span>Sankalpa</span>
+        <span lang="sa" class="brand-sanskrit">संकल्प</span>
+      </a>
+
+      <nav aria-label="Primary">
+        <ul class="nav-list">
+          <li><a href="#features" class="nav-link">Features</a></li>
+          <li><a href="#security" class="nav-link">Security</a></li>
+          <li><a href="#cli" class="nav-link">CLI</a></li>
+          <li><a href="#download" class="nav-link">Download</a></li>
+          <li><a href="privacy.html" class="nav-link">Privacy</a></li>
+        </ul>
+      </nav>
+
+      <div class="header-actions">
+        <button id="appearance-trigger" type="button" class="btn btn-compact" popovertarget="appearance-popover" aria-haspopup="dialog">
+          <svg class="btn-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+          </svg>
+          <span>Appearance</span>
+        </button>
+        <a href="#download" class="btn btn-primary btn-compact header-cta">Download v1.3.6</a>
+      </div>
+    </div>
+
+    <div id="appearance-popover" class="appearance-popover" popover="auto" aria-labelledby="appearance-heading">
+      <div class="popover-header">
+        <h2 id="appearance-heading" class="popover-title">Appearance &amp; Theme</h2>
+        <button id="appearance-done" type="button" class="btn btn-compact">Done</button>
+      </div>
+
+      <div class="popover-section">
+        <fieldset class="theme-options">
+          <legend class="popover-label">Theme mode</legend>
+          <label class="theme-option" for="theme-system">
+            <span class="theme-option-left">
+              <input id="theme-system" type="radio" name="site-theme" value="system" checked>
+              <span>System</span>
+            </span>
+            <span id="system-scheme-meta" class="theme-meta">Follows OS</span>
+          </label>
+          <label class="theme-option" for="theme-dark">
+            <span class="theme-option-left">
+              <input id="theme-dark" type="radio" name="site-theme" value="dark">
+              <span>Obsidian Black</span>
+            </span>
+            <span class="theme-meta">Zero glare</span>
+          </label>
+          <label class="theme-option" for="theme-light">
+            <span class="theme-option-left">
+              <input id="theme-light" type="radio" name="site-theme" value="light">
+              <span>Crisp Light</span>
+            </span>
+            <span class="theme-meta">Daylight</span>
+          </label>
+        </fieldset>
+      </div>
+
+      <div class="popover-section">
+        <fieldset class="accent-grid">
+          <legend class="popover-label">Accent palette</legend>
+          <label class="accent-chip" for="accent-emerald">
+            <input id="accent-emerald" type="radio" name="site-accent" value="emerald" checked>
+            <span class="swatch swatch-emerald"></span>
+            <span>Emerald</span>
+          </label>
+          <label class="accent-chip" for="accent-indigo">
+            <input id="accent-indigo" type="radio" name="site-accent" value="indigo">
+            <span class="swatch swatch-indigo"></span>
+            <span>Indigo</span>
+          </label>
+          <label class="accent-chip" for="accent-violet">
+            <input id="accent-violet" type="radio" name="site-accent" value="violet">
+            <span class="swatch swatch-violet"></span>
+            <span>Violet</span>
+          </label>
+          <label class="accent-chip" for="accent-amber">
+            <input id="accent-amber" type="radio" name="site-accent" value="amber">
+            <span class="swatch swatch-amber"></span>
+            <span>Amber</span>
+          </label>
+          <label class="accent-chip" for="accent-rose">
+            <input id="accent-rose" type="radio" name="site-accent" value="rose">
+            <span class="swatch swatch-rose"></span>
+            <span>Rose</span>
+          </label>
+          <label class="accent-chip" for="accent-slate">
+            <input id="accent-slate" type="radio" name="site-accent" value="slate">
+            <span class="swatch swatch-slate"></span>
+            <span>Slate</span>
+          </label>
+        </fieldset>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <p class="eyebrow">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span>v1.3.6 · Windows 10 / 11 (x64) · 100% Offline</span>
+          </p>
+          <h1 id="main-heading" tabindex="-1">Unbreakable focus for Windows.</h1>
+          <p class="hero-subtitle">
+            Sankalpa (<span lang="sa">संकल्प</span>) enforces distraction-free focus sessions with a tamper-resistant
+            <code>LocalSystem</code> background service, unyielding lock modes, and a fullscreen Zen lockdown shield.
+            Zero accounts, zero telemetry, zero cloud sync.
+          </p>
+          <div class="hero-actions">
+            <a href="#download" class="btn btn-primary btn-lg">
+              <svg class="btn-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span>Download Sankalpa v1.3.6</span>
+            </a>
+            <a href="https://github.com/virexnocturne/Sankalpa" class="btn btn-lg" rel="noopener noreferrer">
+              <span>View Source on GitHub</span>
+            </a>
+          </div>
+
+          <dl class="hero-facts">
+            <div class="fact-item">
+              <dt class="fact-label">Service Privilege</dt>
+              <dd class="fact-value">LocalSystem</dd>
+            </div>
+            <div class="fact-item">
+              <dt class="fact-label">Automated Verification</dt>
+              <dd class="fact-value">899 Passing Tests</dd>
+            </div>
+            <div class="fact-item">
+              <dt class="fact-label">Network Telemetry</dt>
+              <dd class="fact-value">0 Bytes Sent</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="showcase-frame">
+          <div class="showcase-bar">
+            <span>Sankalpa.exe · Website &amp; App Blocks</span>
+            <span>Click preview to expand</span>
+          </div>
+          <button
+            type="button"
+            class="shot-trigger shot-dark-only"
+            data-lightbox-src="screenshots/dashboard-black.png"
+            data-lightbox-title="Sankalpa Dashboard — Obsidian Black Theme"
+            data-lightbox-caption="Main profile dashboard with Deep Work, Study, Gaming, and Default blocks plus real-time service and extension status."
+            data-lightbox-width="746"
+            data-lightbox-height="844"
+          >
+            <img
+              src="screenshots/dashboard-black.png"
+              alt="Sankalpa desktop dashboard in Obsidian Black theme showing Deep Work, Study, Gaming, and Default block profiles"
+              width="746"
+              height="844"
+              fetchpriority="high"
+            >
+            <span class="shot-caption-pill" aria-hidden="true">Expand</span>
+            <span class="visually-hidden">Open larger preview</span>
+          </button>
+          <button
+            type="button"
+            class="shot-trigger shot-light-only"
+            data-lightbox-src="screenshots/dashboard-white.png"
+            data-lightbox-title="Sankalpa Dashboard — Crisp Light Theme"
+            data-lightbox-caption="High-contrast daylight dashboard displaying active schedules, app and website counts, and lock states."
+            data-lightbox-width="746"
+            data-lightbox-height="844"
+          >
+            <img
+              src="screenshots/dashboard-white.png"
+              alt="Sankalpa desktop dashboard in Crisp Light theme showing Deep Work, Study, Gaming, and Default block profiles"
+              width="746"
+              height="844"
+              fetchpriority="high"
+            >
+            <span class="shot-caption-pill" aria-hidden="true">Expand</span>
+            <span class="visually-hidden">Open larger preview</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="section">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-kicker">Core Capabilities</span>
+          <h2>Built for moments when willpower is not enough</h2>
+          <p>
+            Configure context-specific profiles for websites, installed desktop applications, automated schedules,
+            lock barriers, and fullscreen meditation sessions.
+          </p>
+        </div>
+
+        <div class="tablist-wrap">
+          <div class="tablist" focusgroup="tablist nomemory" aria-label="Sankalpa feature modules">
+            <button type="button" role="tab" id="tab-blocklists" aria-selected="true" focusgroupstart class="tab-btn">
+              Websites &amp; Apps
+            </button>
+            <button type="button" role="tab" id="tab-schedules" aria-selected="false" class="tab-btn">
+              Schedules &amp; Pomodoro
+            </button>
+            <button type="button" role="tab" id="tab-locks" aria-selected="false" class="tab-btn">
+              Unbreakable Locks
+            </button>
+            <button type="button" role="tab" id="tab-zen" aria-selected="false" class="tab-btn">
+              Meditation &amp; Zen Shield
+            </button>
+            <button type="button" role="tab" id="tab-extension" aria-selected="false" class="tab-btn">
+              Browser Companion
+            </button>
+          </div>
+        </div>
+
+        <div class="tab-panels">
+          <div role="tabpanel" aria-labelledby="tab-blocklists" class="tab-panel">
+            <div class="panel-card">
+              <div class="panel-copy">
+                <h3>Multi-Target Website &amp; Application Blocklists</h3>
+                <p>
+                  Combine domain rules, URL paths, wildcard subdomains, and executable blacklists inside reusable
+                  profiles like <em>Deep Work</em> or <em>Study</em>.
+                </p>
+                <ul class="feature-list">
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Block All + Exceptions:</strong> Flip into strict whitelist mode and permit only specific reference paths or login endpoints.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>System-Wide Hosts Enforcement:</strong> Blocks root domains across every desktop process and non-browser app, not just browsers with extensions.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Instant Process Termination:</strong> Scans running and installed Windows apps, terminating games, chat clients, or distracting binaries immediately on launch.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Live URL Rule Tester &amp; Bulk Import:</strong> Verify any rule or import <code>.txt</code> domain lists directly inside the editor.</span>
+                  </li>
+                </ul>
+              </div>
+              <div class="panel-media">
+                <button
+                  type="button"
+                  class="shot-trigger"
+                  data-lightbox-src="screenshots/block-editor-websites.png"
+                  data-lightbox-title="Website Blocklist &amp; Exception Editor"
+                  data-lightbox-caption="Configure blocked domains, path exceptions, live URL rule tests, and system-wide hosts enforcement."
+                  data-lightbox-width="766"
+                  data-lightbox-height="844"
+                >
+                  <img
+                    src="screenshots/block-editor-websites.png"
+                    alt="Sankalpa Edit Block Websites tab showing blocked URLs, exceptions list, live URL tester, and system-wide hosts enforcement toggle"
+                    width="766"
+                    height="844"
+                    loading="lazy"
+                  >
+                  <span class="shot-caption-pill" aria-hidden="true">Expand</span>
+                  <span class="visually-hidden">Open larger preview</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div role="tabpanel" aria-labelledby="tab-schedules" class="tab-panel" hidden="until-found">
+            <div class="panel-card">
+              <div class="panel-copy">
+                <h3>Automated Schedules, Allowances &amp; Pomodoro Cycles</h3>
+                <p>
+                  Lock in your weekly cadence so enforcement starts right on time without relying on manual discipline.
+                </p>
+                <ul class="feature-list">
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Multi-Day Recurring Windows:</strong> Stack weekday work blocks and weekend study intervals per profile.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Daily Usage Allowance:</strong> Budget a daily recreation quota (15m, 30m, 45m, 60m) before the profile locks down for the rest of the day.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Pomodoro Focus Sprints:</strong> Run structured work/break cycles with earned break reward credits upon completion.</span>
+                  </li>
+                </ul>
+              </div>
+              <div class="panel-media">
+                <div class="media-subgrid">
+                  <button
+                    type="button"
+                    class="shot-trigger"
+                    data-lightbox-src="screenshots/block-editor-schedule.png"
+                    data-lightbox-title="Automated Weekly Schedule &amp; Daily Allowance"
+                    data-lightbox-caption="Multi-row weekly schedule rules paired with a configurable daily usage allowance."
+                    data-lightbox-width="766"
+                    data-lightbox-height="844"
+                  >
+                    <img
+                      src="screenshots/block-editor-schedule.png"
+                      alt="Sankalpa Schedule tab showing weekday and weekend time windows and daily 30 minute allowance"
+                      width="766"
+                      height="844"
+                      loading="lazy"
+                    >
+                    <span class="shot-caption-pill" aria-hidden="true">Expand</span>
+                    <span class="visually-hidden">Open larger preview</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="shot-trigger"
+                    data-lightbox-src="screenshots/start-session-pomodoro.png"
+                    data-lightbox-title="Pomodoro Cycle Starter"
+                    data-lightbox-caption="Configure focus intervals, short and long breaks, cycles, and early-stop lock state."
+                    data-lightbox-width="426"
+                    data-lightbox-height="503"
+                  >
+                    <img
+                      src="screenshots/start-session-pomodoro.png"
+                      alt="Start Block dialog in Pomodoro Cycles mode with 25 minute focus interval, 5 minute short break, and locked checkbox"
+                      width="426"
+                      height="503"
+                      loading="lazy"
+                    >
+                    <span class="shot-caption-pill" aria-hidden="true">Expand</span>
+                    <span class="visually-hidden">Open larger preview</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div role="tabpanel" aria-labelledby="tab-locks" class="tab-panel" hidden="until-found">
+            <div class="panel-card">
+              <div class="panel-copy">
+                <h3>Five Graduated Lock Protections</h3>
+                <p>
+                  Stop impulse overrides before they happen. Once a lock engages, neither settings edits nor early toggle
+                  switches can disable the profile until the barrier is cleared.
+                </p>
+                <ul class="feature-list">
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Complete Timed Lock:</strong> Unconditional lock from 1 hour up to 1 year—cannot be stopped or edited early.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Schedule Lock:</strong> Automatically pins the toggle switch disabled for the full duration of configured schedule windows.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Delayed Unlock:</strong> Requires waiting out an active 15m, 30m, 1h, or 2h countdown timer to defeat impulsive unlocking.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Random 80-Char Challenge &amp; Password Lock:</strong> Choose zero-typo random text entry or PBKDF2/SHA-256 salted password verification.</span>
+                  </li>
+                </ul>
+              </div>
+              <div class="panel-media">
+                <button
+                  type="button"
+                  class="shot-trigger"
+                  data-lightbox-src="screenshots/lock-protection.png"
+                  data-lightbox-title="Lock Protection Configuration"
+                  data-lightbox-caption="Choose Unlocked, Complete Timed Lock, Pomodoro Cycles, Schedule Lock, 80-character Typing Challenge, or Password Protection."
+                  data-lightbox-width="766"
+                  data-lightbox-height="844"
+                >
+                  <img
+                    src="screenshots/lock-protection.png"
+                    alt="Lock Protection tab showing quick lock presets from 1 hour to 1 year, Pomodoro, Schedule Lock, Typing challenge, and Password protection"
+                    width="766"
+                    height="844"
+                    loading="lazy"
+                  >
+                  <span class="shot-caption-pill" aria-hidden="true">Expand</span>
+                  <span class="visually-hidden">Open larger preview</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div role="tabpanel" aria-labelledby="tab-zen" class="tab-panel" hidden="until-found">
+            <div class="panel-card">
+              <div class="panel-copy">
+                <h3>Meditation &amp; Computer Lockdown Mode</h3>
+                <p>
+                  Enter a calm, multi-monitor fullscreen Zen Shield that suspends background distractions while giving
+                  safe, path-pinned access to only the applications you whitelist.
+                </p>
+                <ul class="feature-list">
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Hardened Zen Shield &amp; Mini-HUD:</strong> Suppresses <code>Alt+Tab</code>, <code>Win+Tab</code>, and Task View gestures while keeping a compact floating Mini-HUD over whitelisted apps.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Offline Ambient Soundscapes:</strong> Seamless 16-bit PCM loops (Rain, Library, Forest, Singing Bowls) plus local audio &amp; M3U/M3U8 playlist import.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Obsidian-Style Notes &amp; Zen Snipper:</strong> Slide-out Markdown reflection drawer with interactive checkboxes, <code>Ctrl+Shift+S</code> screen snips, and 3-way Markdown export.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>v1.3.6 Zen UI &amp; CLI Meditation:</strong> Discrete 5-event WinEvent filter coalescing, async single-verify PBKDF2 unlock, full CLI lockdown controls, and secure M3U playlist import.</span>
+                  </li>
+                </ul>
+
+                <div class="zen-widget" data-paused="false">
+                  <div class="zen-ring">
+                    <span class="zen-ring-pulse" aria-hidden="true"></span>
+                    <div>
+                      <div class="zen-timer">18:45</div>
+                      <div class="zen-caption">Zen Shield Preview</div>
+                    </div>
+                  </div>
+                  <button id="zen-motion-toggle" type="button" class="btn btn-compact">
+                    Pause breathing animation
+                  </button>
+                </div>
+              </div>
+              <div class="panel-media">
+                <button
+                  type="button"
+                  class="shot-trigger"
+                  data-lightbox-src="assets/screenshots/zen-shield-kiosk.png"
+                  data-lightbox-title="Fullscreen Zen Shield Lockdown"
+                  data-lightbox-caption="Multi-monitor Zen Shield showing adaptive monospace timer, breathing ring, whitelisted app launcher pills, ambient soundscape pill, and Notes handle."
+                  data-lightbox-width="1268"
+                  data-lightbox-height="848"
+                >
+                  <img
+                    src="assets/screenshots/zen-shield-kiosk.png"
+                    alt="Fullscreen Zen Shield window with 18:45 countdown timer, breathing ring, allowed apps VS Code, Spotify, and Notepad, and right-edge Notes drawer tab"
+                    width="1268"
+                    height="848"
+                    loading="lazy"
+                  >
+                  <span class="shot-caption-pill" aria-hidden="true">Expand</span>
+                  <span class="visually-hidden">Open larger preview</span>
+                </button>
+                <div class="media-subgrid">
+                  <button
+                    type="button"
+                    class="shot-trigger"
+                    data-lightbox-src="assets/screenshots/zen-quick-notes.png"
+                    data-lightbox-title="Quick Notes &amp; Task Checklists"
+                    data-lightbox-caption="Auto-saved Markdown notes with interactive checklists and timestamped reflections."
+                    data-lightbox-width="396"
+                    data-lightbox-height="576"
+                  >
+                    <img
+                      src="assets/screenshots/zen-quick-notes.png"
+                      alt="Quick Notes overlay showing Session Objectives checklist and Mindfulness Insight note"
+                      width="396"
+                      height="576"
+                      loading="lazy"
+                    >
+                    <span class="shot-caption-pill" aria-hidden="true">Expand</span>
+                    <span class="visually-hidden">Open larger preview</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="shot-trigger"
+                    data-lightbox-src="assets/screenshots/zen-mini-hud.png"
+                    data-lightbox-title="Whitelisted App Mini-HUD"
+                    data-lightbox-caption="Floating HUD pill with remaining countdown, soundscape toggle, Notes, Snip, and Return to Zen Shield."
+                    data-lightbox-width="512"
+                    data-lightbox-height="122"
+                  >
+                    <img
+                      src="assets/screenshots/zen-mini-hud.png"
+                      alt="Floating Mini-HUD pill showing 18:45 remaining, Rain sound control, Notes, and Snip actions"
+                      width="512"
+                      height="122"
+                      loading="lazy"
+                    >
+                    <span class="shot-caption-pill" aria-hidden="true">Expand</span>
+                    <span class="visually-hidden">Open larger preview</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div role="tabpanel" aria-labelledby="tab-extension" class="tab-panel" hidden="until-found">
+            <div class="panel-card">
+              <div class="panel-copy">
+                <h3>Offline Manifest V3 Browser Companion</h3>
+                <p>
+                  Pair the desktop service with the companion extension across Chrome, Microsoft Edge, Brave, Firefox,
+                  Vivaldi, and Opera for zero-latency URL enforcement.
+                </p>
+                <ul class="feature-list">
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Native Messaging Bridge:</strong> Connects locally to <code>Blocker.NativeHost.exe</code> over OS standard I/O pipes—zero external requests.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>1-Click Site Block &amp; Live Countdown:</strong> Block the active tab domain or monitor locked profile timers from the toolbar popup.</span>
+                  </li>
+                  <li>
+                    <svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span><strong>Incognito Tamper Enforcement:</strong> Detects Incognito/InPrivate windows lacking extension access and triggers a 60s compliance countdown before termination.</span>
+                  </li>
+                </ul>
+              </div>
+              <div class="panel-media">
+                <button
+                  type="button"
+                  class="shot-trigger"
+                  data-lightbox-src="screenshots/extension-popup.png"
+                  data-lightbox-title="Sankalpa Browser Companion Popup"
+                  data-lightbox-caption="Toolbar popup showing Guarding status, quick Block this site action, active timers, and locked profile indicators."
+                  data-lightbox-width="1287"
+                  data-lightbox-height="885"
+                >
+                  <img
+                    src="screenshots/extension-popup.png"
+                    alt="Sankalpa browser extension popup displaying active and inactive blocks with live countdown timers"
+                    width="1287"
+                    height="885"
+                    loading="lazy"
+                  >
+                  <span class="shot-caption-pill" aria-hidden="true">Expand</span>
+                  <span class="visually-hidden">Open larger preview</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="security" class="section section-alt">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-kicker">Architecture &amp; Hardening</span>
+          <h2>Dual-layer isolation engineered against self-sabotage</h2>
+          <p>
+            Configuration lives in the desktop UI, while enforcement runs continuously inside an elevated Windows service
+            protected by token impersonation, path pinning, and crash recovery.
+          </p>
+        </div>
+
+        <div class="arch-grid">
+          <div class="arch-stack" aria-label="Sankalpa dual-layer security architecture">
+            <div class="arch-layer">
+              <div class="arch-layer-label">User Experience Layer</div>
+              <div class="arch-nodes">
+                <div class="arch-node">
+                  <div class="arch-node-title">Desktop UI</div>
+                  <div class="arch-node-sub">Sankalpa.exe (.NET 8 WPF)</div>
+                </div>
+                <div class="arch-node">
+                  <div class="arch-node-title">Browser Companion</div>
+                  <div class="arch-node-sub">Chrome · Edge · Brave · Firefox</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="arch-pipe">
+              <span>↓ Named Pipe IPC (\\.\pipe\BlockerControl) &amp; NativeMessaging ↓</span>
+            </div>
+
+            <div class="arch-layer">
+              <div class="arch-layer-label">Messaging &amp; Policy Bridge</div>
+              <div class="arch-nodes">
+                <div class="arch-node">
+                  <div class="arch-node-title">Native Host Bridge</div>
+                  <div class="arch-node-sub">Blocker.NativeHost.exe</div>
+                </div>
+                <div class="arch-node">
+                  <div class="arch-node-title">Default-Deny IPC Guard</div>
+                  <div class="arch-node-sub">Token Impersonation (RunAsClient)</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="arch-pipe">
+              <span>↓ 0ms SCM Crash Watchdog (sc failure restart/0) ↓</span>
+            </div>
+
+            <div class="arch-layer">
+              <div class="arch-layer-label">Enforcement Core Layer (NT AUTHORITY\SYSTEM)</div>
+              <div class="arch-nodes">
+                <div class="arch-node">
+                  <div class="arch-node-title">Enforcer Service</div>
+                  <div class="arch-node-sub">Blocker.Service.exe + SQLite WAL</div>
+                </div>
+                <div class="arch-node">
+                  <div class="arch-node-title">OS-Level Enforcement</div>
+                  <div class="arch-node-sub">Hosts/DNS · Process Suspension &amp; Kill</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-grid">
+            <article class="info-card">
+              <div class="info-card-head">
+                <svg class="info-card-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                <h3>Strict UninstallGuard</h3>
+              </div>
+              <p>
+                <code>sankalpa-cli check-uninstall</code> audits both the live service and offline SQLite/hosts files.
+                Windows Settings and <code>unins000.exe</code> refuse removal while locks or schedules remain active.
+              </p>
+            </article>
+
+            <article class="info-card">
+              <div class="info-card-head">
+                <svg class="info-card-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                <h3>Path-Pinned Immunity</h3>
+              </div>
+              <p>
+                <code>SystemHelperGuard</code> canonicalizes OS binary paths to defeat <code>%TEMP%</code> spoofing and
+                prevents CLI tools from inheriting GUI app allowances during Zen lockdown.
+              </p>
+            </article>
+
+            <article class="info-card">
+              <div class="info-card-head">
+                <svg class="info-card-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                <h3>Reboot-Immune Timers</h3>
+              </div>
+              <p>
+                Monotonic deadlines and PBKDF2/SHA-256 lock secrets persist in local SQLite. Clock skew or system
+                reboots never reset active sessions.
+              </p>
+            </article>
+
+            <article class="info-card">
+              <div class="info-card-head">
+                <svg class="info-card-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                <h3>Browser Guard</h3>
+              </div>
+              <p>
+                Secondary browsers lacking the extension or Incognito windows without permission face a 60-second grace
+                toast before automatic process termination.
+              </p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="cli" class="section">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-kicker">Automation &amp; Scripting</span>
+          <h2>Full headless control with <code>sankalpa-cli.exe</code></h2>
+          <p>
+            Trigger blocks, run meditation sessions, capture reflection notes, manage delayed unlocks, and inspect
+            security audit trails directly from PowerShell or scheduled scripts.
+          </p>
+        </div>
+
+        <div class="cli-shell">
+          <div class="cli-toolbar">
+            <div class="cli-filters" role="group" aria-label="Filter CLI commands by category">
+              <button type="button" class="cli-filter-btn" data-cli-filter="all" aria-pressed="true">All Commands</button>
+              <button type="button" class="cli-filter-btn" data-cli-filter="sessions" aria-pressed="false">Sessions &amp; Profiles</button>
+              <button type="button" class="cli-filter-btn" data-cli-filter="meditation" aria-pressed="false">Meditation &amp; Notes</button>
+              <button type="button" class="cli-filter-btn" data-cli-filter="security" aria-pressed="false">Locks, DNS &amp; Audit</button>
+            </div>
+            <span class="theme-meta">Available in install directory</span>
+          </div>
+
+          <div class="cli-rows">
+            <div class="cli-row" data-cli-group="sessions">
+              <div>
+                <code class="cli-cmd">sankalpa-cli status</code>
+                <span class="cli-desc">Inspect active focus sessions, service status, and enforcement state.</span>
+              </div>
+              <button type="button" class="cli-copy" data-copy-text="sankalpa-cli status" data-copy-label="Status command">Copy</button>
+            </div>
+
+            <div class="cli-row" data-cli-group="sessions">
+              <div>
+                <code class="cli-cmd">sankalpa-cli start --profile "Deep Work" --duration 45m</code>
+                <span class="cli-desc">Launch an immediate block session for an existing profile.</span>
+              </div>
+              <button type="button" class="cli-copy" data-copy-text='sankalpa-cli start --profile "Deep Work" --duration 45m' data-copy-label="Start session command">Copy</button>
+            </div>
+
+            <div class="cli-row" data-cli-group="meditation">
+              <div>
+                <code class="cli-cmd">sankalpa-cli meditation start --duration 20m --apps "spotify.exe,notion.exe" --sound rain</code>
+                <span class="cli-desc">Start fullscreen Zen Lockdown with whitelisted apps and offline Rain audio.</span>
+              </div>
+              <button type="button" class="cli-copy" data-copy-text='sankalpa-cli meditation start --duration 20m --apps "spotify.exe,notion.exe" --sound rain' data-copy-label="Meditation start command">Copy</button>
+            </div>
+
+            <div class="cli-row" data-cli-group="meditation">
+              <div>
+                <code class="cli-cmd">sankalpa-cli meditation note --text "Quick thought captured"</code>
+                <span class="cli-desc">Append a reflection note directly into the local Notes vault.</span>
+              </div>
+              <button type="button" class="cli-copy" data-copy-text='sankalpa-cli meditation note --text "Quick thought captured"' data-copy-label="Meditation note command">Copy</button>
+            </div>
+
+            <div class="cli-row" data-cli-group="meditation">
+              <div>
+                <code class="cli-cmd">sankalpa-cli meditation schedule add --time 15:00 --days Mon,Tue,Wed,Thu,Fri --duration 20m</code>
+                <span class="cli-desc">Automate a recurring weekday afternoon meditation lockdown.</span>
+              </div>
+              <button type="button" class="cli-copy" data-copy-text="sankalpa-cli meditation schedule add --time 15:00 --days Mon,Tue,Wed,Thu,Fri --duration 20m" data-copy-label="Meditation schedule command">Copy</button>
+            </div>
+
+            <div class="cli-row" data-cli-group="security">
+              <div>
+                <code class="cli-cmd">sankalpa-cli delayed-unlock request --name "Deep Work"</code>
+                <span class="cli-desc">Initiate a delayed unlock countdown and print the cancellation token.</span>
+              </div>
+              <button type="button" class="cli-copy" data-copy-text='sankalpa-cli delayed-unlock request --name "Deep Work"' data-copy-label="Delayed unlock command">Copy</button>
+            </div>
+
+            <div class="cli-row" data-cli-group="security">
+              <div>
+                <code class="cli-cmd">sankalpa-cli lock-dns --mode Timer --duration 86400</code>
+                <span class="cli-desc">Lock OS-level filtered DNS settings for 24 hours.</span>
+              </div>
+              <button type="button" class="cli-copy" data-copy-text="sankalpa-cli lock-dns --mode Timer --duration 86400" data-copy-label="DNS lock command">Copy</button>
+            </div>
+
+            <div class="cli-row" data-cli-group="security">
+              <div>
+                <code class="cli-cmd">sankalpa-cli events --limit 10</code>
+                <span class="cli-desc">Audit recent blocked processes, domain redirects, and protection events.</span>
+              </div>
+              <button type="button" class="cli-copy" data-copy-text="sankalpa-cli events --limit 10" data-copy-label="Events audit command">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="download" class="section section-alt">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-kicker">Release v1.3.6</span>
+          <h2>Download &amp; Verify Sankalpa</h2>
+          <p>
+            Self-contained 64-bit Windows binaries built with .NET 8. Verify every download locally against its
+            SHA-256 digest before running.
+          </p>
+        </div>
+
+        <div class="table-wrap">
+          <table class="release-table">
+            <caption>Sankalpa v1.3.6 Distribution Artifacts (Windows 10 / 11 x64)</caption>
+            <thead>
+              <tr>
+                <th scope="col">Package</th>
+                <th scope="col">Format</th>
+                <th scope="col">Size</th>
+                <th scope="col">SHA-256 Checksum</th>
+                <th scope="col">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row"><code>Sankalpa-Setup-1.3.6.exe</code></th>
+                <td>Recommended Windows Installer</td>
+                <td>143.94 MB</td>
+                <td>
+                  <div class="hash-cell">
+                    <code class="hash-code" title="A961044B25484908C23C3F22D7985343E4292549CD1F806706057A8CFB2B74B2">A961044B25484908C23C3F22D7985343E4292549CD1F806706057A8CFB2B74B2</code>
+                    <button type="button" class="btn btn-compact" data-copy-text="A961044B25484908C23C3F22D7985343E4292549CD1F806706057A8CFB2B74B2" data-copy-label="Installer SHA-256">Copy Hash</button>
+                  </div>
+                </td>
+                <td>
+                  <a href="https://github.com/virexnocturne/Sankalpa/releases/download/v1.3.6/Sankalpa-Setup-1.3.6.exe" class="btn btn-primary btn-compact" rel="noopener noreferrer">Download Installer</a>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><code>Sankalpa.exe</code></th>
+                <td>Portable Standalone Client</td>
+                <td>158.42 MB</td>
+                <td>
+                  <div class="hash-cell">
+                    <code class="hash-code" title="D11129A686F9A91123D1F288469F14DC834FBE63F02CC3E4264869037B7BC7D6">D11129A686F9A91123D1F288469F14DC834FBE63F02CC3E4264869037B7BC7D6</code>
+                    <button type="button" class="btn btn-compact" data-copy-text="D11129A686F9A91123D1F288469F14DC834FBE63F02CC3E4264869037B7BC7D6" data-copy-label="Portable SHA-256">Copy Hash</button>
+                  </div>
+                </td>
+                <td>
+                  <a href="https://github.com/virexnocturne/Sankalpa/releases/download/v1.3.6/Sankalpa.exe" class="btn btn-compact" rel="noopener noreferrer">Download Portable</a>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><code>sankalpa-extension-v1.3.6.zip</code></th>
+                <td>Manifest V3 Companion Extension</td>
+                <td>40 KB</td>
+                <td>
+                  <div class="hash-cell">
+                    <code class="hash-code" title="BCD0820C609C8A377B98D3AB41C801A7CBF042992DC2774099C44076F5FEDEEF">BCD0820C609C8A377B98D3AB41C801A7CBF042992DC2774099C44076F5FEDEEF</code>
+                    <button type="button" class="btn btn-compact" data-copy-text="BCD0820C609C8A377B98D3AB41C801A7CBF042992DC2774099C44076F5FEDEEF" data-copy-label="Extension SHA-256">Copy Hash</button>
+                  </div>
+                </td>
+                <td>
+                  <a href="https://github.com/virexnocturne/Sankalpa/releases/download/v1.3.6/sankalpa-extension-v1.3.6.zip" class="btn btn-compact" rel="noopener noreferrer">Download Extension</a>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><code>GitHub Release v1.3.6</code></th>
+                <td>Official GitHub Releases &amp; Assets</td>
+                <td>Release Page</td>
+                <td>
+                  <div class="hash-cell">
+                    <code class="hash-code" title="GitHub Release: v1.3.6">virexnocturne/Sankalpa@v1.3.6</code>
+                    <a href="https://github.com/virexnocturne/Sankalpa/releases/tag/v1.3.6" class="btn btn-compact" rel="noopener noreferrer">View Tag</a>
+                  </div>
+                </td>
+                <td>
+                  <a href="https://github.com/virexnocturne/Sankalpa/releases/tag/v1.3.6" class="btn btn-compact" rel="noopener noreferrer">View on GitHub</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="release-note-link">
+          Looking for release notes, source code, or previous builds? Browse all versions on
+          <a href="https://github.com/virexnocturne/Sankalpa/releases/tag/v1.3.6" rel="noopener noreferrer">GitHub Release v1.3.6</a> or
+          <a href="https://github.com/virexnocturne/Sankalpa/releases/latest" rel="noopener noreferrer">GitHub Releases</a>.
+        </p>
+
+        <section class="accordion-group" aria-label="Installation and source build instructions">
+          <details class="disclosure" name="install-steps" open>
+            <summary>Step 1: Run the Windows Setup Wizard</summary>
+            <div class="disclosure-body">
+              <ol class="ordered-steps">
+                <li>Download and launch <code>Sankalpa-Setup-1.3.6.exe</code>.</li>
+                <li>Approve the single User Account Control (UAC) prompt so setup can register the tamper-resistant <code>SankalpaService</code> under <code>LocalSystem</code>.</li>
+                <li>If Windows Defender SmartScreen displays a prompt on a fresh release, select <strong>More info</strong> &rarr; <strong>Run anyway</strong> after checking the SHA-256 digest above.</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="disclosure" name="install-steps">
+            <summary>Step 2: Load the Companion Browser Extension</summary>
+            <div class="disclosure-body">
+              <ol class="ordered-steps">
+                <li>Open <code>chrome://extensions</code> (Chrome/Brave/Opera), <code>edge://extensions</code> (Edge), or <code>about:debugging</code> (Firefox) and enable <strong>Developer mode</strong>.</li>
+                <li>Extract <code>sankalpa-extension-v1.3.6.zip</code> and select <strong>Load unpacked</strong> (or click <strong>Open folder</strong> in Sankalpa's status bar).</li>
+                <li>Open extension details and enable <strong>Allow in Incognito / InPrivate</strong> so browser-level blocking remains active in private windows.</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="disclosure" name="install-steps">
+            <summary>Step 3: Build &amp; Test from Source (.NET 8 SDK)</summary>
+            <div class="disclosure-body">
+              <p>Requires Windows 10/11 (x64), .NET 8.0 SDK, and Inno Setup 6+ for installer packaging.</p>
+              <pre class="code-block" role="region" aria-label="Build and test commands" tabindex="0"><code>git clone https://github.com/virexnocturne/Sankalpa.git
+cd Sankalpa
+dotnet test Blocker.sln
+dotnet build Blocker.sln -c Release</code></pre>
+            </div>
+          </details>
+        </section>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-kicker">Privacy Guarantee</span>
+          <h2>Your focus habits stay on your machine</h2>
+          <p>
+            Sankalpa operates with zero remote infrastructure. Every rule, countdown, note, and event stays locally
+            inside <code>%LocalAppData%\Sankalpa\data\</code>.
+          </p>
+        </div>
+
+        <div class="three-col">
+          <article class="info-card">
+            <h3>100% Offline &amp; Local</h3>
+            <p>
+              Zero analytics SDKs, zero tracking cookies, and zero outbound requests from either the Windows binaries or
+              the companion browser extension.
+            </p>
+          </article>
+          <article class="info-card">
+            <h3>No Accounts or Paywalls</h3>
+            <p>
+              No email sign-up, cloud dashboard, or recurring subscription gates your block profiles, schedules, or lock
+              protections.
+            </p>
+          </article>
+          <article class="info-card">
+            <h3>Transparent Local Data</h3>
+            <p>
+              Read the complete <a href="privacy.html">Privacy Policy</a> including Chrome/Edge/Firefox permission
+              justifications and local data lifecycle details.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="brand">
+          <img src="assets/logo-32.png" alt="" width="24" height="24" class="brand-logo">
+          <span>Sankalpa Blocker</span>
+          <span lang="sa" class="brand-sanskrit">संकल्प</span>
+        </div>
+
+        <ul class="footer-links">
+          <li><a href="https://github.com/virexnocturne/Sankalpa" rel="noopener noreferrer">GitHub</a></li>
+          <li><a href="https://github.com/virexnocturne/Sankalpa/releases/latest" rel="noopener noreferrer">Releases</a></li>
+          <li><a href="privacy.html">Privacy Policy</a></li>
+          <li><a href="assets/licenses/Familjen-Grotesk-OFL.txt">Familjen Grotesk (OFL)</a></li>
+          <li><a href="assets/licenses/IBM-Plex-OFL.txt">IBM Plex (OFL)</a></li>
+          <li><a href="assets/licenses/Lucide-ISC.txt">Lucide Icons (ISC)</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-meta">
+        <span>Release v1.3.6 · Built for Windows 10 / 11 (x64) with .NET 8 WPF</span>
+        <span>Zero external fonts, trackers, or third-party scripts loaded by this site.</span>
+      </div>
+    </div>
+  </footer>
+
+  <dialog id="screenshot-dialog" class="lightbox-dialog" closedby="any" aria-labelledby="lightbox-title">
+    <div class="lightbox-shell">
+      <div class="lightbox-top">
+        <h2 id="lightbox-title" class="lightbox-title">Sankalpa Screenshot</h2>
+        <form method="dialog">
+          <button type="submit" class="btn btn-compact">Close</button>
+        </form>
+      </div>
+      <img id="lightbox-img" class="lightbox-img" alt="" width="746" height="844">
+      <p id="lightbox-caption" class="lightbox-caption"></p>
+    </div>
+  </dialog>
+
+  <div id="copy-live-region" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+  <div id="copy-toast" class="live-region-toast" hidden></div>
+</body>
+</html>

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en" data-accent="emerald">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy | Sankalpa Blocker</title>
+  <meta name="description" content="Privacy Policy for the Sankalpa Windows Desktop Application and Sankalpa Blocker Browser Companion Extension. 100% offline and local.">
+  <meta name="color-scheme" content="light dark">
+  <script>
+    (function () {
+      try {
+        var scheme = localStorage.getItem("color-scheme");
+        if (scheme === "light" || scheme === "dark") {
+          document.querySelector('meta[name="color-scheme"]').content = scheme;
+        }
+        var accent = localStorage.getItem("sankalpa-accent");
+        if (accent && /^(emerald|indigo|violet|amber|rose|slate)$/.test(accent)) {
+          document.documentElement.dataset.accent = accent;
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="icon" type="image/png" href="assets/logo-32.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a href="#main-heading" class="skip-link visually-hidden">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="index.html" class="brand">
+        <img src="assets/logo-32.png" alt="" width="32" height="32" class="brand-logo">
+        <span>Sankalpa</span>
+        <span lang="sa" class="brand-sanskrit">संकल्प</span>
+      </a>
+
+      <nav aria-label="Primary">
+        <ul class="nav-list">
+          <li><a href="index.html#features" class="nav-link">Features</a></li>
+          <li><a href="index.html#security" class="nav-link">Security</a></li>
+          <li><a href="index.html#cli" class="nav-link">CLI</a></li>
+          <li><a href="index.html#download" class="nav-link">Download</a></li>
+          <li><a href="privacy.html" class="nav-link" aria-current="page">Privacy</a></li>
+        </ul>
+      </nav>
+
+      <div class="header-actions">
+        <button id="appearance-trigger" type="button" class="btn btn-compact" popovertarget="appearance-popover" aria-haspopup="dialog">
+          <svg class="btn-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+          </svg>
+          <span>Appearance</span>
+        </button>
+        <a href="index.html#download" class="btn btn-primary btn-compact header-cta">Download v1.3.6</a>
+      </div>
+    </div>
+
+    <div id="appearance-popover" class="appearance-popover" popover="auto" aria-labelledby="appearance-heading">
+      <div class="popover-header">
+        <h2 id="appearance-heading" class="popover-title">Appearance &amp; Theme</h2>
+        <button id="appearance-done" type="button" class="btn btn-compact">Done</button>
+      </div>
+
+      <div class="popover-section">
+        <fieldset class="theme-options">
+          <legend class="popover-label">Theme mode</legend>
+          <label class="theme-option" for="theme-system">
+            <span class="theme-option-left">
+              <input id="theme-system" type="radio" name="site-theme" value="system" checked>
+              <span>System</span>
+            </span>
+            <span id="system-scheme-meta" class="theme-meta">Follows OS</span>
+          </label>
+          <label class="theme-option" for="theme-dark">
+            <span class="theme-option-left">
+              <input id="theme-dark" type="radio" name="site-theme" value="dark">
+              <span>Obsidian Black</span>
+            </span>
+            <span class="theme-meta">Zero glare</span>
+          </label>
+          <label class="theme-option" for="theme-light">
+            <span class="theme-option-left">
+              <input id="theme-light" type="radio" name="site-theme" value="light">
+              <span>Crisp Light</span>
+            </span>
+            <span class="theme-meta">Daylight</span>
+          </label>
+        </fieldset>
+      </div>
+
+      <div class="popover-section">
+        <fieldset class="accent-grid">
+          <legend class="popover-label">Accent palette</legend>
+          <label class="accent-chip" for="accent-emerald">
+            <input id="accent-emerald" type="radio" name="site-accent" value="emerald" checked>
+            <span class="swatch swatch-emerald"></span>
+            <span>Emerald</span>
+          </label>
+          <label class="accent-chip" for="accent-indigo">
+            <input id="accent-indigo" type="radio" name="site-accent" value="indigo">
+            <span class="swatch swatch-indigo"></span>
+            <span>Indigo</span>
+          </label>
+          <label class="accent-chip" for="accent-violet">
+            <input id="accent-violet" type="radio" name="site-accent" value="violet">
+            <span class="swatch swatch-violet"></span>
+            <span>Violet</span>
+          </label>
+          <label class="accent-chip" for="accent-amber">
+            <input id="accent-amber" type="radio" name="site-accent" value="amber">
+            <span class="swatch swatch-amber"></span>
+            <span>Amber</span>
+          </label>
+          <label class="accent-chip" for="accent-rose">
+            <input id="accent-rose" type="radio" name="site-accent" value="rose">
+            <span class="swatch swatch-rose"></span>
+            <span>Rose</span>
+          </label>
+          <label class="accent-chip" for="accent-slate">
+            <input id="accent-slate" type="radio" name="site-accent" value="slate">
+            <span class="swatch swatch-slate"></span>
+            <span>Slate</span>
+          </label>
+        </fieldset>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container prose-stack">
+        <div class="section-header">
+          <span class="section-kicker">Effective Date: November 3, 2026</span>
+          <h1 id="main-heading" tabindex="-1">Privacy Policy for Sankalpa &amp; Sankalpa Blocker Companion</h1>
+          <p>
+            Sankalpa is engineered as a privacy-first, offline-only focus and blocking tool. Neither the Windows desktop
+            suite nor the companion browser extension transmits browsing history, blocklists, or telemetry to any remote server.
+          </p>
+        </div>
+
+        <article class="prose-block">
+          <h2>1. Core Principle: 100% Local &amp; Offline</h2>
+          <ul class="bullet-list">
+            <li><strong>No Remote Servers:</strong> Sankalpa operates no external cloud servers or remote databases storing your information.</li>
+            <li><strong>No Analytics or Telemetry:</strong> Contains zero tracking cookies, analytics SDKs, advertising beacons, or usage telemetry.</li>
+            <li><strong>No Data Selling:</strong> We never sell, rent, monetize, or transfer user data to any third party under any circumstances.</li>
+          </ul>
+        </article>
+
+        <article class="prose-block">
+          <h2>2. Information Handled Locally on Your Device</h2>
+          <h3>A. Sankalpa Desktop Application (Windows)</h3>
+          <ul class="bullet-list">
+            <li><strong>Block Profiles &amp; Rules:</strong> Custom domains, application executable names, schedules, and lock configurations are stored exclusively in <code>%LocalAppData%\Sankalpa\data\</code>.</li>
+            <li><strong>Session History &amp; Notes:</strong> Meditation histories, reflection notes, and event logs remain inside your local SQLite database and JSON storage on your machine.</li>
+            <li><strong>System Permissions:</strong> Elevated <code>LocalSystem</code> privileges are used strictly to update the local Windows hosts file, manage DNS shielding, and enforce local process blocking.</li>
+          </ul>
+
+          <h3>B. Sankalpa Blocker Browser Companion Extension</h3>
+          <ul class="bullet-list">
+            <li><strong>On-Device URL Evaluation:</strong> Destination hostnames are checked locally against your active block profiles before navigation completes.</li>
+            <li><strong>No History Logging:</strong> Non-matching URLs are discarded immediately. Browsing history is never logged or transmitted externally.</li>
+            <li><strong>Native Inter-Process Communication:</strong> Communicates exclusively with local <code>Blocker.NativeHost.exe</code> via standard OS pipes (<code>nativeMessaging</code>).</li>
+          </ul>
+        </article>
+
+        <article class="prose-block">
+          <h2>3. Browser Extension Permission Justifications</h2>
+          <div class="table-wrap">
+            <table class="release-table">
+              <caption>Manifest V3 Permissions Used Exclusively Offline</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Permission</th>
+                  <th scope="col">Local Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row"><code>nativeMessaging</code></th>
+                  <td>Communicates locally with <code>Blocker.NativeHost.exe</code> via standard I/O pipes to synchronize active profiles and session countdowns.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><code>webNavigation</code></th>
+                  <td>Intercepts navigations before blocked pages load and redirects immediately to the local hold screen.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><code>tabs</code></th>
+                  <td>Reads active tab hostnames locally to match against active block rules and support 1-click popup blocking.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><code>storage</code></th>
+                  <td>Caches active profile rules and timer state locally inside the browser across restarts.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><code>alarms</code></th>
+                  <td>Runs periodic local heartbeats to verify connection health with the desktop service.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><code>&lt;all_urls&gt;</code></th>
+                  <td>Evaluates user-configured domain rules across arbitrary websites completely on device.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="prose-block">
+          <h2>4. Data Retention, Children's Privacy &amp; Contact</h2>
+          <ul class="bullet-list">
+            <li><strong>Local Data Control:</strong> All desktop data lives under <code>%LocalAppData%\Sankalpa\</code>. Uninstalling Sankalpa or removing the browser extension deletes locally cached rules and state.</li>
+            <li><strong>Children's Privacy:</strong> Sankalpa collects no personal information from any user, including children under 13.</li>
+            <li><strong>Questions or Feedback:</strong> Open an issue on our public repository at <a href="https://github.com/virexnocturne/Sankalpa" rel="noopener noreferrer">github.com/virexnocturne/Sankalpa</a>.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="brand">
+          <img src="assets/logo-32.png" alt="" width="24" height="24" class="brand-logo">
+          <span>Sankalpa Blocker</span>
+          <span lang="sa" class="brand-sanskrit">संकल्प</span>
+        </div>
+
+        <ul class="footer-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="https://github.com/virexnocturne/Sankalpa" rel="noopener noreferrer">GitHub</a></li>
+          <li><a href="https://github.com/virexnocturne/Sankalpa/releases/latest" rel="noopener noreferrer">Releases</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-meta">
+        <span>Privacy Policy · Last Updated November 3, 2026</span>
+        <span>Zero remote analytics or telemetry.</span>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

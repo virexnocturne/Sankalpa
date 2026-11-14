@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.3.5" /></a>
+  <a href="https://github.com/virexnocturne/Sankalpa/releases/latest"><img src="https://img.shields.io/github/v/release/virexnocturne/Sankalpa?color=047857&label=Release&logo=windows" alt="Latest Release: v1.3.6" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64)-blue?logo=windows" alt="Platform: Windows" />
   <img src="https://img.shields.io/badge/Framework-.NET%208.0%20WPF-purple?logo=dotnet" alt=".NET 8" />
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20%26%20Local-success?logo=shield" alt="Privacy First" />
@@ -24,6 +24,16 @@
 </p>
 
 ---
+
+## 🌟 What's New in v1.3.6 (Zen UI Performance, CLI Meditation Controls & Audio UX)
+
+- ⚡ **Zen Mode WinEvent Filter & Coalescing**: Narrowed window hook listeners to 5 discrete event types with lock-free trailing-edge coalescing, completely eliminating UI-thread message spikes.
+- 🪟 **Idempotent Mini-HUD & Non-Blocking App Minimization**: Topmost re-assertion is rate-limited and focus changes only trigger on state transitions. Minimized allowed applications use `SWP_ASYNCWINDOWPOS` and `ShowWindowAsync` to avoid hung window stalls.
+- 🚀 **Dedicated MTA Background Throttler Worker**: Offloaded process enumeration, COM audio session queries, 25-second working set trims, and crash-journal persistence away from the UI thread onto a background worker.
+- 🔐 **Asynchronous Single-Verify Password Unlock**: PBKDF2 (100k iterations) verification runs asynchronously off the UI thread once per attempt with fail-closed validation and prompt suppression.
+- 💻 **Complete CLI Meditation Suite (`sankalpa-cli`)**: Introduced full CLI commands for starting, stopping, querying, and scheduling meditation sessions, requesting delayed unlock tokens, and viewing live blocking audit events.
+- 🎵 **M3U / M3U8 Playlist Import & Soundscape Sync**: Added local playlist parser hardened against UNC/SMB relays and directory traversal, with an active event bus synchronizing custom tracks across the UI without application restarts.
+- 🛡️ **Emergency Schedule Bypass & Profile Editing**: Emergency unlock disables recurring schedules to prevent re-lock loops, and unlocked profiles can de-escalate lock modes back to None without re-entering passwords.
 
 ## 🌟 What's New in v1.3.5 (Cold Launch Fast Path, Helper Immunity & Path Pinning)
 
